@@ -1,0 +1,17 @@
+{
+  "$comment": "The CI gates' lists (lane L4). Paths are repo-relative globs: * stays in one folder, ** crosses folders. Read by core/ship/gates.mjs; change a list here, never in a script.",
+  "generated": {
+    "what": "Files a tool writes. A pull request never changes them; the docs step rebuilds them on main after the merge.",
+    "paths": ["kitchen/MAP.md"],
+    "allowBranches": ["ship/docs-*"]
+  },
+  "decision": {
+    "what": "The Board's look (sprites, scene, City, icons, layout). A change here starts with mock-ups and needs Jordan's answered decision (D-<n>) named in the PR title or body.",
+    "paths": ["pass-app/public/**"]
+  },
+  "woTitle": {
+    "what": "A PR title starts with its work order id and a colon (WO-312: ..., WO-UPG-L4-1: ...); an old Yard id (J312: ...) is read as its alias.",
+    "pattern": "^(WO-[A-Z0-9]+(-[A-Z0-9]+)*|J[0-9]+):\\s",
+    "skipAuthors": ["dependabot[bot]"]
+  }
+}

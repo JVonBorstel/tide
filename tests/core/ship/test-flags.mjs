@@ -45,7 +45,7 @@ export function run(check) {
   for (const [n] of real.flags) check(`flags: ${n} is off by default in the repo flags.json`, isOn(n, { declared: real }) === false);
 
   // ---- a flip is Jordan's yes: flag.set events folded in seq order
-  const ev = (seq, on, decision) => ({ seq, at: '2030-01-07T09:12:00Z', actor: 'engine', kind: 'flag.set', wo: null, data: { flag: 'board.sunrise', on, decision }, proof: null });
+  const ev = (seq, on, decision) => ({ v: '1.0', seq, at: '2030-01-07T09:12:00Z', actor: 'engine', kind: 'flag.set', wo: null, data: { flag: 'board.sunrise', on, decision }, proof: null });
   const on = [ev(12, true, 'D-7')];
   check('flags: the flag.set fixture shape passes the event contract', validate('event', on[0]).ok, validate('event', on[0]).errors.join('; '));
   check('flags: a flag.set event with a decision turns the slice on', isOn('board.sunrise', { declared: sample, current: foldFlagEvents(on) }) === true);
