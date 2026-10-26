@@ -1,9 +1,9 @@
 # Port one pull request from the private repo to tide, the public home (2026-10-26 cut-over: the private repo is on a GitHub billing
 # hold, so nothing merges there). One script, the same cleaning and the same privacy scan every time: no hand copies.
-#   pwsh -File scripts/port-private.ps1 -Pr N [-Branch port/x] [-NoPush] [-Comment] [-Continue] [-Allow class,...] [-AcceptRejects]
+#   pwsh -File scripts/port-private.ps1 -Pr N [-Branch port/x] [-NoCommit] [-NoPush] [-Comment] [-Continue] [-Allow class,...] [-AcceptRejects]
 # Method (never replaces the whole tree, which would revert tide-only commits):
 #   1. Read private PR N (gh), fetch its head branch B from the private remote and check it is the PR's head commit.
-#   2. M = merge-base(B, private-main). Clean the trees of M and of B with the public cleaning (R1-R9; the ONE implementation is
+#   2. M = merge-base(B, private-main). Clean the trees of M and of B with the public cleaning (R1-R10; the ONE implementation is
 #      public-tide-clean.ps1 beside the scan in the brain's projects/tide/audits, outside this repo because its rules name the private values).
 #   3. Diff cleaned(M) -> cleaned(B) and `git apply -3` that patch onto a new branch (default port/<B>) from tide main, in its own
 #      worktree (<WorktreeRoot>/port-<B>, slashes as dashes). A conflict stops here: the worktree is kept for a hand fix, then run again with -Continue.
@@ -14,7 +14,8 @@
 #      tide (or reuse the open one) with a body that links the private PR; -Comment also links the tide PR on the private PR.
 #   6. One line per port in ports.jsonl in the kitchen state folder (BRAIN_KITCHEN, else %LOCALAPPDATA%\brain-kitchen).
 # A cleaning-patch hunk that applies on M but not on B would be undone by the diff, so it refuses and names the files, unless
-# -AcceptRejects (a person read those files' diffs, e.g. with -NoPush).
+# -AcceptRejects (a person read those files' diffs: -AcceptRejects -NoCommit applies it and stops, a hand fix restores the cleaning,
+# then -Continue scans and commits).
 # Nothing is ever deleted, closed or force-pushed: the port worktree and branch are kept; only this run's temp stage folders are removed.
 # The state of a port (for -Continue) is <git common dir>/port-private/pr-<N>.json, outside every tree.
 # Exit: 0 PR opened or reused (or committed, with -NoPush); 1 refused (the reason is printed; nothing pushed); 2 bad input or a tool failed.
@@ -34,10 +35,12 @@ param(
     [string]$StageRoot = '',            # default: the temp folder (keep it short: Windows paths stop at 260 characters)
     [string[]]$Allow = @(),
     [string[]]$Trailer = @(),           # extra commit-message trailer lines (e.g. Co-Authored-By)
+    [string]$Note = '',                 # what the porter did by hand (a conflict, a restored cleaning): PR body, commit, change note
     [string]$AuthorName = '',          # default: git config user.name of the checkout (the name is never written into a file)
     [string]$AuthorEmail = '204934145+JVonBorstel@users.noreply.github.com',
     [switch]$AcceptRejects,
     [switch]$Continue,
+    [switch]$NoCommit,                  # stop after the apply: a hand fix in the worktree, then -Continue scans and commits it
     [switch]$NoPush,
     [switch]$Comment
 )
@@ -156,6 +159,7 @@ if ($Continue) {
             if ($u.Count) { Refuse "the port conflicts with tide $Base in: $($u -join ', '). The worktree $wt is kept: fix those files, git add them, then run again with -Continue" }
             Broken "git apply -3 failed in $wt ($($ap.out))"
         }
+        if ($NoCommit) { Say "NOT COMMITTED (-NoCommit): the port is applied in $wt on $Branch; edit it by hand, then run again with -Continue"; exit 0 }
     } finally { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
@@ -192,7 +196,7 @@ try {
     $noteRel = "docs/changes/port-$Pr.md"
     if (-not $committed -and -not (Test-Path -LiteralPath (Join-Path $wt $noteRel))) {
         New-Item -ItemType Directory -Force -Path (Join-Path $wt 'docs\changes') | Out-Null
-        $note = @"
+        $noteText = @"
 # $title
 
 Ported on $([DateTime]::UtcNow.ToString('yyyy-MM-dd')) by ``scripts/port-private.ps1`` from $PrivateRepo#$Pr ($($state.privateUrl)) at ``$($state.privateHead)``, onto tide ``$Base`` at ``$(Short $state.base)``. The private repo is on a GitHub billing hold, so its work lands here; the private PR stays open.
@@ -203,13 +207,13 @@ $described
 
 ## How it was ported
 
-The private branch's changes since its merge-base ``$(Short $state.mergeBase)`` with the old private main, with the public cleaning (R1-R9) applied to both sides, applied with ``git apply -3``. Only those changes are applied, so tide-only commits stay. The changed files, the commit message and the PR text passed the privacy scan (no live hit; any other new hit needs a person's -Allow, named in the PR).
+The private branch's changes since its merge-base ``$(Short $state.mergeBase)`` with the old private main, with the public cleaning (R1-R10) applied to both sides, applied with ``git apply -3``. Only those changes are applied, so tide-only commits stay. The changed files, the commit message and the PR text passed the privacy scan (no live hit; any other new hit needs a person's -Allow, named in the PR).
 
-## L1-L4
+$(if ($Note) { "## Done by hand in the port`n`n$Note`n`n" })## L1-L4
 
 The effects are the private PR's own (its description above). The port itself only moves finished work to the public home: nothing changes for a person, the business, an MSP or the community beyond that.
 "@
-        [IO.File]::WriteAllText((Join-Path $wt $noteRel), $note, $utf8)
+        [IO.File]::WriteAllText((Join-Path $wt $noteRel), $noteText, $utf8)
     }
     if (-not $committed) { $null = G $wt @('add', '-A') }
 
@@ -231,7 +235,7 @@ Port of the private pull request $PrivateRepo#$Pr ($($state.privateUrl)) at its 
 
 ## How it was ported
 
-``scripts/port-private.ps1``: the private branch's changes since its merge-base with the old main (``$(Short $state.mergeBase)``), with the public cleaning (R1-R9) applied to both sides, applied with ``git apply -3`` onto tide ``$Base`` at ``$(Short $state.base)``. Only those changes are applied, so tide-only commits stay. Change note: ``$noteRel``.
+``scripts/port-private.ps1``: the private branch's changes since its merge-base with the old main (``$(Short $state.mergeBase)``), with the public cleaning (R1-R10) applied to both sides, applied with ``git apply -3`` onto tide ``$Base`` at ``$(Short $state.base)``. Only those changes are applied, so tide-only commits stay. Change note: ``$noteRel``.
 
 - $rejectLine
 - Privacy scan of the changed files and this text: $scanLine
@@ -239,9 +243,10 @@ Port of the private pull request $PrivateRepo#$Pr ($($state.privateUrl)) at its 
 ## Files ($($changes.Count))
 
 $fileList
+$(if ($Note) { "`n## Done by hand in the port`n`n$Note`n" })
 "@
     }
-    $commitBody = "Ported from $PrivateRepo#$Pr at $($state.privateHead) by scripts/port-private.ps1:`nthe cleaned (R1-R9) diff from the private merge-base $($state.mergeBase)`nto that head, applied with git apply -3 onto tide $Base $(Short $state.base).`n`nFiles: $($changes.Count) ($(@($changes | Where-Object kind -eq 'A').Count) added, $(@($changes | Where-Object kind -eq 'M').Count) changed, $(@($changes | Where-Object kind -eq 'D').Count) deleted)."
+    $commitBody = "Ported from $PrivateRepo#$Pr at $($state.privateHead) by scripts/port-private.ps1:`nthe cleaned (R1-R10) diff from the private merge-base $($state.mergeBase)`nto that head, applied with git apply -3 onto tide $Base $(Short $state.base).`n`nFiles: $($changes.Count) ($(@($changes | Where-Object kind -eq 'A').Count) added, $(@($changes | Where-Object kind -eq 'M').Count) changed, $(@($changes | Where-Object kind -eq 'D').Count) deleted).$(if ($Note) { "`n`nDone by hand: $Note" })"
 
     # ---- the scan: the changed files now and on tide main, plus this tool's own text
     $sNew = Join-Path $stage 'new'; $sOld = Join-Path $stage 'old'; New-Item -ItemType Directory -Force -Path $sNew, $sOld | Out-Null
@@ -308,7 +313,7 @@ else {
 }
 & $log $url
 if ($Comment) {
-    $cm = Invoke-Gh @('pr', 'comment', "$Pr", '-R', $PrivateRepo, '--body', "Ported to $TideRepo for review and merge: $url (branch ``$Branch`` at $(Short $tip), cleaned R1-R9 and scanned by scripts/port-private.ps1). This PR stays open here.")
+    $cm = Invoke-Gh @('pr', 'comment', "$Pr", '-R', $PrivateRepo, '--body', "Ported to $TideRepo for review and merge: $url (branch ``$Branch`` at $(Short $tip), cleaned R1-R10 and scanned by scripts/port-private.ps1). This PR stays open here.")
     if ($cm.ok) { Say "commented on $PrivateRepo#$Pr" } else { Say "could not comment on $PrivateRepo#$Pr ($(Get-GhWhy $cm)); the port itself is done" }
 }
 Say "DONE private #$Pr -> $url ($Branch at $(Short $tip))"

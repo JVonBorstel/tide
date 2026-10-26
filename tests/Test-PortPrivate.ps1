@@ -110,8 +110,10 @@ try {
     $r = Port 3 @('-Continue')
     Check 'conflict: -Continue before the fix -> refused (unmerged files)' ($r.code -eq 1 -and $r.out -match 'unmerged')
     [IO.File]::WriteAllText((Join-Path $w3 'c.txt'), "sea changed`ntide edit`n"); & git -C $w3 add c.txt 2>&1 | Out-Null
-    $r = Port 3 @('-Continue')
+    $r = Port 3 @('-Continue', '-Note', 'c.txt: both lines kept by hand')
     $t3 = Ref $tide 'refs/heads/port/feat-conflict'
+    $p3 = Prs $tideSlug | Where-Object headRefName -eq 'port/feat-conflict'
+    Check 'conflict: -Note names the hand fix in the PR body, the commit message and the change note' ($p3.body -match '## Done by hand in the port\s+c\.txt: both lines kept by hand' -and ((& git -C $tide log -1 --format=%B $t3) -join "`n") -match 'Done by hand: c\.txt' -and (Show $tide "${t3}:docs/changes/port-3.md") -match 'c\.txt: both lines kept by hand')
     Check 'conflict: after the hand fix, -Continue commits, pushes and opens the PR' ($r.code -eq 0 -and $t3 -and (Show $tide "${t3}:c.txt") -eq "sea changed`ntide edit" -and (Ref $tide "$t3~1") -eq $tideMain -and @(Prs $tideSlug).Count -eq 2)
 
     # ---- 5. a live value in the private title or description: that text is left out, the port goes on
@@ -131,8 +133,12 @@ try {
     $null = PrivBranch 'feat-reject' @{ 'r.txt' = "REJECT-ME`n" }; AddPrivPr 6 'feat-reject' 'Reject' ''
     $r = Port 6
     Check 'reject: refused (1), names r.txt, nothing made' ($r.code -eq 1 -and $r.out -match 'would undo them in: r\.txt' -and -not (Test-Path (Join-Path $wtRoot 'port-feat-reject')))
-    $r = Port 6 @('-AcceptRejects', '-NoPush')
-    Check 'reject: -AcceptRejects -NoPush commits locally, pushes nothing, opens no PR' ($r.code -eq 0 -and $r.out -match 'NOT PUSHED' -and (& git -C $repo rev-parse --verify --quiet 'refs/heads/port/feat-reject') -and -not (Ref $tide 'refs/heads/port/feat-reject') -and -not (Prs $tideSlug | Where-Object headRefName -eq 'port/feat-reject'))
+    $r = Port 6 @('-AcceptRejects', '-NoCommit')
+    $w6 = Join-Path $wtRoot 'port-feat-reject'
+    Check 'reject: -AcceptRejects -NoCommit applies and stops: nothing committed, the file is in the worktree' ($r.code -eq 0 -and $r.out -match 'NOT COMMITTED' -and ([string](& git -C $w6 rev-parse HEAD)).Trim() -eq $tideMain -and (Test-Path (Join-Path $w6 'r.txt')))
+    [IO.File]::WriteAllText((Join-Path $w6 'r.txt'), "REJECT-ME, the cleaning restored by hand`n")
+    $r = Port 6 @('-Continue', '-NoPush')
+    Check 'reject: -Continue -NoPush commits the hand fix locally, pushes nothing, opens no PR' ($r.code -eq 0 -and (Show $repo 'port/feat-reject:r.txt') -match 'restored by hand' -and $r.out -match 'NOT PUSHED' -and (& git -C $repo rev-parse --verify --quiet 'refs/heads/port/feat-reject') -and -not (Ref $tide 'refs/heads/port/feat-reject') -and -not (Prs $tideSlug | Where-Object headRefName -eq 'port/feat-reject'))
     $r = Port 6 @('-Continue')
     $p6 = Prs $tideSlug | Where-Object headRefName -eq 'port/feat-reject'
     Check 'reject: -Continue then pushes the commit and opens the PR naming the accepted file' ($r.code -eq 0 -and $p6 -and $p6.body -match 'accepted after a read.*r\.txt')
