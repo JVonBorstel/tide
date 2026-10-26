@@ -12,7 +12,7 @@ export const ticket = (id) => 'WO-' + String(id || '').replace(/^J/, '').padStar
 const r1 = (n) => Math.round(n * 10) / 10;
 // Inline styles under a strict CSP (style-src 'self', no 'unsafe-inline'): a browser drops a style attribute written in markup, but styles
 // set from script are allowed. So markup carries data-css="name:value;..." and applyCss copies each one in with
-// style.setProperty. An element is styled once per data-css value (a later script move, like a chef's walk, is never undone).
+// style.setProperty. An element is styled once per data-css value (a later script move is never undone).
 // The scene calls it as it inserts; app.js also runs it on every node any renderer adds (a MutationObserver).
 export function applyCss(root) {
   if (!root || root.nodeType !== 1) return;
@@ -74,7 +74,7 @@ export const stepWord = (j) => STEP_WORD[stepKey(j)] || 'working';
 export function layoutScene(s, events = [], opts = {}, now = Date.now()) {
   const jobs = s?.jobs || [];
   const compact = !!opts.compact;
-  // on the line: running, or between two steps of an order already started (so a chef does not walk out and back every step)
+  // on the floor: running, or between two steps of a work order already started (so a crew member does not walk out and back every step)
   const line = jobs.filter((j) => j.status === 'running' || (j.status === 'pending' && (j.step || 1) > 1));
   const queued = jobs.filter((j) => j.status === 'pending' && (j.step || 1) <= 1);
   const onFloor = line.slice(0, compact ? 4 : 6);
@@ -132,19 +132,19 @@ export function mountScene(el, s, events, opts = {}) {
 // ---- the pixel stage: layoutScene drives a canvas of sprites.js art (the still card above is the fallback) ----
 export const STAGE = { w: 192, h: 112, aisle: 76, front: 108, top: 70, doorX: 9, doorY: 56, exitX: 150, speed: 30, fps: 60, maxDraws: 120 };
 export const sx = (x) => Math.round(x * 0.48);          // the 400-wide room onto the 192-pixel stage
-const TICKET_DX = 5;                                    // tickets hang clear of the window
-const waiterX = (i) => 146 + i * 15;                    // waiters at the pass stand a body apart
+const TICKET_DX = 5;                                    // work-order cards hang clear of the window
+const waiterX = (i) => 146 + i * 15;                    // runners at the sign-off window stand a body apart
 const STATION_ART = { board: 'counter', stove: 'stove', taste: 'counter', sink: 'sink', plate: 'counter' };   // code names: the Survey table, Workbench ...
 const PROP = { board: 'board', stove: 'pot', taste: 'bowl', sink: null, plate: 'plates' };
 // the largest whole-number scale that fits (crisp: every art pixel is exactly `scale` device pixels), centred on a device pixel;
-// w is the room's width in art pixels at that scale (192 to 256): the kitchen sits in the middle, wall and floor fill the sides
+// w is the room's width in art pixels at that scale (192 to 256): the site sits in the middle, wall and floor fill the sides
 export function pixelScale(cssW, dpr = 1, maxCssH = Infinity, w = STAGE.w, h = STAGE.h, maxW = 256) {
   const dev = Math.floor(cssW * dpr); let s = Math.max(1, Math.floor(dev / w));
   while (s > 1 && (h * s) / dpr > maxCssH) s--;
   const room = Math.max(w, Math.min(maxW, Math.floor(dev / s)));   // the room widens to fill the phone (more wall and floor), never the art
   return { scale: s, w: room, cssW: (room * s) / dpr, cssH: (h * s) / dpr, left: Math.max(0, Math.floor((dev - room * s) / 2)) / dpr };
 }
-// the stage model (pure: tested in node): one actor per chef, waiter and runner, keyed like the card's links, walking along axis paths
+// the stage model (pure: tested in node): one actor per crew member and runner (code: chef, waiter), keyed like the card's links, walking along axis paths
 export function stageNew() { return { W: STAGE.w, actors: new Map(), t: 0, syncT: 0, first: true, L: null, played: new Set(), sparks: [], ticks: new Set(), rounds: 0, sousNext: false }; }
 const sousRound = (st, a) => { a.path = [[PLACE.round, STAGE.front], [PLACE.sous, STAGE.front]]; st.rounds++; };
 export function stageSync(st, L, { still = false } = {}) {
@@ -161,7 +161,7 @@ export function stageSync(st, L, { still = false } = {}) {
   for (const c of L.chefs) want(c.key, 'chef', spots.get(c.key), STAGE.aisle, [[STAGE.doorX, STAGE.doorY], [STAGE.doorX, STAGE.aisle]], { st: c.st, busy: c.busy, cook: c.cook, look: c.look, hair: (hashId(c.id) >>> 14) % 4 });
   for (const [i, w] of L.waiters.entries()) want(w.key, 'waiter', waiterX(i), STAGE.front, [[edgeL, STAGE.front]], { look: lookOf(w.id + 'w'), hair: hashId(w.id) % 4 });
   if (L.idle) want('idle', 'sleepy', 16, STAGE.front, [[16, STAGE.front]], { look: lookOf('idle') });
-  // the sous chef walks one round per new lastTick (on opening the app: only if under 2 min old)
+  // the Dispatcher (code: sous) walks one lap per new lastTick (on opening the app: only if under 2 min old)
   const sv = L.world?.sous;
   if (sv) {
     const isNew = !st.ticks.has(sv.tick); if (isNew) { if (st.ticks.size > 50) st.ticks.clear(); st.ticks.add(sv.tick); }
@@ -180,7 +180,7 @@ export function stageSync(st, L, { still = false } = {}) {
   for (const a of [...A.values()]) {
     if (seen.has(a.key) || a.leaving) continue;
     if (still || a.kind === 'sleepy') { A.delete(a.key); continue; }
-    a.leaving = true; a.path = a.kind === 'chef' ? [[STAGE.exitX, a.y]] : a.kind === 'sous' ? [[edgeL, a.y]] : [[edgeR, a.y]];   // chefs carry the plate to the pass, waiters walk out, the sous chef leaves
+    a.leaving = true; a.path = a.kind === 'chef' ? [[STAGE.exitX, a.y]] : a.kind === 'sous' ? [[edgeL, a.y]] : [[edgeR, a.y]];   // crew carry the crate to the window, runners walk out, the Dispatcher leaves
   }
   return st;
 }
@@ -214,7 +214,7 @@ export function makeKit(P, mk) {
 }
 const at = (n, ms, t, off = 0) => Math.floor((t + off) / ms) % n;
 const bobOf = (P, anim, f) => (P.BOB[anim] || [0])[f % (P.BOB[anim] || [0]).length];
-// the still room, drawn once per sky: wall, tiles, window, door, shelf, rail, pass (back), or the counters and their props (front);
+// the still site, drawn once per sky: walls, window, gate, shelf, job board, sign-off window (back), or the stations and their props (front);
 // (the newest bake per sky, dim and width is re-used while its world key holds)
 function layer(kit, which, room, W = STAGE.w, world = {}) {
   const sky = room.sky, pre = which + sky + (room.dim ? '-dim' : '') + W, wk = which === 'bg' ? worldKey(world) : String(world.sign?.state === 'closed');
@@ -248,7 +248,7 @@ export function drawStage(ctx, st, kit) {
   const d = (s, f, x, y) => { ctx.drawImage(s.img, (f % s.n) * s.w, 0, s.w, s.h, Math.round(x) + ox, Math.round(y), s.w, s.h); n++; };
   const pal = (a) => ({ skin: a.look?.skin, cook: COOK_COLORS[a.cook || 'hand'], hair: a.hair || 0, sky, dim });
   ctx.drawImage(layer(kit, 'bg', room, W, WD), 0, 0); n++;
-  const pf = passFx(st);   // a 1 px shake after Jordan's Approve; the bell bounces when a plate needs him
+  const pf = passFx(st);   // a 1 px shake after Jordan's Approve; the bell bounces when a work order needs him
   if (L.pass) { d(kit.get('pass-glow', room), 0, 156 + pf.dx, 18); for (let i = 0; i < Math.min(3, L.pass); i++) d(kit.get('cloche', room), 0, 155 + pf.dx + i * 11, 33); d(kit.get('bell', room), t % 4000 < 640 ? at(2, 160, t) : 0, 183 + pf.dx, 35 + pf.bell); }
   for (const h of WD.heat || []) d(kit.get('heat', room), h.level, PLACE.heat[0] + h.i * 11, PLACE.heat[1]);
   if (WD.fuse?.tripped) d(kit.get('sparkle', room), (at(4, 90, t) + 2) % 4, PLACE.fuse[0] + 3 + (at(2, 360, t) ? -3 : 2), PLACE.fuse[1] + 8);
@@ -295,8 +295,8 @@ export function drawStage(ctx, st, kit) {
   }
   return n;
 }
-// the tap targets and the words: real links over the canvas, one per ticket, chef and waiter (the canvas itself is aria-hidden)
-// o: P = sprites.js (the props' sizes), k = CSS px per art px, W = the room's width, wave = the tapped chef (its words show for 3 s)
+// the tap targets and the words: real links over the canvas, one per work-order card, crew member and runner (the canvas is aria-hidden)
+// o: P = sprites.js (the props' sizes), k = CSS px per art px, W = the room's width, wave = the tapped crew member (its words show for 3 s)
 export function hitItems(L, ox = 0, o = {}) {
   const ids = L.world?.aside?.ids || [], id = ids[ids.length - 1], spots = chefSpots(L);   // the set-aside shelf: one link, to the newest
   const chefs = L.chefs.map((c) => ({ c, x: spots.get(c.key), word: o.wave === c.key ? c.act : c.word })).sort((a, b) => a.x - b.x);
@@ -344,7 +344,7 @@ function paint(sc) {
   if (!sc.st.L) return;
   hits(sc); drawStage(sc.ctx, sc.st, KIT); sc.key = frameKey(sc.st, KIT);   // drawn now: the loop draws again only when the picture changes
 }
-// the links and bubbles over the canvas (again when a tapped chef's wave starts or ends); a moment's line goes to #announce
+// the links and bubbles over the canvas (again when a tapped crew member's wave starts or ends); a moment's line goes to #announce
 function hits(sc) {
   sc.wave = sc.st.fx?.wave?.key; const fx = sc.st.fx, a = fx?.line && document.getElementById('announce'); if (a) a.textContent = fx.line; if (fx) fx.line = null;
   sc.hit.innerHTML = hitItems(sc.st.L, (sc.st.W - STAGE.w) >> 1, { P: KIT.P, k: sc.k, W: sc.st.W, wave: sc.wave }).map((it) => hitHtml(it, sc.st.W)).join(''); applyCss(sc.hit);
@@ -359,7 +359,7 @@ function mountPixel(el, L) {
     sc.ctx.imageSmoothingEnabled = false;
     // the (i) chip: app.js opens the legend sheet
     root.querySelector('.px-info').addEventListener('click', () => el.dispatchEvent(new CustomEvent('scene-legend', { bubbles: true })));
-    sc.hit.addEventListener('click', (e) => {   // a tapped chef waves and says what they do for 3 s, then the order opens (a second tap: now)
+    sc.hit.addEventListener('click', (e) => {   // a tapped crew member waves and says what they do for 3 s, then the work order opens (a second tap: now)
       const a = e.target.closest?.('.px-chef'), key = a?.getAttribute('data-key'); if (!a || reduced() || sc.st.fx?.wave?.key === key) return;
       e.preventDefault(); sc.tap = key; tapChef(sc.st, key); hits(sc); sc.loop.start(); setTimeout(() => { if (sc.tap === key) location.hash = a.getAttribute('href'); }, FX.wave);
     });

@@ -1,4 +1,4 @@
-// Chef's pixel art as code (spec: gemini-brain projects/tide/specs/chef-art.md): one palette, every sprite as palette-indexed strings or a tiny drawing recipe, the decoder, the atlas, palette swaps and the interface chrome sprites. All original art.
+// The Board's pixel art as code, a building site since rename S7 (spec: gemini-brain projects/tide/specs/chef-art.md): one palette, every sprite as palette-indexed strings or a tiny drawing recipe, the decoder, the atlas, palette swaps and the interface chrome sprites. All original art.
 // Loaded by pass-app/public/scene.js (dynamic import: the still card stays if it cannot load); tested by pass-app/test-scene.mjs. No network, no images.
 // Style: 16x16 tiles, characters 16x24, 3-4 shade ramps per material, 1px warm outline ('a'), light from the top left.
 
@@ -17,7 +17,7 @@ export const PALETTE = {
   I: '#f4e3b5', K: '#e2805a',                                       // lamp light, warm glow
   N: '#1a1412', O: '#2b211d', Q: '#3d302a', V: '#0d0a09',           // the dark interface ramp
   G: '#f1f59a', H: '#d4dd3c', J: '#9aa52a',                         // hi-vis yellow (vests, runners' hats; not EMISSIVE, so it dims)
-  // swap slots, replaced per character, per cook and per sky (paletteFor); these are the defaults
+  // swap slots, replaced per character, per crew and per sky (paletteFor); these are the defaults
   1: '#a86f48', 2: '#d39a6a', 3: '#efc39a',                         // skin: shadow, base, light
   4: '#8a6512', 5: '#d6a531', 6: '#f2d27a',                         // the crew's colour: hard hat, vest badge
   7: '#2a1a14', 8: '#4a3020',                                       // hair
@@ -32,7 +32,7 @@ export const HAIR = [['#2a1a14', '#4a3020'], ['#5a2a14', '#8a4a24'], ['#6e5a4e',
 export const FRAMES = { still: 1, walk: 4, idle: 2, work: 4, flame: 3, steam: 4, sparkle: 4, bell: 2, sleep: 2, lantern: 2, glyph: 10, icon: 6, jars: 3,
   // world props: sign 3, clock hands 12, coin jar 9, heat lamp 3, fuse 2, tally 0-10, recipe cards 0-4
   sign: 3, hand: 12, jar: 9, heat: 3, fuse: 2, tally: 11, cards: 5,
-  // moments (wave 2): pan flip 4, puff 4, dark smoke 6, confetti 3 colours
+  // moments (wave 2): a brick laid 4, puff 4, dark smoke 6, confetti 3 colours
   flip: 4, puff: 4, smoke6: 6, confetti: 3 };
 export const TIMING = { walk: 140, idle: 450, work: 120, flame: 110, steam: 260, sparkle: 90, sleep: 900, lantern: 500, bell: 160 };   // ms per frame
 
@@ -41,7 +41,7 @@ const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const hex = (c) => '#' + c.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
 export const mix = (a, b, t) => { const x = rgb(a), y = rgb(b); return hex(x.map((v, i) => v + (y[i] - v) * t)); };
 export const ramp3 = (base) => [mix(base, '#3a1830', 0.38), base, mix(base, '#fff3d6', 0.4)];
-// the palette for one character / one sky: skin, cook colour and hair swapped in, then the room light (a palette shift, not a filter)
+// the palette for one character / one sky: skin, crew colour and hair swapped in, then the room light (a palette shift, not a filter)
 export function paletteFor({ skin, cook, hair = 0, sky = 'day', accent, dim = false } = {}) {
   const p = { ...PALETTE };
   if (skin) [p[1], p[2], p[3]] = ramp3(skin);
@@ -218,8 +218,8 @@ add('lantern', 7, 10, 'lantern', (g, f) => { blit(g, ['..aaa..', '.a...a.', 'aaa
 add('shadow', 14, 3, 'still', (g) => { rect(g, 2, 0, 10, 3, 'k'); rect(g, 0, 1, 14, 1, 'k'); });
 for (const [k, v] of Object.entries(PARTICLE)) addFrames(k, v, { steam: 'steam', sparkle: 'sparkle', flame: 'flame' }[k] || 'still');
 addFrames('icon', ICONS, 'icon');
-// the Live call (pass-app/public/live.js): each cook at a desk, seen from the front. The desk covers the legs; the laptop's lid (its
-// back to us) sits under the chin with the cook's colour as its badge, which glows while the cook works; hands type in front of it
+// the Live call (pass-app/public/live.js): each crew at a desk, seen from the front. The desk covers the legs; the laptop's lid (its
+// back to us) sits under the chin with the crew's colour as its badge, which glows while the crew works; hands type in front of it
 add('desk', 48, 11, 'still', (g) => { box(g, 0, 0, 48, 4, WOOD); box(g, 2, 3, 44, 8, DARKWOOD); box(g, 6, 5, 14, 5, WOOD); put(g, 13, 7, 't'); box(g, 28, 5, 14, 5, WOOD); put(g, 35, 7, 't'); });
 add('laptop', 14, 7, 'work', (g, f) => { box(g, 0, 0, 14, 7, IRON); rect(g, 1, 0, 12, 1, ['z', 'y', 'z', 'Y'][f]); blit(g, ['a55a', f % 2 ? '5665' : '5555', 'a44a'].map((r) => r.replace(/a/g, 'g')), 5, 2); });
 add('laptop-shut', 14, 3, 'still', (g) => { box(g, 0, 0, 14, 3, IRON); put(g, 6, 1, '4'); put(g, 7, 1, '4'); });
@@ -349,10 +349,11 @@ export function chromeSprites(mk) {
   const out = {};
   const one = (key, w, h, n, paint) => { const c = mk(w * n, h), ctx = c.getContext('2d'); for (let f = 0; f < n; f++) { const g = grid(w, h); paint(g, f); const img = ctx.createImageData(w, h); img.data.set(toRGBA(g.map((r) => r.join('')), out._pal)); ctx.putImageData(img, f * w, 0); } out[key] = c; };
   out._pal = paletteFor({ skin: '#d39a6a', cook: '#d97757' });
-  // loading: a chef stirring a pot (4 frames); offline: the sleepy chef and a lantern (2); empty: a chef by an empty cloche (2)
+  // loading: a crew member hammering at the vice, dust rising (4 frames); offline: asleep on a crate by the site lantern (2); empty:
+  // leaning on a shovel by an empty pallet (2)
   one('load', 32, 32, 4, (g, f) => { blit(g, framesOf('chef-idle')[f % 2], 8, 0); blit(g, framesOf('pot')[0], 8, 18); blit(g, framesOf('work-stove')[f], 8, 13); blit(g, framesOf('steam')[f], 13, 12); });
   one('off', 32, 32, 2, (g, f) => { blit(g, framesOf('crate')[0], 4, 20); blit(g, framesOf('chef-sleep')[f], 6, 4); blit(g, framesOf('lantern')[f], 23, 20); blit(g, framesOf('zz')[0], 20, 2 + f); });
-  one('empty', 32, 32, 2, (g, f) => { blit(g, framesOf('chef-idle')[f], 2, 6); blit(g, framesOf('cloche')[0], 19, 22); });
+  one('empty', 32, 32, 2, (g, f) => { blit(g, framesOf('chef-idle')[f], 2, 6); rect(g, 17, 9, 1, 17, 'c'); box(g, 15, 25, 5, 4, STEEL, true); rect(g, 15, 8, 5, 1, 'a'); rect(g, 20, 28, 11, 1, 'd'); for (const x of [20, 25, 29]) rect(g, x, 29, 2, 1, 'c'); rect(g, 20, 30, 11, 1, 'a'); });
   TAB_ICONS.forEach((k, i) => { for (const [suf, acc, ui] of [['', INK], ['-on', EMBER], ['-dark', INK_DARK, TAB_DARK], ['-on-dark', EMBER, TAB_DARK]]) { const pal = { ...out._pal, ...ui }; [pal[4], pal[5], pal[6]] = acc; out._tmp = pal; const c = mk(12, 12), ctx = c.getContext('2d'), img = ctx.createImageData(12, 12); img.data.set(toRGBA(ICONS[i], pal)); ctx.putImageData(img, 0, 0); out['tab-' + k + suf] = c; } });
   for (const [k, ui] of [['panel', null], ['panel-dark', { a: PALETTE.V, p: PALETTE.O, W: PALETTE.Q, o: PALETTE.N }]]) { const c = mk(9, 9), ctx = c.getContext('2d'), img = ctx.createImageData(9, 9); img.data.set(toRGBA(framesOf('panel')[0], { ...PALETTE, ...(ui || {}) })); ctx.putImageData(img, 0, 0); out[k] = c; }
   delete out._pal; delete out._tmp;

@@ -1,72 +1,46 @@
-# Kitchen scene 2.0: design spec
+# The Board's scene: design spec
 
-The Live tab and the Board tab (route `#/pass`) of the Board (code: `pass-app/`, first called Chef) show the Yard as a small animated kitchen diorama (pass-app/public/scene.js + app.css).
-The kitchen art is kept until S6, when it is redrawn as a building site (Jordan's decision 2026-10-23; gemini-brain projects/tide/naming/GLOSSARY.md). So the drawn things below (chefs, stations, the pass, the waiter, the cat) keep their kitchen names: they are the art, not the system's names. Each chef stands for a crew working a Step; each paper ticket stands for a work order.
-It should feel like a tiny living game, not a status widget. Built in three parts, in order.
+The Live tab and the Board tab (route `#/pass`) of the Board (code: `pass-app/`, first called Chef) show the Yard as a small building site (pass-app/public/scene.js, sprites.js, world.js, moments.js, frame.js and app.css).
+It was a kitchen until rename S7 (2026-10-26; plan: gemini-brain projects/tide/plans/site-scene-S7.md; names: projects/tide/naming/GLOSSARY.md, "The Board's scene"). Each crew member stands for a crew working a Step; each work-order card on the job board stands for a work order. The code keeps its old names (sprite keys `chef-*`, `waiter-*`, `cloche`, `coin-jar`, stations `board`, `stove`, `taste`, `sink`, `plate`, the stage kinds `chef`, `waiter`, `sous`): they are code names, not what Jordan reads.
+It should feel like a tiny living game, not a status widget.
 
-## Rules for every part
+## Rules
 - No libraries, no new dependencies. The art is the pixel stage below; before it loads the scene is a still card (rename S7a).
-- Pause all animation when `document.hidden`. Keep `prefers-reduced-motion`: static scene, no movement.
+- Pause all animation when `document.hidden`. Keep `prefers-reduced-motion`: one still frame, no movement.
 - Private work orders show no words anywhere in the scene.
-- Keep the exports `sceneHtml` and `activityWord` working for existing callers and tests.
+- Keep the exports `sceneHtml` and `activityWord` working for existing callers and tests, and the sprite exports the City view reads.
 - Tests for every new function (tests/Test-PassApp.ps1, or a node test file it runs).
 - Budget: the still card has no animation and at most 25 KB of markup; the pixel stage has its own budgets below. Documented at the top of scene.js and tested.
 - Must stay smooth on a mid-range Android phone.
 
-## Part 1: living stage
-- `mountScene(el, state, events, opts)` (`renderScene` in app.js calls it) draws the pixel stage once sprites.js has loaded. Until then it shows the **still card** (`cardHtml` in scene.js, rename S7a): the same links as the stage, one per crew member (its station and what it does), work-order card on the job board, runner at the sign-off window and work order handed over in the last 3 minutes, each opening its work order; no people and no motion, rebuilt only when its words change. Parts 1-3 below describe the first SVG diorama, retired in S7a; its layout rules (`layoutScene`) still drive the pixel stage.
-- The diorama:
-  - back wall with shelves and hanging pans;
-  - a ticket rail with one paper ticket per running work order, clipped on, fluttering when it changes;
-  - a window whose sky follows the local hour (dawn, day, dusk, night with stars);
-  - a checker floor.
-- Named stations along the line (drawn places; the Steps they host are `kitchen/stations/*.ps1`):
+## The still card and the layout
+- `mountScene(el, state, events, opts)` (`renderScene` in app.js calls it) draws the pixel stage once sprites.js has loaded. Until then it shows the **still card** (`cardHtml` in scene.js, rename S7a): the same links as the stage, one per crew member (its station and what it does), work-order card on the job board, runner at the sign-off window and work order handed over in the last 3 minutes, each opening its work order; no people and no motion, rebuilt only when its words change. It replaced the first animated SVG kitchen diorama.
+- `layoutScene` (pure, tested) decides who is where. Stations along the floor (drawn places; the Steps they host are `kitchen/stations/*.ps1`; labels in `STATIONS`):
 
-  | Station (art) | Steps |
-  |---|---|
-  | cutting board | plan, map |
-  | stove | do, build, repair |
-  | tasting counter | check |
-  | sink | tests, lint |
-  | plating counter | commit, freshen, merge |
+  | Station | Code name | Steps |
+  |---|---|---|
+  | Survey table | `board` | plan, map, research, worktree, diagnose, slice, talk, ask, scout |
+  | Workbench | `stove` | do, build, repair, and any step it does not know |
+  | Inspection desk | `taste` | check, review |
+  | Test rig | `sink` | tests, lint, mutate, verify |
+  | Handover bay | `plate` | commit, freshen, merge, ideas, pack-render, inventory |
 
-- Each crew is drawn as a chef who WALKS to the station matching their current Step when the Step changes: a leg cycle and body bob, using transforms with transition.
-- Each chef looks unique but stays the same for a given job id. A hash picks skin tone, hat height, and moustache or not. The crew's colour is the scarf and the hat band.
-
-## Part 2: moments (driven by events; each plays once per event, skipped if older than 2 minutes)
-| Event | Moment |
-|---|---|
-| step.done | the chef flips the pan with a flame burst and a little hop |
-| step.failed / step.rework | a puff of smoke; the chef scratches their head, then walks to the stove to fix it |
-| tests ALL PASS | a sparkle over the sink |
-| approval.requested | a waiter walks a covered plate along the aisle to the pass; the bell rings with a bounce and a ripple |
-| approval.auto | the waiter carries it straight out with a small green check |
-| job.done | an "Order up!" banner with a few confetti pieces |
-
-- Seen event ids are kept in memory only, not in storage.
-- Tapping a chef makes them wave and shows a speech bubble with the activity word for 3 seconds, then opens the work order.
-- Idle life: blink every few seconds, glance around, wipe brow, tap foot. Timing differs per chef so they never move in sync.
-
-## Part 3: ambience and polish
-- Steam particles rise from busy pots with random drift.
-- Pendant lamps flicker with a soft glow.
-- A wall clock shows the real local time.
-- A kitchen cat naps and wanders to a new spot about every minute.
-- A dish pile at the sink grows with queued Inspection (test) runs.
-- Gentle depth: back characters are slightly smaller and darker.
-- The compact Board-tab version uses a calm subset: no cat, fewer particles.
-- A legend chip row under the scene shows the crew colours with names.
+- Each crew member walks to the station of its current Step. It looks the same for a given work order (a hash picks skin tone, hair and a moustache or not) and wears a **hard hat in its crew's colour** (Claude orange, Gemini blue, Claude via Google purple, Home crew green, Yard hands grey) with a hi-vis vest.
+- **Runners** in hi-vis bring a clipboard to the **sign-off window** for each work order waiting for sign-off (3 at most, and the count), and carry a crate out for one handed over in the last 3 minutes. A crew member asleep on a crate, hard hat over the eyes, means nothing is building.
+- Tapping a crew member makes it wave and shows its words for 3 seconds, then opens the work order.
 
 ## The pixel stage
-Once `public/sprites.js` loads, the same `layoutScene` drives a canvas of original pixel art instead of the SVG (spec: gemini-brain projects/tide/specs/chef-art.md). Checked by `test-scene.mjs` and tests/Test-PassApp.ps1.
-- **Palette**: one palette in sprites.js (`PALETTE`), one character per pixel, `.` transparent. 3-4 shade ramps per material, a warm near-black outline (`a`), light from the top left. Swap slots are replaced per chef (skin, hair), per crew (apron, neckerchief, hat band) and per sky (the window). Light sources (`EMISSIVE`) keep their colour under the sky tint (dawn, dusk, night). Every colour the pixel skin in app.css uses is a palette colour.
+Once `public/sprites.js` loads, `layoutScene` drives a canvas of original pixel art (spec: gemini-brain projects/tide/specs/chef-art.md). Checked by `test-scene.mjs` and tests/Test-PassApp.ps1.
+- **The site:** blockwork above plywood hoarding, a concrete slab, paint tins and tools on pegboards, the job board (a hazard-taped bar with work-order cards: two digits and a step bar), the sign-off window (a site-cabin hatch under hazard tape, a caged work light, a bell), the window and its sky, the gate.
+- **Busy stations:** a weld flash, sparks and dust at the Workbench; a lamp glint at the Inspection desk; chasing LEDs on the Test rig. Each busy station costs the same draws as the kitchen did.
+- **Palette**: one palette in sprites.js (`PALETTE`), one character per pixel, `.` transparent. 3-4 shade ramps per material, a warm near-black outline (`a`), light from the top left. Swap slots are replaced per character (skin, hair), per crew (the hard hat and the vest badge) and per sky (the window). Light sources (`EMISSIVE`) keep their colour under the sky tint (dawn, dusk, night); the hi-vis yellow (`G H J`) is not one, so it dims at night and when paused. Every colour the pixel skin in app.css uses is a palette colour.
 - **Sprites as code**: every sprite is palette-indexed strings or a tiny drawing recipe in sprites.js, packed into one atlas at load. No image files, no fetch, no network. Tiles are 16x16, characters 16x24 with walk, idle and work cycles.
-- **Frame rate (Chef 2.8.0, TD Pour 4, then called W4)**: 60 frames a second only while a chef walks, 30 while only sprites animate, 10 when nothing moves; at most 120 sprite draws a frame (`STAGE` in scene.js, `stageFps` in frame.js). Each frame first records the draw calls it would make (`frameKey`, about 0.1 ms); the same key as the last drawn frame is the same picture, so the canvas is left alone. Drawn crisp: whole-number scale, image smoothing off, `image-rendering: pixelated`.
+- **Frame rate (Chef 2.8.0, TD Pour 4, then called W4)**: 60 frames a second only while someone walks, 30 while only sprites animate, 10 when nothing moves; at most 120 sprite draws a frame (`STAGE` in scene.js, `stageFps` in frame.js). Each frame first records the draw calls it would make (`frameKey`, about 0.1 ms); the same key as the last drawn frame is the same picture, so the canvas is left alone. Drawn crisp: whole-number scale, image smoothing off, `image-rendering: pixelated`.
 - **Hidden pause**: the loop stops while the page is hidden or the stage is scrolled out of view (an IntersectionObserver; `offsetParent` alone kept a scrolled-away stage drawing 210 frames in 10 s), and starts again on `visibilitychange` or when the stage scrolls back in.
 - **Reduced motion**: under `prefers-reduced-motion` the stage draws one still frame and the chrome sprites hold still.
 - **Still fallback**: scene.js imports sprites.js lazily; if it cannot load (offline before the first visit) or the browser has no canvas, the still card stays (it replaced the animated SVG kitchen in rename S7a, which also flashed for a moment on a cold open). The service worker keeps `/sprites.js` in its offline shell, so a phone that has opened the Board once keeps the pixel stage offline.
-- **Tapping**: a layer of plain links over the canvas, one per chef, waiter and ticket, each opens its work order; private work orders show no words.
-- **Interface skin**: sprites.js also draws the tab icons, the loading, offline and empty chefs and the 9-slice panel; scene.js turns them into CSS variables (`--px-*`) and adds `<html class="px">`. Dark mode swaps in the dark panel and tab icons with a cream outline (the near-black one vanished on the dark bar), switched live when the phone changes theme.
+- **Tapping**: a layer of plain links over the canvas, one per crew member, runner and work-order card, each opens its work order; private work orders show no words.
+- **Interface skin**: sprites.js also draws the tab icons, the loading (a crew member hammering at the vice), offline (asleep on a crate by the site lantern) and empty (leaning on a shovel by an empty pallet) sprites and the 9-slice panel; scene.js turns them into CSS variables (`--px-*`) and adds `<html class="px">`. Dark mode swaps in the dark panel and tab icons with a cream outline (the near-black one vanished on the dark bar), switched live when the phone changes theme.
 
 ## The Live call
 The Live tab under the stage is a team call (the idea comes from Agent Standup; the code and art are the Board's own): `public/live.js`, styled in app.css "Live: the call", checked by `test-live.mjs` and tests/Test-PassApp.ps1.
@@ -84,35 +58,35 @@ The Live tab under the stage is a team call (the idea comes from Agent Standup; 
 Every new thing in the room is one row of `WORLD` in `public/world.js` (the pure world model; scene.js draws it): the real field it comes from, when it is absent, and `meaning(w)`, its plain-words line in the legend sheet. `worldOf(state, events, now)` is pure and turns state into props; a missing field draws nothing (never a default).
 | Prop | From | What it shows |
 |---|---|---|
-| sign in the window | `paused`, `live` | OPEN lit = AI crews on, OPEN = AI crews off, CLOSED = paused (room dimmed as a palette shift, stools up on the counters) |
-| wall clock | `lastTick`, `stalled` | the real time; frozen at the last Walkround (code: tick) when the Yard stalls |
-| sous chef and stool (the Dispatcher, drawn) | `lastTick`, `stalled` | one round of the line per new Walkround (a Walkround seen on opening the Board walks only if under 2 min old); empty stool when stalled |
-| fuse box | `breaker` (the stop-work order) | shut, or sparking with the pass lamp out |
-| coin jar | `spent`, `budget`, `budget.stop` events | `floor(8 x spent / budget)` of 8; lid and padlock after a `budget.stop` today |
-| the bench (drawn as a shelf) | job status, `job.quarantined` events | a burnt plate per Failed or Stopped work order (5, then +N), smoke for one that failed under 2 min ago; one link to the newest |
-| rail tag | job status | +N tickets beyond the 8 the rail shows |
-| heat lamps | `approval.requested` events | over each covered plate: warm, ember after 1 h, red after 4 h of real waiting |
-| cork board, chalkboard, recipe box (the art; Specs are `recipes/`) | `due`, `leads`, `ideas` | a letter per follow-up due, a tally of new client leads, recipe cards for new ideas |
-| hats on hooks | `cooks[].status` | a hat in the crew's colour for each crew resting, capped, off or signed out |
+| gate sign | `paused`, `live` | OPEN lit = AI crews on, OPEN = AI crews off, PAUSED = paused (never CLOSED: "Site closed" is the merge freeze; the site dims as a palette shift, barriers across two stations) |
+| site clock | `lastTick`, `stalled` | the real time; frozen at the last Walkround (code: tick) when the Yard stalls |
+| the Dispatcher (white hard hat, clipboard) and the folding stool by the gate | `lastTick`, `stalled` | one lap of the site per new Walkround (a Walkround seen on opening the Board walks only if under 2 min old); empty stool when stalled |
+| power board | `breaker` (the stop-work order) | shut, or sparking with a red STOP tag and the work light out |
+| budget meter | `spent`, `budget`, `budget.stop` events | `floor(8 x spent / budget)` of 8 segments (green, amber, red); a chain and padlock after a `budget.stop` today |
+| the bench | job status, `job.quarantined` events | a parked crate per Failed or Stopped work order (5, then +N), dust for one that failed under 2 min ago; one link to the newest |
+| job board tag | job status | +N work orders beyond the 8 cards the job board shows |
+| sign-off lights | `approval.requested` events | a beacon per waiting work order: warm, amber after 1 h, red after 4 h of real waiting |
+| notice board, whiteboard, idea box | `due`, `leads`, `ideas` | a note per follow-up due, a marker tally of new client leads, slips for new ideas |
+| hard hats on hooks | `cooks[].status` | a hard hat in the crew's colour for each crew resting, capped, off or signed out |
 - **Legend**: the (i) chip in the stage's corner opens "What am I looking at?" (index.html `#legend-sheet`), one row per prop with its number in words; the stage's `aria-label` adds the short version (for example "the Yard open, AI crews on, $3 of $20 spent"; `worldWords` in world.js).
-- **Cost**: still props are baked into the cached back layer, baked again only when a level changes (`worldKey`); per frame only heat lamps, sparks, smoke and the sous chef draw. The loop drops to 10 fps while nothing moves. `?fps` in the address times every frame; Settings > About shows the p95.
+- **Cost**: still props are baked into the cached back layer, baked again only when a level changes (`worldKey`); per frame only sign-off lights, sparks, dust and the Dispatcher draw. The loop drops to 10 fps while nothing moves. `?fps` in the address times every frame; Settings > About shows the p95.
 - **Budgets** (test-scene.mjs): at most 120 draws a frame on the busiest floor with every prop; the bytes are under "Moments and juice" below.
 
 ## Moments and juice (Chef 2.9.1, plan: gemini-brain projects/tide/plans/chef-art-2.md wave 2)
 Real Yard events play short moments on the pixel stage (`public/moments.js`, pure, checked by test-scene.mjs). Each event plays once (seen ids live in memory only; the first state a page opens on is only marked seen, so a reload never replays), never when it is over 2 minutes old (also checked when a queued moment's turn comes, so nothing plays late after a hidden tab), at most 2 at once (the rest queue).
 | Event (as kitchen.ps1 writes it) | Moment |
 |---|---|
-| `step.done` | the chef crouches (80 ms), hops and flips the pan with a flame burst, lands with a 1 px squash |
-| `step.done` on a tests Step, the Inspection (the work order's `plan` says `tests`: ALL PASS) | sparkle over the sink and a check mark |
-| `step.rework`, `step.fail` / crash / timeout / memcap / logflood / hung / `taster` (the Inspector sent it back) | a grey puff and a head scratch |
-| `job.quarantined` | dark smoke; the plate travels (ease-in-out) to the bench (the drawn shelf) |
-| `approval.requested` | the pass bell bounces (ease-out-back) |
-| `job.done` | an "ORDER UP!" banner drops in with confetti in 3 colours (from one particle pool of at most 48) |
-- **Juice**: every walk starts with one 80 ms anticipation crouch and eases out on arrival. Jordan's Approve (app.js calls `sceneApproved()` after their sign-off is sent) holds the floor for 80 ms and shakes the pass 1 px; no screen shake ever.
-- **Tapping a chef**: it waves and its words show for 3 s (on the compact Board stage too; a private work order shows none), then the work order opens; a second tap opens it at once; under reduced motion it opens at once.
-- **Reduced motion**: a moment is a still "after" frame (the check over the sink, the banner; the plate already stands on the bench) for 10 s; nothing moves.
-- **Announce**: each moment is one polite line in `#announce` (today "#0071 is done: order up"; moments.js words change in S1-BOARD-SCENE), at most one per 10 s, work-order numbers only.
+| `step.done` | the crew member crouches (80 ms) and hops, a brick rises and lands on a stack on the station top with a spark, a 1 px squash on landing |
+| `step.done` on a tests Step, the Inspection (the work order's `plan` says `tests`: ALL PASS) | sparkle over the Test rig and a check mark |
+| `step.rework`, `step.fail` / crash / timeout / memcap / logflood / hung / `taster` (the Inspector sent it back) | a dust puff and a head scratch in a work glove |
+| `job.quarantined` | dark smoke; the crate travels (ease-in-out) to the bench |
+| `approval.requested` | the bell at the sign-off window bounces (ease-out-back) |
+| `job.done` | a "HANDED OVER" banner drops in with confetti in 3 colours (from one particle pool of at most 48) |
+- **Juice**: every walk starts with one 80 ms anticipation crouch and eases out on arrival. Jordan's Approve (app.js calls `sceneApproved()` after their sign-off is sent) holds the floor for 80 ms and shakes the sign-off window 1 px; no screen shake ever.
+- **Tapping a crew member**: it waves and its words show for 3 s (on the compact Board stage too; a private work order shows none), then the work order opens; a second tap opens it at once; under reduced motion it opens at once.
+- **Reduced motion**: a moment is a still "after" frame (the check over the Test rig, the banner; the crate already stands on the bench) for 10 s; nothing moves.
+- **Announce**: each moment is one polite line in `#announce` (for example "WO-0071 is handed over"), at most one per 10 s, work-order numbers only.
 - **Cost**: a moment adds at most 20 draws a frame; the stage stays at 30 fps while one plays and stops while hidden or off screen as before.
-- **Crews apart**: chefs stand one body (16 px) apart, never sharing a pixel column; a crowd at one station centres on it (`spread`).
+- **Crews apart**: crew members stand one body (16 px) apart, never sharing a pixel column; a crowd at one station centres on it (`spread`).
 - **Speech bubbles** are their own spans over the stage, placed (`placeSays`) over the head, higher, sideways or at the feet: the first spot that covers no WORLD prop (rectangles from the same bake that draws them) and no other bubble.
-- **Budget** (test-scene.mjs): the stage files (scene, sprites, world, frame, moments) at most 34,615 bytes brotli; measured 34.6 KB (+13.0 KB): wave 1 + TD Pour 4 +7.5 KB (after a 0.3 KB trim), wave 2 +5.5 KB, so about 2 KB over the plan's +6 and +5 KB together. Rename S7a retired the SVG kitchen: 29,937 bytes (-4,640), the room the building-site redraw (S7b-S7g) spends; the ceiling did not move.
+- **Budget** (test-scene.mjs): the stage files (scene, sprites, world, frame, moments) at most 34,615 bytes brotli; measured 34.6 KB (+13.0 KB): wave 1 + TD Pour 4 +7.5 KB (after a 0.3 KB trim), wave 2 +5.5 KB, so about 2 KB over the plan's +6 and +5 KB together. Rename S7a retired the SVG kitchen: 29,937 bytes (-4,640); the building-site redraw S7b-S7g spent +2,439 of that room, to 32,376 (2,239 left); the ceiling did not move.

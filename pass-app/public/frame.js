@@ -1,7 +1,7 @@
 // The stage's frame loop decisions (Chef 2.8.0, Tide W4; pass-app/SCENE.md "Frame rate"): how often to look, whether the stage can be
 // seen, and whether a frame is a new picture. Split from scene.js (its 600-line standard); scene.js and test-scene.mjs use it.
 import { stageCalm, drawStage, STAGE } from './scene.js';
-// fps: 10 when still, 60 while a chef walks (a walk at 30 looks choppy), else 30 (sprite frames change every 90-900 ms)
+// fps: 10 when still, 60 while a crew member walks (a walk at 30 looks choppy), else 30 (sprite frames change every 90-900 ms)
 export const stageWalking = (st) => [...st.actors.values()].some((a) => a.path.length > 0);
 export const stageFps = (st) => (stageCalm(st) ? 10 : stageWalking(st) ? STAGE.fps : 30);
 // the frame's key: drawStage's calls on a stand-in context; the same key is the same picture, so no draw

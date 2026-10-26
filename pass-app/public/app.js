@@ -165,7 +165,7 @@ async function clearAside(btn) {
   const list = (S.state?.jobs || []).filter(OLD_ASIDE);
   if (!list.length) return;
   const html = `<ol class="batch-list">${list.map((j) => `<li><b>${ticket(j.id)}</b> ${esc(nameOf(j).text)}<small>${esc(ago(j.updated))} ago</small></li>`).join('')}</ol><p>They are closed, not deleted. Their history stays.</p>`;
-  if (!await confirmBox({ title: `Clear ${list.length} old ${list.length === 1 ? 'ticket' : 'tickets'}?`, html, yes: `Clear ${list.length}`, danger: true })) return;
+  if (!await confirmBox({ title: `Clear ${list.length} old ${list.length === 1 ? 'work order' : 'work orders'}?`, html, yes: `Clear ${list.length}`, danger: true })) return;
   buzz();
   const ids = list.map((j) => j.id);
   const r = await act({ op: 'clear-aside', ids }, { btn });
@@ -378,7 +378,7 @@ function renderPass() {
   };
   const stuck = stuckAlarm(jobs);
   const blocks = [stuck && { k: 'stuck', h: stuck }, ...['needs', 'cooking', 'rail'].filter((k) => secs[k]).map((k) => ({ k, h: secShell(k, secs[k].title, secs[k].hot) })),
-    quiet && { k: 'quiet', h: `<div class="quiet"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#i-cloche"/></svg><p>Nothing on the stove.</p><button class="btn" data-quiet-order>New work order</button></div>` },
+    quiet && { k: 'quiet', h: `<div class="quiet"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#i-cloche"/></svg><p>Nothing building.</p><button class="btn" data-quiet-order>New work order</button></div>` },
     ...['aside', 'plated'].filter((k) => secs[k]).map((k) => ({ k, h: secShell(k, secs[k].title, secs[k].hot) }))].filter(Boolean);
   const board = $('board'); if (!board._keyed) board.innerHTML = '';   // from the skeleton or the offline card to the board
   syncList(board, blocks, { key: (b) => b.k, html: (b) => b.h });
@@ -2050,7 +2050,7 @@ $('lead')?.addEventListener('click', async (e) => {
   buzz(); toast(op === 'kitchen' ? `With the Yard${r.data?.idea ? ' as ' + r.data.idea : ''}` : op === 'out' ? 'Marked: Claude is out until the reset' : op === 'back' ? 'Welcome back, Claude' : 'Removed');
   S.sig.lead = '';
 });
-// "order up": a little burst of sparks and a buzz when an order is plated while you watch
+// handed over: a little burst of sparks and a buzz when a work order is handed over while you watch
 function celebrate(e) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches || document.hidden) return;
   const at = document.querySelector('.headline-text')?.getBoundingClientRect(); const x = at ? at.left + Math.min(at.width, 220) / 2 : innerWidth / 2, y = at ? at.top + at.height / 2 : 120;
@@ -2058,7 +2058,7 @@ function celebrate(e) {
   const colors = ['#FFB04D', '#FF7A3D', '#F0452B', '#FFE08A', '#7FD8A6'];
   burst.innerHTML = Array.from({ length: 18 }, (_, i) => { const a = (i / 18) * Math.PI * 2 + Math.random() * .4, d = 50 + Math.random() * 70; return `<i data-css="--c:${colors[i % colors.length]};--dx:${Math.cos(a) * d}px;--dy:${Math.sin(a) * d - 20}px;--r:${Math.round(Math.random() * 540)}deg"></i>`; }).join('');
   document.body.appendChild(burst); setTimeout(() => burst.remove(), 1100);
-  buzz([10, 40, 14]); toast(`Order up! ${ticket(e.job)} is ${STATUS_LABEL.done.toLowerCase()}.`);
+  buzz([10, 40, 14]); toast(`${STATUS_LABEL.done}: ${ticket(e.job)}.`);
 }
 // the time of day tints the room (the glow at the top of the screen, the brief's sky)
 function daypart() { const h = new Date().getHours(); document.documentElement.dataset.daypart = h < 5 ? 'night' : h < 11 ? 'morning' : h < 17 ? 'day' : h < 21 ? 'evening' : 'night'; }
