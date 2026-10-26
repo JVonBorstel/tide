@@ -3,7 +3,8 @@
    Names: `gemini-brain/projects/tide/naming/GLOSSARY.md` is the only naming source. Old names are still live in code, paths, IDs and stored values; leave those as they are.
 1. Read `README.md`. This repo monitors `%USERPROFILE%\gemini-brain`; follow the brain's own rules in its `AGENT_CONTEXT.md` first.
 2. Read-only on the brain. Output only into this repo's `data/`. Never open the brain's protected paths (listed in `scripts/memory-check.ps1`). Never print or store a secret value.
-3. No network, no installs, no scheduled tasks, no git remote, no model downloads without Jordan's explicit yes.
+3. No network, no installs, no scheduled tasks, no new git remote, no model downloads without Jordan's explicit yes. The home repo is the PUBLIC `JVonBorstel/tide` (remote `origin`); the old private repo is remote `private`, kept as history (its open PRs are ported, never merged there). Open PRs on tide; merge only with `scripts/merge-pr.ps1 -Repo JVonBorstel/tide -Pr N`.
+   Everything committed here is public: follow "Building in public" in `kitchen/BUILDING.md` (noreply identity, personal values only in the state folder, private work only through `scripts/port-private.ps1`, the cleaning scan).
 4. A model may only propose (into `data/inbox/`); deterministic, tested scripts apply changes after approval.
 5. Tests first; all of `tests/Test-BrainMonitor.ps1` must pass before a commit. Keep the README's Limits section honest.
 

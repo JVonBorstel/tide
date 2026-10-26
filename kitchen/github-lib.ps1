@@ -1,6 +1,7 @@
 # GitHub plumbing for the pull-request flow: the pr, ci-wait, merge and deploy stations and automerge.ps1 dot-source this (functions only).
 # gh is `gh` on PATH, or KITCHEN_GH (tests: a fake .ps1 that plays GitHub over a local bare repo, so no test ever touches the network).
-# Pushes and fetches go to https://github.com/<owner>/<name>.git by explicit URL (Jordan's checkout has no 'origin' remote), or to
+# Pushes and fetches go to https://github.com/<owner>/<name>.git by explicit URL (the slug from kitchen.repo.json, whatever remotes the
+# checkout has: its 'origin' never decides where work goes), or to
 # KITCHEN_GITHUB_REMOTE (a remote name or URL; tests: the bare repo). Nothing here prompts: a missing login fails instead of hanging a step.
 
 # gh, captured: {ok, code, out (stdout), err (stderr)}. Never throws (a missing gh is a failed call, not a crashed station).
