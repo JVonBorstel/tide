@@ -83,7 +83,10 @@ const { results, check } = checker();
   check('scene: the lookout\'s window is lit only while the frame is fresh', lit.includes('I') && lit !== out);
   const rings = (n) => sceneRows(P, { sky: 'day', signals: n, locked: false, lit: true }).join('').split('t').length;
   check('scene: one gold ring per world signal on the mast, at most 3', rings(1) > rings(0) && rings(3) > rings(2));
-  const o = sceneOpts(ok(frame({ s3: { actionable_signal: Array(5).fill({ event: 'x', band: 2 }) } })), Date.parse('2026-10-23T12:00:00'));
+  // noon on this PC's clock (the sky is the viewer's local hour), and a frame compiled 10 min before that same instant: NOW is 18:00 UTC,
+  // which is noon only at UTC-6, so a frame from NOW was hours in the future (refused, lamp out) in every other zone
+  const noon = new Date(2026, 9, 23, 12, 0, 0).getTime();
+  const o = sceneOpts(ok(frame({ s3: { actionable_signal: Array(5).fill({ event: 'x', band: 2 }) }, from: noon })), noon);
   check('scene facts: signals capped at 3, sky from the hour, lamp out for a stale or empty frame', o.signals === 3 && o.sky === 'day' && o.lit && !sceneOpts(ok(frame({ meta: { compiled_utc: at(900), last_sweep_utc: at(900) } })), NOW).lit && !sceneOpts(ok(frame({ meta: { state: 'empty: no sweep yet' } })), NOW).lit);
   check('gauge: ten segments, the value in words', (gauge('X', 47, 100).match(/<i/g) || []).length === 10 && gauge('X', 47, 100).includes('aria-label="X: 47"') && gauge('X', null, 100).includes('unknown'));
 }
