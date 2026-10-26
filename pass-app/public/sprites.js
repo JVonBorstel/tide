@@ -120,9 +120,8 @@ const HAMMER = ['aaaa.', 'aghha', 'aaca.', '..c..', '..c..'];
 const LENS = ['aaa', 'aza', 'aaa', '.c.', '.c.'];
 const PROBE = ['aaa.', 'aBBa', 'aaa.'];
 const LABEL = ['aaa', 'apa', 'aaa'];
-const PAN = ['...aaa...', '..a.a.a..', '...aaa...', '.aaaaaaa.', 'aeeeeeeea', 'adeeeeeda', 'addddddda', 'acdddddca', '.accccca.', '..aaaaa..'];
-const JAR = strip(['.aaa. .aaa. .aaa.', '.aca. .aca. .aca.', 'aaaaa aaaaa aaaaa', 'awvva atssa azyya', 'avvua assra ayyxa', 'avvua assra ayyxa', '.aaa. .aaa. .aaa.'], 3);
-const CLOCHE = ['....aa....', '...aiia...', '..aaaaaa..', '.aiiiihha.', 'aiiihhhhga', 'ahhhhhggga', 'aaaaaaaaaa', '.agggggga.'];
+// paint tins on the shelf (red, blue, green: a drip over the rim, a label band)
+const JAR = strip(['aaaaa aaaaa aaaaa', 'aBhia ayhia avhia', 'ahiia ahiia ahiia', 'aBBBa ayyya avvva', 'aBpBa aypya avpva', 'ahiia ahiia ahiia', 'aaaaa aaaaa aaaaa'], 3);
 const SUN = ['.ttt.', 'ttttt', 'ttWtt', 'ttttt', '.ttt.'];
 const MOON = ['.II..', 'II...', 'II...', 'II...', '.II..'];
 const DIGITS = strip(['aaa .a. aaa aaa a.a aaa aaa aaa aaa aaa', 'a.a aa. ..a ..a a.a a.. a.. ..a a.a a.a', 'a.a .a. aaa aaa aaa aaa aaa ..a aaa aaa',
@@ -159,7 +158,8 @@ add('chef-sleep', 16, 24, 'sleep', (g, f) => body(g, HEAD.sleep, TORSO.down, LEG
 add('stache', 4, 1, 'still', (g) => blit(g, STACHE));
 add('waiter-side', 16, 24, 'walk', (g, f) => { body(g, HEAD.waiterSide, TORSO.waiterSide, LEGS.side[f], BOB.walk[f]); });
 add('waiter-idle', 16, 24, 'idle', (g, f) => body(g, HEAD.waiterDown, TORSO.waiterDown, LEGS.down[0], BOB.idle[f]));
-addFrames('cloche', [CLOCHE], 'still');
+// the clipboard a runner carries to the sign-off window (code name 'cloche'): a board, the paper, the clip
+add('cloche', 10, 8, 'still', (g) => { box(g, 0, 1, 10, 7, DARKWOOD); rect(g, 2, 2, 6, 5, 'p'); rect(g, 3, 4, 4, 1, 'k'); rect(g, 3, 6, 3, 1, 'k'); rect(g, 3, 0, 4, 2, 'g'); put(g, 3, 0, 'a'); put(g, 6, 0, 'a'); });
 // work loops: hands and tools in front of the station (the crew member stands behind it); row 7 is its top. Survey table: the pencil
 // draws; workbench: the hammer comes down; inspection desk: the magnifier looks; test rig: the probe moves along; handover bay: a label goes on
 const W = (fn) => (g, f) => fn(g, f, [0, 1, 2, 1][f]);
@@ -168,12 +168,13 @@ add('work-stove', 16, 8, 'work', W((g, f) => { const y = [-1, 0, 2, 1][f]; blit(
 add('work-taste', 16, 8, 'work', W((g, f) => { const up = [3, 1, -1, 1][f]; blit(g, HAND, 1, 4); blit(g, LENS, 10, up - 2); blit(g, HAND, 9, up + 2); }));
 add('work-sink', 16, 8, 'work', W((g, f, k) => { blit(g, HAND, 1, 4); blit(g, PROBE, 8 + k, 5); blit(g, HAND, 9 + k, 3); }));
 add('work-plate', 16, 8, 'work', W((g, f) => { blit(g, HAND, 1, 4); blit(g, LABEL, 10, [0, 1, 3, 4][f]); blit(g, HAND, 9, [0, 0, 1, 2][f]); }));
-// the room
-const tile = (rows) => (g) => blit(g, rows);
-add('floor-a', 16, 16, 'still', (g) => { rect(g, 0, 0, 16, 16, 'm'); rect(g, 15, 0, 1, 16, 'l'); rect(g, 0, 15, 16, 1, 'l'); for (const [x, y] of [[3, 4], [10, 9], [6, 12], [12, 3]]) put(g, x, y, 'l'); put(g, 1, 1, 'p'); });
-add('floor-b', 16, 16, 'still', (g) => { rect(g, 0, 0, 16, 16, 'l'); rect(g, 15, 0, 1, 16, 'k'); rect(g, 0, 15, 16, 1, 'k'); for (const [x, y] of [[4, 10], [11, 5], [7, 2]]) put(g, x, y, 'k'); put(g, 1, 1, 'm'); });
-add('wall', 16, 16, 'still', (g) => { rect(g, 0, 0, 16, 16, 'E'); for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if ((x * 7 + y * 13) % 23 === 0) put(g, x, y, (x + y) % 2 ? 'F' : 'D'); });
-add('subway', 16, 16, 'still', tile(Array.from({ length: 16 }, (_, y) => ['nnnnnnnnnnnnnnnn', 'pppppppnpppppppn', 'poooooonpoooooon', 'poooooonpoooooon', 'nnnnnnnnnnnnnnnn', 'pppnpppppppnpppp', 'ooonpoooooonpooo', 'ooonpoooooonpooo'][y % 8])));
+// the room: blockwork above, plywood hoarding below (code name 'subway'), a concrete slab with saw-cut joints underfoot (both floor
+// tiles share one colour: specks and a hairline crack, no checker)
+const slab = (specks, crack) => (g) => { rect(g, 0, 0, 16, 16, 'm'); rect(g, 15, 0, 1, 16, 'l'); rect(g, 0, 15, 16, 1, 'l'); for (const [x, y] of specks) put(g, x, y, 'l'); put(g, 1, 1, 'n'); if (crack) for (const [x, y] of [[6, 7], [7, 8], [8, 8], [9, 9]]) put(g, x, y, 'k'); };
+add('floor-a', 16, 16, 'still', slab([[3, 4], [10, 9], [6, 12], [12, 3]]));
+add('floor-b', 16, 16, 'still', slab([[4, 10], [11, 5], [2, 13]], true));
+add('wall', 16, 16, 'still', (g) => { rect(g, 0, 0, 16, 16, 'E'); for (let y = 0; y < 16; y += 4) { rect(g, 0, y, 16, 1, 'D'); for (const j of [0, 8].map((v) => v + ((y / 4) % 2) * 4)) { rect(g, j, y + 1, 1, 3, 'D'); rect(g, j + 1, y + 1, 6, 1, 'F'); } } });
+add('subway', 16, 16, 'still', (g) => { rect(g, 0, 0, 16, 16, 'e'); rect(g, 15, 0, 1, 16, 'c'); rect(g, 0, 0, 15, 1, 'd'); for (const [x, y, w] of [[1, 5, 5], [8, 8, 5], [2, 11, 4], [9, 3, 3]]) rect(g, x, y, w, 1, 'd'); for (const [x, y] of [[2, 2], [12, 2], [2, 13], [12, 13]]) put(g, x, y, 'c'); });
 add('window', 34, 26, 'still', (g) => {
   box(g, 0, 0, 34, 26, WOOD); rect(g, 3, 3, 28, 19, 'X');
   for (let y = 3; y < 22; y++) for (let x = 3; x < 31; x++) { const b = y < 8 ? 'X' : y < 10 ? ((x + y) % 2 ? 'X' : 'Y') : y < 15 ? 'Y' : y < 17 ? ((x + y) % 2 ? 'Y' : 'Z') : 'Z'; put(g, x, y, b); }
@@ -194,18 +195,25 @@ add('pot', 16, 8, 'still', (g) => { box(g, 2, 2, 4, 5, IRON); box(g, 8, 2, 4, 5,
 add('bowl', 16, 6, 'still', (g) => { box(g, 0, 1, 7, 5, DARKWOOD); box(g, 1, 2, 5, 4, PAPER); rect(g, 2, 0, 3, 2, 'g'); rect(g, 2, 3, 3, 1, 'k'); put(g, 2, 4, 'k'); rect(g, 12, 2, 1, 4, 'a'); rect(g, 10, 5, 5, 1, 'a'); box(g, 8, 0, 6, 3, IRON, true); rect(g, 9, 2, 4, 1, 'I'); });
 add('plates', 16, 6, 'still', (g) => { box(g, 2, 0, 10, 5, WOOD); rect(g, 6, 1, 2, 3, 'n'); rect(g, 3, 2, 2, 1, 'p'); rect(g, 0, 5, 14, 1, 'a'); for (const x of [1, 6, 11]) rect(g, x, 5, 2, 1, 'c'); });
 add('crate', 20, 12, 'still', (g) => { box(g, 0, 0, 20, 12, WOOD); rect(g, 1, 4, 18, 1, 'c'); rect(g, 1, 8, 18, 1, 'c'); });
-add('pass', 40, 34, 'still', (g) => { box(g, 0, 0, 40, 34, IRON); box(g, 3, 3, 34, 24, ['D', 'E', 'F'], false); rect(g, 4, 4, 32, 2, 'q'); box(g, -2, 27, 44, 5, STEEL); });
+// the sign-off window (code name 'pass'): a site-cabin hatch with hazard tape over it and a steel ledge for the clipboards
+const hazard = (g, x0, y0, w, h) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) put(g, x, y, (x + y) % 6 < 3 ? 'H' : 'a'); };
+add('pass', 40, 34, 'still', (g) => { box(g, 0, 0, 40, 34, IRON); hazard(g, 1, 1, 38, 2); box(g, 3, 3, 34, 24, ['D', 'E', 'F'], false); box(g, -2, 27, 44, 5, STEEL); });
 add('pass-glow', 32, 20, 'still', (g) => { for (let y = 0; y < 20; y++) for (let x = 0; x < 32; x++) put(g, x, y, y < 3 ? 'K' : y === 3 ? ((x % 2) ? 'K' : 'I') : 'I'); });
 add('bell', 7, 6, 'bell', (g, f) => { blit(g, f ? ['....a..', '..aaa..', '.atta..', 'atssta.', 'aaaaaaa', '.......'] : ['...a...', '..aaa..', '.atsta.', 'atssssa', 'aaaaaaa', '.......'], 0, 0); });
 add('shelf', 100, 4, 'still', (g) => { box(g, 0, 0, 100, 4, DARKWOOD); });
-addFrames('pan', [PAN], 'still');
+// tools on a pegboard (code name 'pan', hung three times under the shelf): a board with peg holes and a wrench across it
+add('pan', 9, 10, 'still', (g) => { box(g, 0, 0, 9, 10, WOOD); for (let y = 2; y < 9; y += 3) for (let x = 2; x < 8; x += 3) put(g, x, y, 'c'); for (let i = 0; i < 6; i++) put(g, 2 + i, 7 - i, 'h'); put(g, 1, 8, 'g'); put(g, 1, 7, 'h'); put(g, 2, 8, 'h'); put(g, 7, 1, 'i'); put(g, 7, 2, 'i'); put(g, 6, 1, 'i'); });
 addFrames('jar', JAR, 'jars');
-add('rail', 100, 3, 'still', (g) => { box(g, 0, 0, 100, 3, STEEL); });
-add('ticket', 11, 13, 'still', (g) => { box(g, 0, 1, 11, 12, PAPER); rect(g, 4, 0, 3, 2, 'g'); put(g, 5, 0, 'a'); });
+// the job board (code name 'rail'): a hazard-taped bar the work-order cards clip to; a card (code name 'ticket'): paper on a clipboard,
+// the digits and the step bar land on the paper
+add('rail', 100, 3, 'still', (g) => { hazard(g, 0, 0, 100, 3); rect(g, 0, 0, 100, 1, 'a'); });
+add('ticket', 11, 13, 'still', (g) => { box(g, 0, 1, 11, 12, DARKWOOD); rect(g, 2, 3, 7, 9, 'p'); rect(g, 1, 2, 9, 1, 'd'); rect(g, 4, 0, 3, 2, 'g'); put(g, 5, 0, 'a'); });
 addFrames('digit', DIGITS, 'glyph');
 addFrames('sun', [SUN], 'still');
 addFrames('moon', [MOON], 'still');
-add('lamp', 9, 8, 'still', (g) => { rect(g, 4, 0, 1, 3, 'a'); box(g, 1, 3, 7, 4, ['q', 'r', 's'], true); rect(g, 3, 7, 3, 1, 'I'); });
+// the caged work light over the sign-off window (and 'lamp-off' when a stop-work order cuts it)
+const workLight = (bulb, core) => (g) => { rect(g, 4, 0, 1, 1, 'a'); box(g, 2, 1, 5, 3, IRON); rect(g, 2, 4, 5, 3, bulb); if (core) put(g, 4, 5, core); for (const x of [1, 3, 5, 7]) rect(g, x, 4, 1, 3, 'a'); rect(g, 1, 7, 7, 1, 'a'); };
+add('lamp', 9, 8, 'still', workLight('I', 'W'));
 add('lantern', 7, 10, 'lantern', (g, f) => { blit(g, ['..aaa..', '.a...a.', 'aaaaaaa', 'a' + (f ? 'tIIt' : 'stts') + 'a.', 'a' + (f ? 'IttI' : 'tsst') + 'a.', 'aaaaaaa', '..aaa..'], 0, 2); put(g, 6, 5, 'a'); put(g, 6, 6, 'a'); });
 add('shadow', 14, 3, 'still', (g) => { rect(g, 2, 0, 10, 3, 'k'); rect(g, 0, 1, 14, 1, 'k'); });
 for (const [k, v] of Object.entries(PARTICLE)) addFrames(k, v, { steam: 'steam', sparkle: 'sparkle', flame: 'flame' }[k] || 'still');
@@ -244,7 +252,7 @@ add('stool', 10, 8, 'still', STOOL);
 add('chair-up', 10, 8, 'still', (g) => { const t = grid(10, 8); STOOL(t); t.reverse().forEach((r, y) => r.forEach((c, x) => put(g, x, y, c))); });
 add('chef-sit', 16, 24, 'idle', (g, f) => body(g, HEAD.down, TORSO.down, LEGS.sit[0], BOB.idle[f]));
 add('fuse', 10, 12, 'fuse', (g, f) => { box(g, 0, 0, 10, 12, IRON); if (!f) { box(g, 2, 2, 6, 8, STEEL); put(g, 6, 4, 'v'); return; } box(g, 2, 2, 6, 8, ['a', 'f', 'g']); rect(g, 4, 6, 1, 3, 'h'); put(g, 4, 9, 'B'); put(g, 6, 3, 'B'); put(g, 7, 1, 'a'); put(g, 1, 10, 'a'); });
-add('lamp-off', 9, 8, 'still', (g) => { rect(g, 4, 0, 1, 3, 'a'); box(g, 1, 3, 7, 4, DARKWOOD, true); rect(g, 3, 7, 3, 1, 'g'); });
+add('lamp-off', 9, 8, 'still', workLight('g'));
 add('heat', 8, 6, 'heat', (g, f) => { rect(g, 3, 0, 2, 2, 'a'); box(g, 1, 2, 6, 3, IRON, true); rect(g, 2, 4, 4, 1, ['t', 's', 'B'][f]); for (const x of [2, 5]) put(g, x, 5, ['I', 'K', 'B'][f]); });
 add('cork', 18, 12, 'still', (g) => { box(g, 0, 0, 18, 12, WOOD); rect(g, 1, 1, 16, 10, 'd'); for (const [x, y] of [[3, 3], [9, 2], [14, 5], [5, 8], [12, 9], [16, 2]]) put(g, x, y, 'c'); });
 add('letter', 5, 4, 'still', (g) => { box(g, 0, 0, 5, 4, PAPER); put(g, 1, 1, 'a'); put(g, 2, 2, 'a'); put(g, 3, 1, 'a'); put(g, 2, 0, 'B'); });
