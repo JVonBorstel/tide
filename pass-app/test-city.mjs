@@ -289,5 +289,42 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   check(`Budget_CityBytes: city.js + city-art.js + city-nav.js are at most 16,000 bytes brotli (${br} B in ${files.join(', ')})`, files.includes('city.js') && br <= 16000);
 }
 
+// ---- G4: the pixel City (paintCity, paintStrip, the art, the legend) on plain buffers; no browser ----
+{
+  const CJ = await import('./public/city.js'); const ARTS = await import('./public/city-art.js'); const SP = await import('./public/sprites.js');
+  const NOW = Date.parse('2026-10-26T20:00:00Z'); const ago = (ms) => new Date(NOW - ms).toISOString();
+  const towersOf = (o = {}) => ({ ok: true, towers: [
+    { key: 'td', name: 'Tide', kind: 'tower', folder: 'tide', floors: Array.from({ length: 30 }, (_, i) => ({ pr: i + 1, at: ago((30 - i) * 3600e3) })), open: [{ pr: 40, ci: 'red', createdAt: ago(1e3) }], plinth: { commits: 60 }, ...o },
+    { key: 'side', name: 'Side', kind: 'lot', folder: 'side', floors: [], open: [], plinth: { commits: 28 } },
+    { key: 'gemini-brain', name: 'Office', kind: 'office', folder: 'gemini-brain', floors: [], open: [], commits: 9, lastCommit: ago(3600e3) }] });
+  const job = (id, o) => ({ id, status: 'running', step: 1, steps: 2, station: 'agent', role: 'do', cook: 'claude', tower: 'td', updated: ago(6e4), ...o });
+  const S = { paused: true, live: false, spent: 1, budget: 4, jobs: [job('J1'), job('J2', { status: 'waiting-approval' })] };
+  const C = CJ.cityOf(towersOf(), S, [], NOW); const W = CJ.minWidth(C) + 30; const ph = { blink: 1, step: 0 };
+  const a = CJ.paintCity(C, W, 13, ph); const b = CJ.paintCity(C, W, 13, ph);
+  check('Render_OneBuffer: the City is one pixel buffer of W x 136 (one drawImage a frame; the stage\'s 120-draw cap is far away), the same model draws the same picture', a.g.buf.length === W * CJ.ART.H && a.g.buf.every((v, i) => v === b.g.buf[i]));
+  const items = CJ.layoutCity(C, W);
+  check('Render_Layout: the gate, the Yard lot, then every building in order; no slot overlaps another or leaves the picture', items.map((i) => i.key).join() === 'gate,yard,td,side,gemini-brain' && items.every((it, i) => it.slot[1] <= W && (i === 0 || it.slot[0] >= items[i - 1].slot[1])));
+  const px = (g, x, y) => g.buf[y * g.W + x]; const pal = CJ.palettes(C.sky); const box = a.boxes.td;
+  const has = (g, k, x0, y0, x1, y1) => { for (let y = Math.max(0, y0); y < Math.min(g.H, y1); y++) for (let x = Math.max(0, x0); x < Math.min(g.W, x1); x++) if (px(g, x, y) === pal[k]) return true; return false; };
+  check('Render_StoneBase: a 60-commit stone base is 3 px of stone under the tower (1 px per 20 commits)', px(a.g, box.x + 2, CJ.ART.GROUND - 1) === pal.k || px(a.g, box.x + 2, CJ.ART.GROUND - 1) === pal.j);
+  check('Render_Beacon: a waiting sign-off lights a beacon on the roof; none without one', has(a.g, BEACONK(C.lots[0].beacon), box.x - 4, box.top - 8, box.x + 4, box.top) && (() => { const n = CJ.paintCity(CJ.cityOf(towersOf(), { ...S, jobs: [job('J1')] }, [], NOW), W, 13, ph); const bx = n.boxes.td; return !has(n.g, BEACONK(C.lots[0].beacon), bx.x - 4, bx.top - 8, bx.x, bx.top); })());
+  check('Render_CraneTag: a crane with red CI carries a red tag; a gate sign reads PAUSED in red', has(a.g, 'B', box.x + box.w, box.top, box.x + box.w + 4, box.top + 8) && has(a.g, 'B', items[0].x, CJ.ART.GROUND - 26, items[0].x + 28, CJ.ART.GROUND - 16));
+  const quiet = CJ.paintCity(CJ.cityOf({ ok: true, towers: [] }, {}, [], NOW), CJ.minWidth({ lots: [] }) + 20, 13, ph);
+  check('Render_TruthRule: with no state and no buildings there is no gate sign, no meter and no beacon (only the sky, the cabin and the street)', !has(quiet.g, 'B', 0, 0, quiet.g.W, CJ.ART.GROUND) && !has(quiet.g, 'v', 0, 0, quiet.g.W, CJ.ART.GROUND));
+  const day = a;
+  check('Render_SkyIsTheHour: the sky is the real hour (night is darker than day at the top), never the theme', px(CJ.paintCity({ ...C, sky: 'night' }, W, 23, ph).g, 1, 1) !== px(day.g, 1, 1) && CJ.palettes('night').sky[0] !== CJ.palettes('day').sky[0]);
+  const r1 = CJ.paintCity(C, W, 13, { blink: 1, step: 0 }); const r2 = CJ.paintCity(C, W, 13, { blink: 1, step: 0 });
+  check('Render_ReducedMotion: the still frame (beacon steady and lit, crews still) is one fixed picture', r1.g.buf.every((v, i) => v === r2.g.buf[i]) && r1.g.buf.some((v, i) => v !== CJ.paintCity(C, W, 13, { blink: 0, step: 1 }).g.buf[i]));
+  const st = CJ.paintStrip(C, 200, ph); const calm = CJ.paintStrip(CJ.cityOf(towersOf(), { paused: false }, [], NOW), 200, ph);
+  check('Strip_Paint: the horizon strip is 20 art px tall; PAUSED and the beacon show when they apply, and it is quiet otherwise', st.H === 20 && has(st, 'B', 0, 0, 34, 20) && !has(calm, 'B', 0, 0, 200, 20) && !has(calm, 's', 0, 0, 200, 20));
+  const rows = CJ.legendRows(C);
+  check('Legend_OnlyWhatIsDrawn: the legend says the scale, and has a row only for marks on screen', rows[0].startsWith('1 row = 1 floor') && rows.some((r) => r.startsWith('Beacon')) && !rows.some((r) => r.startsWith('Skip')) && CJ.legendRows(CJ.cityOf(null, S, [], NOW)).length === 0);
+  const keys = new Set([...Object.keys(SP.PALETTE), ...Object.keys(ARTS.PAINT), '.']);
+  const sprites = [...ARTS.WORKER, ...Object.values(ARTS.TOOLS), ARTS.PALLET, ARTS.LOCK, ARTS.FLAG, ARTS.SKIP, ...Object.values(ARTS.GL)];
+  check('Art_Palette: every City sprite uses only the sprites.js palette (plus the two local crane paints), with even rows', sprites.every((rows) => rows.every((r) => r.length === rows[0].length && [...r].every((ch) => keys.has(ch)))));
+  check('Art_Glyphs: the City\'s signs can be written (PAUSED, OPEN, GH!, +12, ?)', [...'PAUSEDOPENGH!+0123456789?'].every((ch) => ARTS.GL[ch]));
+  function BEACONK(k) { return ARTS.BEACON[k]; }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(JSON.stringify(out));
