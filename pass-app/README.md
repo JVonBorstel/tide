@@ -73,6 +73,56 @@ after an event line 20 -> 10 ms; a stream message after the first 182 KB -> abou
   files in ember, and the lines with `textContent`, wrapped (no sideways scroll at 375 px). The yes carries the listed sha, and the server
   still measures the diff fresh before granting. A private work order lists file names only: no counts, no lines (`?file=` is 403), and its
   work order page no longer carries the worktree diff. Not at a merge gate: 409; git failed: 503.
+### The City (G1-G3)
+- **`GET /api/towers`** (`towers.mjs`, signed in like every `/api/*`): `{ ok, at, gitAt, githubAt, githubError, v, towers, errors }`. One row per repo on
+  this PC, left to right: Towers by their first floor (a Tower never moves), then Lots, then the Office.
+  - `folder`: the repo folder's name (never its path), so main-status, freeze and undo records, which name a folder, find their Tower.
+  - `kind`: `tower` (it has a floor or a crane), `lot` (commits only: a stone base of `plinth.commits`) or `office` (the repo named
+    `city.office`, default gemini-brain: `commits`, `lastCommit`, never floors).
+  - `floors[]` `{pr?, sha?, at, by, job?, pour?, title?, undone?, past?}`, oldest first, one per merge commit: every merged PR on GitHub
+    (`by: 'github'`, its title, its work order from a `kitchen/J123` branch), every ok line of `merges.jsonl`
+    (`by: 'session'`; `pour` from "batch-run integrate-<name>") and every `results\J*.merge.json` (`by: 'yard'`, or `'auto'` when
+    `automerged.jsonl` lists it; `undone` when it was taken down). The same PR in several records is one floor, by the strongest record.
+  - `open[]` `{pr, title?, draft, ci, job?, createdAt}`: every open PR on GitHub once read (hand PRs and Dependabot's too); before the
+    first read, an active work order with a `J*.pr.json` and no merge yet. `ci` from the PR's checks (any failure red, anything
+    unfinished pending, else green), else the work order's `J*.ci.json`, else `null` (unknown).
+  - A floor or crane of a private work order carries no `title`, nor does one whose work order file cannot be found (unknown counts as
+    private).
+  - `plinth {commits, before}`: a Tower's first-parent commits before its first floor; `blueprint {total, shipped}` from `ledger.json`.
+  - A field with no record is left out (the phone draws nothing for it); before the first git read `gitAt` is `null` and no stone base
+    is sent. No folder path from this PC is sent. `errors[]` names an unreadable state `kitchen.json` or a `bootRepos` folder that is
+    not on this PC (folder name only).
+- **`towersV`** in the state: the version of that answer. It moves only when the answer would (a merge, a git count); the phone fetches
+  `/api/towers` again then. The inputs are looked at at most every 3 s; git runs every 10 min off the main thread
+  (`PASS_TOWERS_GIT_MS`).
+- **GitHub** (G2): `gh` (or `PASS_GH`; a `.mjs` runs under node) lists each repo's merged PRs (in full once, then only those merged
+  since a day before the newest kept, `--limit 200`) and open PRs with their checks, every 5 min (`PASS_GITHUB_MS`), off the main
+  thread, 15 s per call; an old history repo once a day, merged only. Read-only; the token stays on this PC. `PASS_GITHUB=off` turns it
+  off. The last good read is kept in `<state>	owers-github.json`, so a failed read (`githubError`, in plain words: not signed in, not
+  installed, rate limit, over 15 s, not on GitHub) drops no floor and invents no crane, and a restart starts from it. `githubAt` (also a
+  state field, so the phone's "GitHub read N min ago" sign stays true without a refetch) is the last read that fully worked. Each read
+  logs one line: lists read, milliseconds, GraphQL points left. `towersV` leaves out `gitAt` and `githubAt`: a read that found nothing
+  new does not make the phone fetch again.
+- **The model** (`public/city.js` `cityOf(towers, state, events, now, { lastSeen })`, pure, tested in node): what each building
+  shows, one field per mark (plans/city-god-mode section 4.1): one shared height scale (`k` floors per 2 px row, the smallest of 1, 2,
+  5 ... that keeps the tallest within 80 art px; a Tower level draws its newest 22 floors whole and older ones in bands), lit windows for
+  floors merged in the last 24 h, new floors since the phone's last look, cranes (3 shown: a sign-off first, then a crew on it, then red
+  CI, then the newest; then "+N"), crews (the crew's colour, its station's tool, its height = step/steps; 3 then "+N"; a lock for a
+  private order), pallets (queued: 5 then "+N"), the beacon (warm, amber at 1 h, red at 4 h, from `approval.requested`), scaffolding
+  (red main; "?" when unreadable), barrier tape (a freeze now) or a "closes" sign, the skip (a floor taken down in the last 24 h; "?"
+  until the undo is on GitHub), the "manual handover" tag, the gate (PAUSED, never CLOSED; OPEN lit; STOP; the clock), the budget meter
+  (8 segments, a padlock after a cap stop today), the GitHub sign (over 10 min old, or failed), the real hour's sky, the Office's
+  windows, and the Yard lot (orders with no Tower: counts only). `needsYou` drives the horizon strip; `sentence` is each building's text
+  twin (numbers only); `momentsDue` lists the moments real changes and events under 2 minutes old call for.
+- **`tower`** on each work order in the state: the key of the Tower its merge step's `Repo` is, or `null` (research, career, scouts:
+  the Yard lot).
+- **Which repos, and their names** come from the state folder's `kitchen.json` only (personal values never sit in this repo):
+  `bootRepos` (folders under the profile, or absolute; with none, this repo alone) and an optional `city` key:
+  `names { <key>: 'Shown name' }`, `office '<folder>'`, and `history { <key>: { github: 'owner/name', ref: '<branch>' } }`, an older
+  repo whose merged PRs sit under the "public from" line (`past: true`, `publicFrom` = the public repo's first merged PR) on a stone base
+  of that branch's first-parent commits. A key is the repo's Site code in lower case (`kitchen.repo.json` `site`), else its GitHub name,
+  else its folder name; `names` and `history` are found by key, else GitHub name, else folder name (so they hold when a Site code
+  arrives).
 
 ## Run
 - Starts at sign-in (scheduled task `Kitchen-Pass`, hidden via `start-hidden.vbs`); the Walkround's (code: supervisor's) watchdog restarts it if it stops. Manual: `node pass-app/server.mjs`.
