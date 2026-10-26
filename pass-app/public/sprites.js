@@ -1,5 +1,5 @@
 // Chef's pixel art as code (spec: gemini-brain projects/tide/specs/chef-art.md): one palette, every sprite as palette-indexed strings or a tiny drawing recipe, the decoder, the atlas, palette swaps and the interface chrome sprites. All original art.
-// Loaded by pass-app/public/scene.js (dynamic import: the SVG scene stays if it cannot load); tested by pass-app/test-scene.mjs. No network, no images.
+// Loaded by pass-app/public/scene.js (dynamic import: the still card stays if it cannot load); tested by pass-app/test-scene.mjs. No network, no images.
 // Style: 16x16 tiles, characters 16x24, 3-4 shade ramps per material, 1px warm outline ('a'), light from the top left.
 
 // ---- the palette: one character per pixel; '.' is transparent ----
@@ -16,9 +16,10 @@ export const PALETTE = {
   D: '#2a201e', E: '#3d2f2a', F: '#54423a',                         // the back wall
   I: '#f4e3b5', K: '#e2805a',                                       // lamp light, warm glow
   N: '#1a1412', O: '#2b211d', Q: '#3d302a', V: '#0d0a09',           // the dark interface ramp
+  G: '#f1f59a', H: '#d4dd3c', J: '#9aa52a',                         // hi-vis yellow (vests, runners' hats; not EMISSIVE, so it dims)
   // swap slots, replaced per character, per cook and per sky (paletteFor); these are the defaults
   1: '#a86f48', 2: '#d39a6a', 3: '#efc39a',                         // skin: shadow, base, light
-  4: '#8a6512', 5: '#d6a531', 6: '#f2d27a',                         // the cook's colour: apron, neckerchief, hat band
+  4: '#8a6512', 5: '#d6a531', 6: '#f2d27a',                         // the crew's colour: hard hat, vest badge
   7: '#2a1a14', 8: '#4a3020',                                       // hair
   X: '#4f86c6', Y: '#7fb3e0', Z: '#bfe3fb',                         // the sky in the window: top, middle, bottom
 };
@@ -73,26 +74,28 @@ const WOOD = ['c', 'd', 'e'], DARKWOOD = ['b', 'c', 'd'], STEEL = ['g', 'h', 'i'
 const strip = (rows, n) => Array.from({ length: n }, (_, f) => rows.map((r) => r.split(' ')[f]));
 
 // ---- characters, in parts: head (12 rows), torso (6 rows, drawn over the hips), legs (7 rows, 4 walk frames) ----
+// crew: a hard hat in the crew's colour (4/5/6: a ridge down the middle, light from the left), the brim over the eyes; runners: a
+// hi-vis yellow hard hat (G/H/J). Torsos: a blue work shirt, a hi-vis vest with a reflective stripe (i) and the crew's colour on the
+// chest badge, a tool belt; runners wear a grey shirt and the same vest
+const HAT = ['.....aaaaaa.....', '...aa665455aa...', '..a6665545554a..', '..a6655545554a..', '.a665555555554a.', 'aa444444444444aa'];
+const HAT_SIDE = ['.....aaaaa......', '....a66545a.....', '...a6655455a....', '...a6555455a....', '..a65555554a....', '..a4444444444a..'];
+const hiVis = (rows) => rows.map((r) => r.replace(/[46]/g, (c) => (c === '6' ? 'G' : 'J')).replace(/5/g, 'H'));
+const E2 = ['................', '................'];
+const FACE = ['...a2a2222a1a...', '...aC22222C1a...', '...a222qq221a...', '....a111111a....'], FACE_SIDE = ['....a8722a2a....', '....a81222C2a...', '....a81222qa....', '.....a1111a.....'];
 const HEAD = {
-  down: ['.....aaaaaa.....', '...aapppppoaa...', '..appppppppppa..', '..apppppppppoa..', '..aoppopppppoa..', '...aooooooona...',
-    '...a65555554a...', '...a32222221a...', '...a2a2222a1a...', '...aC22222C1a...', '...a222qq221a...', '....a111111a....'],
-  up: ['.....aaaaaa.....', '...aapppppoaa...', '..appppppppppa..', '..apppppppppoa..', '..aoppopppppoa..', '...aooooooona...',
-    '...a65555554a...', '...a88888887a...', '...a88888877a...', '...a78888877a...', '...a17777771a...', '....a111111a....'],
-  side: ['......aaaaa.....', '....aapppppa....', '...apppppppoa...', '...appppppppa...', '...aoppoppppa...', '....aooooona....',
-    '....a655554a....', '....a871222a....', '....a8722a2a....', '....a81222C2a...', '....a81222qa....', '.....a1111a.....'],
-  sleep: ['................', '.....aaaaaa.....', '...aapppppoaa...', '..appppppppppa..', '..aoppopppppoa..', '...aooooooona...',
-    '...a65555554a...', '...a32222221a...', '...a2aa22aa1a...', '...aC22222C1a...', '...a2222a221a...', '....a111111a....'],
-  waiterDown: ['................', '................', '................', '................', '.....aaaaaa.....', '....a888888a....',
-    '...a88888887a...', '...a83222217a...', '...a2a2222a1a...', '...aC22222C1a...', '...a222qq221a...', '....a111111a....'],
-  waiterSide: ['................', '................', '................', '................', '......aaaaa.....', '....aa88888a....',
-    '....a887788a....', '....a871222a....', '....a8722a2a....', '....a81222C2a...', '....a81222qa....', '.....a1111a.....'],
+  down: [...E2, ...HAT, ...FACE],
+  up: [...E2, ...HAT, '...a88888887a...', '...a78888877a...', '...a17777771a...', '....a111111a....'],
+  side: [...E2, ...HAT_SIDE, ...FACE_SIDE],
+  sleep: [...E2, '................', ...HAT, '...aC22222C1a...', '...a2222a221a...', '....a111111a....'],   // asleep: the hat tipped over the eyes
+  waiterDown: [...E2, '................', ...hiVis(HAT.slice(1)), ...FACE],
+  waiterSide: [...E2, '................', ...hiVis(HAT_SIDE.slice(1)), ...FACE_SIDE],
 };
 const TORSO = {
-  down: ['..aapp4554ppaa..', '.aoppp6556pppoa.', '.aop65555556poa.', '.a2o65555554o2a.', '..aa45555554aa..', '...a44444444a...'],
-  up: ['..aappppppppaa..', '.aoppppppppppoa.', '.aopp5pppp5ppoa.', '.a2opp6556ppo2a.', '..aaoppppppoaa..', '...annnnnnnna...'],
-  side: ['....aappp45a....', '...aoppppp56a...', '...aoppopp655a..', '...anop22a555a..', '....anooaa554a..', '....annnnn44a...'],
-  waiterDown: ['..aapppBBpppaa..', '.aoppaaBBaappoa.', '.aopaaaaaaaapoa.', '.a2oaaaaaaaao2a.', '..aaafaaaafaaa..', '...affffffffa...'],
-  waiterSide: ['....aappBBa.....', '...aopppaa22a...', '...aopaaaaaaa...', '...anaaaaafa....', '....anaaaafa....', '....affffffa....'],
+  down: ['..aayyHHHHyyaa..', '.ayyGHHHHHHJyya.', '.ayGiiiiiiiiJya.', '.a2GHH5HHHHHJ2a.', '..aaGHHHHHHJaa..', '...accchcccca...'],
+  up: ['..aayyHHHHyyaa..', '.ayyGHHHHHHJyya.', '.ayGiiiiiiiiJya.', '.a2GHHHHHHHHJ2a.', '..aaGHHHHHHJaa..', '...acccccccca...'],
+  side: ['....aayHHHHa....', '...ayyGHHHHJa...', '...ayGiiiiiJa...', '...ay22HH5HJa...', '....aGHHHHJa....', '....acchcccca...'],
+  waiterDown: ['..aaggHHHHggaa..', '.aggGHHHHHHJgga.', '.agGiiiiiiiiJga.', '.a2GHHHHHHHHJ2a.', '..aaGHHHHHHJaa..', '...affffffffa...'],
+  waiterSide: ['....aagHHHHa....', '...aggGHHHHJa...', '...agGiiiiiJa...', '...ag22HHHHJa...', '....aGHHHHJa....', '....affffffa....'],
 };
 const LEGS = {
   down: strip(['...agggggggga... ...agggggggga... ...agggggggga... ...agggggggga...', '....agfaagfa.... ....agfaagfa.... ....agfaagfa.... ....agfaagfa....',
@@ -239,7 +242,7 @@ add('heat', 8, 6, 'heat', (g, f) => { rect(g, 3, 0, 2, 2, 'a'); box(g, 1, 2, 6, 
 add('cork', 18, 12, 'still', (g) => { box(g, 0, 0, 18, 12, WOOD); rect(g, 1, 1, 16, 10, 'd'); for (const [x, y] of [[3, 3], [9, 2], [14, 5], [5, 8], [12, 9], [16, 2]]) put(g, x, y, 'c'); });
 add('letter', 5, 4, 'still', (g) => { box(g, 0, 0, 5, 4, PAPER); put(g, 1, 1, 'a'); put(g, 2, 2, 'a'); put(g, 3, 1, 'a'); put(g, 2, 0, 'B'); });
 add('hooks', 22, 3, 'still', (g) => { box(g, 0, 0, 22, 3, DARKWOOD); for (let i = 0; i < 4; i++) put(g, 3 + i * 5, 2, 'h'); });
-add('hat', 6, 7, 'still', (g) => blit(g, ['.aaaa.', 'appppa', 'apppoa', '.aopa.', '.a56a.', '.a45a.', '..aa..']));
+add('hat', 6, 7, 'still', (g) => blit(g, ['......', '.aaaa.', 'a6654a', 'a6554a', 'a5554a', 'a4444a', 'aaaaaa']));   // a hard hat on its hook, in the crew's colour
 add('chalk', 19, 13, 'still', (g) => { box(g, 0, 0, 19, 13, WOOD); rect(g, 1, 1, 17, 11, 'f'); });
 add('tally', 17, 5, 'tally', (g, f) => { for (let i = 0; i < f; i++) { const grp = Math.floor(i / 5), k = i % 5, x0 = 1 + grp * 8; if (k < 4) rect(g, x0 + k * 2, 0, 1, 5, 'o'); else for (let j = 0; j < 7; j++) put(g, x0 - 1 + j, 4 - Math.round(j * 4 / 6), 'o'); } });
 addFrames('chalk-digit', DIGITS.map((d) => d.map((r) => r.replace(/a/g, 'o'))), 'glyph');
