@@ -32,7 +32,7 @@ param(
     [string]$Repo = '',
     [string]$Worktree = '',
     [string]$OutDir = '',
-    [string]$RemoteUrl = 'https://github.com/JVonBorstel/brain-monitor.git',
+    [string]$RemoteUrl = '',   # default: https://github.com/<kitchen.repo.json "github">.git of -Repo (the repo's home moves with its config)
     [string]$Slug = '',
     [int]$TimeoutSeconds = 1200,
     [int]$Reruns = 3,
@@ -156,6 +156,11 @@ $script:logDir = $OutDir
 if (-not $MergePrScript) { $MergePrScript = Join-Path $PSScriptRoot 'merge-pr.ps1' }
 if (-not $RunBounded) { $RunBounded = Join-Path $PSScriptRoot 'run-bounded.ps1' }
 if (-not $PassAppUpdate) { $PassAppUpdate = Join-Path $Repo 'pass-app\update.ps1' }
+if (-not $RemoteUrl) {
+    $homeSlug = try { [string](Get-Content -LiteralPath (Join-Path $Repo 'kitchen.repo.json') -Raw -ErrorAction Stop | ConvertFrom-Json).github } catch { '' }
+    if ($homeSlug -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { Stop-Batch 'input' "no -RemoteUrl given and $Repo\kitchen.repo.json names no github owner/name" }
+    $RemoteUrl = "https://github.com/$homeSlug.git"
+}
 if (-not $Slug -and $RemoteUrl -match 'github\.com[/:]([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?$') { $Slug = $Matches[1] }
 $prList = @(Split-List $Prs); $brList = @(Split-List $Branches)
 if (-not $prList.Count) { Stop-Batch 'input' 'no PRs given (-Prs 12,13, in merge order)' }
