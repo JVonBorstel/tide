@@ -2,6 +2,7 @@
   "why": "a step runs at most a day",
   "expect": "/timeoutSec: maximum",
   "doc": {
+    "v": "1.0",
     "wo": "WO-2001",
     "name": "freshen",
     "args": {},

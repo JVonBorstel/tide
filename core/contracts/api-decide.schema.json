@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tide.example/contracts/api-decide.schema.json",
+  "$id": "https://tide.example/contracts/v1/api-decide.schema.json",
   "title": "POST /api/decide: the body of one tap",
   "description": "Sent by the Board (same key auth as today, in a header, never in the body or URL) or by /decide. requestId makes a retry safe: the same requestId never writes a second decision.answered event.",
   "type": "object",

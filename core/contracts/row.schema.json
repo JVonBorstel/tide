@@ -1,10 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tide.example/contracts/row.schema.json",
+  "$id": "https://tide.example/contracts/v1/row.schema.json",
   "title": "Row: one work order in the ledger view",
   "description": "The ledger is a view over the events, one row per work order (build-way 3.1). Generated only, never hand-edited. Exported as ledger.json items while old readers exist.",
   "type": "object",
   "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
     "id": { "$ref": "common.schema.json#/$defs/woId" },
     "alias": { "anyOf": [{ "$ref": "common.schema.json#/$defs/yardAlias" }, { "type": "null" }] },
     "goal": { "$ref": "common.schema.json#/$defs/text" },
@@ -30,10 +31,10 @@
     "dod": { "$ref": "common.schema.json#/$defs/dod" },
     "brief": { "anyOf": [{ "$ref": "common.schema.json#/$defs/relPath" }, { "type": "null" }] },
     "report": { "anyOf": [{ "$ref": "common.schema.json#/$defs/relPath" }, { "type": "null" }] },
-    "proof": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 500 }, { "type": "null" }] },
+    "proof": { "x-local-only": true, "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 500 }, { "type": "null" }] },
     "lastSeq": { "description": "The last event folded into this row.", "type": "integer", "minimum": 1 }
   },
-  "required": ["id", "goal", "stream", "owner", "plan", "decision", "branch", "base", "pr", "stackParent", "stage", "state", "blockedOn", "next",
+  "required": ["v", "id", "goal", "stream", "owner", "plan", "decision", "branch", "base", "pr", "stackParent", "stage", "state", "blockedOn", "next",
     "ageH", "stageAgeH", "attempts", "dod", "brief", "report", "proof", "lastSeq"],
   "additionalProperties": false,
   "allOf": [

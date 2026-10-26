@@ -2,6 +2,7 @@
   "why": "a failure has a non-zero exit",
   "expect": "/exit: not",
   "doc": {
+    "v": "1.0",
     "ok": false,
     "exit": 0,
     "out": "",

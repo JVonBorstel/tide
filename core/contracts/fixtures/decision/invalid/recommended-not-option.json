@@ -2,6 +2,7 @@
   "why": "the recommended answer is one of the options",
   "expect": "/recommended: rule",
   "doc": {
+    "v": "1.0",
     "id": "D-1",
     "wo": "WO-2001",
     "kind": "merge",

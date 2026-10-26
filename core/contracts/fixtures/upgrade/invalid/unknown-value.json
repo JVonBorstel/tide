@@ -2,6 +2,7 @@
   "why": "switches are old, shadow or new",
   "expect": "/ledger: enum",
   "doc": {
+    "v": "1.0",
     "_about": "Example block.",
     "ledger": "on",
     "engine": {

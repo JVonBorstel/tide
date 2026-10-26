@@ -1,10 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tide.example/contracts/brief.schema.json",
+  "$id": "https://tide.example/contracts/v1/brief.schema.json",
   "title": "Brief: the front matter of a work order's BRIEF.md",
   "description": "What a crew is given (build-way 3.7). The file is markdown with a front matter block, one 'key: value' per line; frontmatter.mjs turns it into this object. The body (goal, why, owned files, done-means, proof, stop-when) is for people.",
   "type": "object",
   "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
     "wo": { "$ref": "common.schema.json#/$defs/woId" },
     "stream": { "$ref": "common.schema.json#/$defs/stream" },
     "plan": { "$ref": "common.schema.json#/$defs/planRef" },
@@ -19,6 +20,6 @@
     "budget": { "description": "The crew's cap, in plain words (40 turns; 90 min).", "type": "string", "minLength": 1, "maxLength": 80 },
     "depth": { "description": "BRAIN_AGENT_DEPTH for the crew: how many levels of helpers it may start.", "type": "integer", "minimum": 0, "maximum": 3 }
   },
-  "required": ["wo", "stream", "plan", "decision", "repo", "branch", "base", "worktree", "budget", "depth"],
+  "required": ["v", "wo", "stream", "plan", "decision", "repo", "branch", "base", "worktree", "budget", "depth"],
   "additionalProperties": false
 }

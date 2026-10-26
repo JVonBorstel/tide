@@ -2,6 +2,7 @@
   "why": "every piece has a switch",
   "expect": "/engine/improve: required",
   "doc": {
+    "v": "1.0",
     "_about": "Example block.",
     "ledger": "old",
     "engine": {

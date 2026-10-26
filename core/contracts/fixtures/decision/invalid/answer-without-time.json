@@ -2,6 +2,7 @@
   "why": "an answered card says when and how",
   "expect": "/answeredAt: type",
   "doc": {
+    "v": "1.0",
     "id": "D-1",
     "wo": "WO-2001",
     "kind": "merge",

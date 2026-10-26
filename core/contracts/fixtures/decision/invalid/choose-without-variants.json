@@ -2,6 +2,7 @@
   "why": "a choose card shows its mock-ups",
   "expect": "/variants: required",
   "doc": {
+    "v": "1.0",
     "id": "D-8",
     "wo": "WO-2001",
     "kind": "choose",

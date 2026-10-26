@@ -2,6 +2,7 @@
   "why": "stages are the 8 of build-way 3.1",
   "expect": "/stage: enum",
   "doc": {
+    "v": "1.0",
     "id": "WO-2001",
     "alias": null,
     "goal": "Example: show a sunrise colour in the sky of the demo scene",

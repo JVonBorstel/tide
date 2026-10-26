@@ -1,10 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tide.example/contracts/report.schema.json",
+  "$id": "https://tide.example/contracts/v1/report.schema.json",
   "title": "Report: the front matter of a work order's REPORT.md",
   "description": "What a crew hands back (build-way 3.7). The ledger reads this front matter; the body is for people. Line forms: 'tests: Contracts 52/0; RepoConfig 142/0' and 'dod: change-note yes | tests yes | glossary n/a' (the marks from the build-way template are read too).",
   "type": "object",
   "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
     "wo": { "$ref": "common.schema.json#/$defs/woId" },
     "status": { "enum": ["pushed", "blocked", "partial", "abandoned"] },
     "branch": { "$ref": "common.schema.json#/$defs/branch" },
@@ -31,7 +32,7 @@
     },
     "next": { "description": "What the Yard should do next, or adopt.", "$ref": "common.schema.json#/$defs/text" }
   },
-  "required": ["wo", "status", "branch", "pr", "head", "tests", "dod", "asks", "next"],
+  "required": ["v", "wo", "status", "branch", "pr", "head", "tests", "dod", "asks", "next"],
   "additionalProperties": false,
   "allOf": [
     {

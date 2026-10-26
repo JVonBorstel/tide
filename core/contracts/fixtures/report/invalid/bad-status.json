@@ -2,6 +2,7 @@
   "why": "status is pushed, blocked, partial or abandoned",
   "expect": "/status: enum",
   "doc": {
+    "v": "1.0",
     "wo": "WO-2001",
     "status": "done",
     "branch": "wo/2001-sunrise",

@@ -2,6 +2,7 @@
   "why": "every brief names exactly one owning plan",
   "expect": "/plan: required",
   "doc": {
+    "v": "1.0",
     "wo": "WO-2001",
     "stream": "DEMO",
     "decision": "D-8",

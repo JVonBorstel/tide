@@ -1,10 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tide.example/contracts/upgrade.schema.json",
+  "$id": "https://tide.example/contracts/v1/upgrade.schema.json",
   "title": "The upgrade switches: the `upgrade` block of kitchen/kitchen.json",
   "description": "One switch per new piece (build-way 4.1): old = today's path serves; shadow = the new piece runs beside it and writes only its own files plus a parity report; new = the new piece serves. Setting it back to old is the fallback; nothing is deleted. A missing block or switch reads as old. Moving a switch on the live PC is one card for Jordan. Keys starting with _ are notes for people.",
   "type": "object",
   "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
     "ledger": { "$ref": "#/$defs/switch" },
     "engine": {
       "type": "object",
@@ -37,7 +38,7 @@
     }
   },
   "patternProperties": { "^_": { "type": "string" } },
-  "required": ["ledger", "engine", "crews", "ship", "board", "continuity"],
+  "required": ["v", "ledger", "engine", "crews", "ship", "board", "continuity"],
   "additionalProperties": false,
   "$defs": {
     "switch": { "enum": ["old", "shadow", "new"] }

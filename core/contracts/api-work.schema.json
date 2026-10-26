@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tide.example/contracts/api-work.schema.json",
+  "$id": "https://tide.example/contracts/v1/api-work.schema.json",
   "title": "GET /api/work: the Work tab in one answer",
   "description": "The top line, Jordan's Needs-you queue (oldest first; the phone shows at most 7), the streams with their WIP, then the rows (build-way 3.2, 3.8). Same key auth as today's Board. Cross-field rule (validate.mjs): the queue is sorted oldest first.",
   "anyOf": [

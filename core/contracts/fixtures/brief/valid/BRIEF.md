@@ -1,4 +1,5 @@
 ---
+v: 1.0
 wo: WO-2005          # from new-brief / adopt
 stream: DEMO         # one of the 4 open build streams
 plan: plans/example-plan.md#slice-3

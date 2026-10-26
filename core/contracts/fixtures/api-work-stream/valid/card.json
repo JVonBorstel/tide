@@ -4,6 +4,7 @@
   "seq": 19,
   "data": {
     "decision": {
+      "v": "1.0",
       "id": "D-2",
       "wo": "WO-2001",
       "kind": "look",

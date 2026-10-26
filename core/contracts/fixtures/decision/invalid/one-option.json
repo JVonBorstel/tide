@@ -2,6 +2,7 @@
   "why": "a card offers at least 2 answers",
   "expect": "/options: minItems",
   "doc": {
+    "v": "1.0",
     "id": "D-1",
     "wo": "WO-2001",
     "kind": "merge",

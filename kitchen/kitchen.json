@@ -83,6 +83,7 @@
   ],
   "upgrade": {
     "_about": "Tide full upgrade switches, one per new piece (core/contracts/upgrade.schema.json). old = today's path serves; shadow = the new piece runs beside it and writes only its own files and a parity report; new = the new piece serves. Back to old is the fallback; nothing is deleted. Each move on the live PC is one card for the Owner. A missing switch reads as old.",
+    "v": "1.0",
     "ledger": "old",
     "engine": { "adopted": "old", "improve": "old" },
     "crews": "old",

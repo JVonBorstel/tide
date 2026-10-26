@@ -2,6 +2,7 @@
   "why": "step names are lower-case words with dashes",
   "expect": "/name: pattern",
   "doc": {
+    "v": "1.0",
     "wo": "WO-2001",
     "name": "Freshen PR",
     "args": {},

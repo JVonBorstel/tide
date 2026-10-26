@@ -1,13 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tide.example/contracts/activity.schema.json",
+  "$id": "https://tide.example/contracts/v1/activity.schema.json",
   "title": "Activity: the engine asks one step to run",
   "description": "The engine-to-step call (build-way 4.2). Engine-neutral on purpose: the same object is a Temporal activity input or a row in our own step journal. Existing Yard stations run through scripts/run-bounded.ps1 with timeoutSec and maxMB. A rerun with the same idempotencyKey must not repeat the step's effect.",
   "type": "object",
   "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
     "wo": { "$ref": "common.schema.json#/$defs/woId" },
     "name": { "description": "The step: a station or activity name (freshen, ci-wait, merge, docs).", "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 40 },
     "args": {
+      "x-local-only": true,
       "description": "Named arguments: strings, numbers, booleans, or lists of strings. Never a secret value (secrets are read at run time by the step).",
       "type": "object",
       "patternProperties": {
@@ -24,6 +26,6 @@
     "timeoutSec": { "type": "integer", "minimum": 1, "maximum": 86400 },
     "maxMB": { "type": "integer", "minimum": 64, "maximum": 65536 }
   },
-  "required": ["wo", "name", "args", "idempotencyKey", "timeoutSec", "maxMB"],
+  "required": ["v", "wo", "name", "args", "idempotencyKey", "timeoutSec", "maxMB"],
   "additionalProperties": false
 }

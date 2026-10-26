@@ -2,6 +2,7 @@
   "why": "decision ids are D-<number>",
   "expect": "/id: pattern",
   "doc": {
+    "v": "1.0",
     "id": "DEC-1",
     "wo": "WO-2001",
     "kind": "merge",

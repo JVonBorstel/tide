@@ -2,6 +2,7 @@
   "why": "ok means exit 0",
   "expect": "/exit: const",
   "doc": {
+    "v": "1.0",
     "ok": true,
     "exit": 1,
     "out": "",
