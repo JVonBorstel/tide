@@ -1,0 +1,49 @@
+name: Bug
+description: Something broke or behaves wrong.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not paste secrets, keys, tokens or personal data. Describe them instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      description: Commands or taps, in order.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Kitchen (supervisor, stations, cooks)
+        - Chef (pass-app)
+        - Scripts / brain monitor
+        - Tests / CI
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Job id (J123), relevant lines from TESTS.txt or the CI log. Redact anything sensitive.
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: How bad
+      options:
+        - Blocks work
+        - Annoying, has a workaround
+        - Cosmetic
+    validations:
+      required: true

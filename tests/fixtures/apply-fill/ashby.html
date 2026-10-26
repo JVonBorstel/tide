@@ -1,0 +1,40 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Agent Builder @ Acme</title></head>
+<body>
+<!-- Ashby-like single-page app: the form is drawn late and inputs are "controlled" the way React does it (an instance value tracker:
+     a change only registers when an input event sees a value the tracker has not seen; a field whose state was not updated snaps
+     back on focusout). The needs-Jordan question is required here. Fixture only. -->
+<div id="root">Loading application...</div>
+<script>
+const state = {}; let seq = 0;
+const push = () => fetch('/state/ashby', { method: 'POST', body: JSON.stringify({ seq: ++seq, ...state }) });
+function control(el) {
+  const d = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value'); let tracked = '';
+  Object.defineProperty(el, 'value', { configurable: true, get() { return d.get.call(this); }, set(v) { tracked = String(v); d.set.call(this, v); } });
+  el.addEventListener('input', () => { const v = d.get.call(el); if (v !== tracked) { tracked = v; state[el.id] = v; push(); } });
+  el.addEventListener('focusout', () => { const s = state[el.id] ?? ''; if (s !== d.get.call(el)) { tracked = s; d.set.call(el, s); } });
+}
+function render() {
+  document.getElementById('root').innerHTML = `
+  <h1>Agent Builder</h1>
+  <form id="ashby-form" novalidate>
+    <div><label for="_systemfield_name">Name<span>*</span></label><input id="_systemfield_name" type="text"></div>
+    <div><label for="_systemfield_email">Email<span>*</span></label><input id="_systemfield_email" type="email"></div>
+    <div><label for="phone">Phone Number</label><input id="phone" type="tel"></div>
+    <div><label for="_systemfield_resume">Resume<span>*</span></label><input id="_systemfield_resume" type="file" accept=".pdf,.doc,.docx"></div>
+    <div><label for="linkedin">LinkedIn Profile</label><input id="linkedin" type="text"></div>
+    <div><label for="gh">GitHub</label><input id="gh" type="text"></div>
+    <div><label for="loc">Location</label><input id="loc" type="text" role="combobox" aria-autocomplete="list"></div>
+    <div><label for="q_excite">What excites you about building AI agents?<span>*</span></label><textarea id="q_excite"></textarea></div>
+    <div><label for="q_proud">Tell us about a project you are proud of.<span>*</span></label><textarea id="q_proud"></textarea></div>
+    <div><label for="cover">Cover letter</label><textarea id="cover"></textarea></div>
+    <button type="submit" class="ashby-application-form-submit-button" onclick="fetch('/marker/ashby-press')">Submit Application</button>
+  </form>`;
+  document.querySelectorAll('#root input:not([type=file]), #root textarea').forEach(control);
+  document.getElementById('_systemfield_resume').addEventListener('change', (e) => { state.resume = [...e.target.files].map((x) => x.name + ':' + x.size); push(); });
+  document.getElementById('ashby-form').addEventListener('submit', async (e) => { e.preventDefault(); await fetch('/apply/ashby', { method: 'POST', body: '{}' });
+    document.getElementById('root').innerHTML = '<h2>Thanks for applying!</h2><p>Your application was submitted.</p>'; });
+}
+setTimeout(render, 900);
+</script>
+</body></html>

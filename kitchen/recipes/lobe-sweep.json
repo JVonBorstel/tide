@@ -1,0 +1,7 @@
+{
+  "description": "Lobe sweep: the zeitgeistd connectors, gate and frame on this PC (no agent step; models only on this PC).",
+  "vars": {},
+  "steps": [
+    { "station": "lobe", "args": { "Cmd": "sweep" }, "timeoutSec": 300, "maxMB": 1500, "retries": 0, "mustMatch": "(?m)^lobe: sweep done items=\\d+ dropped=\\d+ ms=\\d+" }
+  ]
+}

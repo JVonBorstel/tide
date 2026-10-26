@@ -1,0 +1,14 @@
+{
+  "about": "why an automated kitchen order failed (its job record and log)",
+  "description": "Diagnose: a cook reads why an order failed (its record, its log and the kitchen code) and explains the fix. Read-only. If a code change would fix it, the answer ends with a goal you can send to Improve with one tap.",
+  "vars": {
+    "ticket": { "required": true, "max": 20 },
+    "failure": { "required": true, "max": 6000 }
+  },
+  "steps": [
+    { "station": "agent", "timeoutSec": 900, "maxMB": 2500, "retries": 1, "mustMatch": "(?ms)^#\\s*What broke\\b.*^#\\s*The fix\\b",
+      "args": { "Role": "check", "WorkDir": "{{home}}\\source\\repos\\brain-monitor", "Tools": "Read,Grep,Glob", "MaxTurns": 15, "MaxBudgetUsd": 1,
+        "Order": "{{failure}}",
+        "Prompt": "A kitchen order failed and was set aside. Ticket: {{ticket}}.\n\nWhat happened (the job record and the end of its log):\n{{failure}}\n\nYou are in the kitchen's own code (this repository: kitchen/, kitchen/recipes/, kitchen/cooks/). Read what you need to find the real cause. Do not change anything.\n\nWrite for Jordan, who reads on his phone, in plain words:\n# What broke\nTwo or three sentences.\n# Why\nThe cause, with the file and line if it is in the code.\n# The fix\nWhat should change. If it was a passing hiccup (a cook busy or at its limit, a network blip, the PC asleep), say: Just retry it.\nIf a change to the kitchen's code or a recipe would fix it, end with exactly one last line:\nFIX GOAL: <one sentence goal for the Improve recipe>" } }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "public": true,
+  "about": "a search of public job postings for software engineering roles",
+  "description": "Overnight hunt: finds fresh openings, ranks them by fit, saves the top 3 to tracker, and queues private tailor packs for morning review.",
+  "vars": {
+    "focus": { "default": "software engineer", "max": 400 },
+    "where": { "default": "remote", "max": 200 },
+    "top": { "default": "3", "max": 20 },
+    "skills": { "default": "not given: rank fit on the role focus alone", "max": 1000 },
+    "boards": { "default": "LinkedIn, Indeed, Wellfound, company sites", "max": 300 }
+  },
+  "steps": [
+    { "station": "agent", "timeoutSec": 1500, "maxMB": 2500, "retries": 1, "mustMatch": "SOURCES",
+      "args": { "Role": "research", "Tools": "WebSearch,WebFetch", "MaxTurns": 40, "MaxBudgetUsd": 2, "Public": true,
+        "Order": "About: a web search of public job boards for open software engineering roles (no personal details).\nOrder: list open roles for {{focus}}; {{where}}",
+        "SaveTo": "{{home}}\\gemini-brain\\projects\\career\\scout\\{{job}}-openings.md",
+        "Prompt": "Find job openings posted in the last 7 days for: {{focus}}. Location: {{where}}.\n\nThe candidate's skills (rank fit against these): {{skills}}\n\nSearch real job boards and company career pages ({{boards}}). Only include postings you actually opened, that are still open, with a working link. Skip staffing-agency duplicates of the same role.\n\nAnswer for a phone, in this shape:\n# Openings\nFor each of the best 8 to 12, best fit first:\n- **Title** at Company (on-site / hybrid / remote, city). Pay if listed. Posted date.\n  Fit: one line on why it fits and one honest gap.\n  Must-haves: quote the posting's own words for required skills, years of experience, security clearance, and on-site city.\n  Link: the URL\n\n# Worth a look today\nThe top 3 by fit, one line each.\n\nFinish with a section headed SOURCES listing the URLs." } },
+    { "station": "rankfit", "timeoutSec": 60, "maxMB": 500, "retries": 0, "mustMatch": "rank-fit: scored",
+      "args": { "Openings": "{{home}}\\gemini-brain\\projects\\career\\scout\\{{job}}-openings.md" } },
+    { "station": "hunt-night", "timeoutSec": 300, "maxMB": 1000, "retries": 0, "mustMatch": "hunt-night: done",
+      "args": { "Openings": "{{home}}\\gemini-brain\\projects\\career\\scout\\{{job}}-openings.md", "Top": "{{top}}" } }
+  ]
+}

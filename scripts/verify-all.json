@@ -1,0 +1,8 @@
+{
+  "suites": [
+    { "name": "brain-monitor", "dir": "%USERPROFILE%\\source\\repos\\brain-monitor", "glob": "tests\\Test-*.ps1", "minSuites": 37, "timeoutSeconds": 400, "maxMB": 1500 },
+    { "name": "my-apps", "dir": "%USERPROFILE%\\source\\repos\\my-apps", "glob": "tests\\Test-*.ps1", "minSuites": 6, "timeoutSeconds": 600, "maxMB": 2000, "prependPath": "C:\\Program Files\\Git\\usr\\bin" },
+    { "name": "demo", "dir": "%USERPROFILE%\\demo-project", "glob": "tests\\phase0\\Test-Phase0.ps1", "timeoutSeconds": 900, "maxMB": 2000 },
+    { "name": "zeitgeistd", "dir": "%USERPROFILE%\\source\\repos\\zeitgeistd", "glob": "scripts\\test.ps1", "timeoutSeconds": 600, "maxMB": 2000 }
+  ]
+}

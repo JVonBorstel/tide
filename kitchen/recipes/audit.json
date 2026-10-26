@@ -1,0 +1,15 @@
+{
+  "about": "a read-only audit of a software repository that files fixes as ideas",
+  "description": "Audit team: a taster audits one area of the kitchen or Chef (read-only, changes nothing) and files its 3 to 6 most important fixes in the idea list. The autopilot builds them; merging follows your rules.",
+  "vars": {
+    "focus": { "required": true, "max": 1500 },
+    "repo": { "default": "{{home}}\\source\\repos\\brain-monitor" }
+  },
+  "steps": [
+    { "station": "agent", "timeoutSec": 1800, "maxMB": 3000, "retries": 1, "mustMatch": "IDEA:",
+      "args": { "Role": "check", "WorkDir": "{{repo}}", "Tools": "Read,Grep,Glob", "MaxTurns": 50, "MaxBudgetUsd": 3,
+        "SaveTo": "{{kitchen}}\\ideas\\{{job}}.md",
+        "Prompt": "# In plain words\nStart your answer with a heading '# In plain words' and two or three short sentences a non-programmer can read.\n\nYou are on an audit team of Jordan's Kitchen. Audit this repository with this focus: {{focus}}\n\nRead AGENTS.md first, then the files the focus touches and their tests. Look for real bugs, security and privacy holes, broken guardrails, missing tests, race conditions, wasted tokens, and things that would confuse Jordan on his phone. Do not report style nits. Do not change any file.\n\nList your findings ranked by severity, each with file and line, what goes wrong (a concrete scenario), and the fix. Then file the 3 to 6 most important fixes, one line each, exactly in this form (valid JSON on one line):\nIDEA: {\"title\":\"short name\",\"goal\":\"one paragraph goal for the Improve recipe: what to change, in which files, and which tests to add\",\"why\":\"one sentence on the risk it removes\",\"size\":\"S or M or L\",\"value\":1-10}\n\nRules for ideas: small and testable; never loosen a guardrail, an approval, the privacy or money guards; no new dependencies or paid services." } },
+    { "station": "ideas", "timeoutSec": 120, "retries": 0, "args": { "Source": "audit: {{focus}}" } }
+  ]
+}

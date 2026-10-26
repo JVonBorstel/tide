@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<meta name="theme-color" content="#1A1412" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#EFE6D4" media="(prefers-color-scheme: light)">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg">
+<link rel="apple-touch-icon" href="/icon.svg">
+<title>The Board</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" class="icon-defs" width="0" height="0" aria-hidden="true">
+  <symbol id="i-pass" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+<symbol id="i-ledger" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+  <symbol id="i-cooks" viewBox="0 0 24 24"><path d="M4 17h16M6 17a6 6 0 0 1 12 0M12 11V9"/></symbol>
+  <symbol id="i-world" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c3 3 3 13 0 16M12 4c-3 3-3 13 0 16"/></symbol>
+  <symbol id="i-talk" viewBox="0 0 24 24"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-hunt" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 13h18"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4zM16.5 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
+  <symbol id="i-cloche" viewBox="0 0 64 64"><path d="M10 44h44M14 44a18 18 0 0 1 36 0M32 22v-4M28 17h8"/></symbol>
+</svg>
+
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="top-title"><h1 id="screen-title">Board</h1><p class="pulse" id="pulse" aria-live="off"><i class="pulse-dot" aria-hidden="true"></i><span id="pulse-text">Connecting</span></p></div>
+  <div class="top-actions">
+    <button class="icon-btn" id="hunt-btn" aria-label="Job hunt" aria-haspopup="dialog"><svg><use href="#i-hunt"/></svg><b class="dot-count" id="count-due" hidden></b></button>
+    <button class="icon-btn" id="screen-btn" aria-label="Screen peek" aria-haspopup="dialog"><svg><use href="#i-screen"/></svg></button>
+    <button class="icon-btn" id="menu-btn" aria-label="Settings" aria-haspopup="dialog"><svg><use href="#i-settings"/></svg></button>
+  </div>
+</header>
+<div id="banners" class="banners"></div>
+<p class="sr-only" id="announce" aria-live="polite"></p>
+
+<div class="ptr" id="ptr" aria-hidden="true"><svg><use href="#i-down"/></svg><span id="ptr-text">Pull to refresh</span></div>
+<main id="main" tabindex="-1">
+  <section class="view" id="view-pass" aria-labelledby="screen-title">
+    <div class="scene" id="scene-pass"></div>
+    <div class="headline" id="summary"></div>
+    <div id="since"></div>
+    <div id="lead"></div>
+    <div id="brief"></div>
+    <div id="board"></div>
+  </section>
+  <section class="view" id="view-activity" aria-labelledby="screen-title" hidden>
+    <div class="filters">
+      <div class="seg" role="radiogroup" aria-label="Show" id="feed-filter">
+        <button role="radio" data-ff="all" aria-checked="true">All</button><button role="radio" data-ff="act" aria-checked="false">To act on</button><button role="radio" data-ff="fail" aria-checked="false">Failures</button>
+      </div>
+      <input class="find" id="feed-search" type="search" placeholder="Search" aria-label="Search activity" autocomplete="off">
+    </div>
+    <div id="feed"></div>
+  </section>
+  <section class="view" id="view-talk" aria-labelledby="screen-title" hidden>
+    <div class="talk-head">
+      <button class="text-btn" id="talk-chats" aria-haspopup="dialog">All chats</button>
+      <button class="lock-chip" id="talk-lock" aria-pressed="false"><svg aria-hidden="true"><use href="#i-lock"/></svg><span id="talk-lock-text">Can use your plans</span></button>
+      <button class="text-btn" id="talk-new">New chat</button>
+    </div>
+    <div class="talk-log" id="talk-log" role="log" aria-live="polite" aria-label="Conversation"></div>
+    <form class="composer" id="talk-form" autocomplete="off">
+      <textarea id="talk-text" rows="1" maxlength="6000" placeholder="Talk to the Yard" aria-label="Message" enterkeyhint="send"></textarea>
+      <button class="send" id="talk-send" type="submit" aria-label="Send"><svg aria-hidden="true"><use href="#i-send"/></svg></button>
+    </form>
+  </section>
+  <section class="view" id="view-cooks" aria-labelledby="screen-title" hidden><div class="scene" id="scene-live"></div><div id="live-call"></div><div id="cooks-body"></div></section>
+  <section class="view" id="view-ledger" aria-labelledby="screen-title" hidden><div id="ledger-body"><p class="empty-line">Loading…</p></div></section>
+  <section class="view" id="view-world" aria-labelledby="screen-title" hidden><div id="world-body"><p class="empty-line">Loading…</p></div></section>
+</main>
+
+<nav class="bar" aria-label="Sections">
+  <a href="#/pass" data-view="pass" aria-current="page"><svg aria-hidden="true"><use href="#i-pass"/></svg><span>Board</span><b class="dot-count" id="count-needs" hidden></b></a>
+  <a href="#/talk" data-view="talk"><svg aria-hidden="true"><use href="#i-talk"/></svg><span>Talk</span><b class="dot-count" id="count-talk" hidden></b></a>
+  <a href="#/activity" data-view="activity"><svg aria-hidden="true"><use href="#i-activity"/></svg><span>Activity</span></a>
+  <a href="#/cooks" data-view="cooks"><svg aria-hidden="true"><use href="#i-cooks"/></svg><span>Live</span><b class="dot-count live-count" id="count-live" hidden></b></a>
+  <a href="#/ledger" data-view="ledger"><svg aria-hidden="true"><use href="#i-ledger"/></svg><span>Ledger</span><b class="dot-count" id="count-ledger" hidden></b></a>
+  <a href="#/world" data-view="world"><svg aria-hidden="true"><use href="#i-world"/></svg><span>World</span><b class="dot-count" id="count-world" hidden></b></a>
+  <button class="order-btn" id="order-btn" aria-haspopup="dialog"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>New work order</span></button>
+</nav>
+
+<!-- sheets -->
+<dialog class="sheet full" id="job-sheet" aria-labelledby="job-ticket">
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Back"><svg><use href="#i-back"/></svg></button><span class="mono muted" id="job-ticket"></span><button class="icon-btn listen-btn" id="job-listen" aria-pressed="false" aria-label="Listen to this ticket" hidden><svg aria-hidden="true"><use href="#i-speaker"/></svg></button></div>
+  <div class="sheet-scroll" id="job-body"></div>
+  <div class="action-bar" id="job-actions"></div>
+</dialog>
+<dialog class="sheet full" id="log-sheet" aria-labelledby="log-title">
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Back"><svg><use href="#i-back"/></svg></button><span class="mono" id="log-title">Logs</span>
+    <span class="log-tools"><button class="text-btn" id="log-wrap" aria-pressed="true">Wrap</button></span></div>
+  <pre class="log wrap" id="log-text" tabindex="0"></pre>
+  <button class="jump" id="log-jump" hidden><svg aria-hidden="true"><use href="#i-down"/></svg>Jump to latest</button>
+</dialog>
+<dialog class="sheet" id="order-sheet" aria-labelledby="order-title">
+  <div class="grab" aria-hidden="true"></div>
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Close"><svg><use href="#i-x"/></svg></button><h2 id="order-title">New work order</h2><span></span></div>
+  <form class="sheet-scroll" id="order-form" novalidate>
+    <div class="group-label">Spec</div>
+    <div class="radio-rows" id="recipe-list" role="radiogroup" aria-label="Spec"></div>
+    <div id="var-fields"></div>
+    <div class="group-label">Crew</div>
+    <div class="seg wide" role="radiogroup" aria-label="Crew" id="cook-pick">
+      <button type="button" role="radio" data-cook="auto" aria-checked="true">Auto</button><button type="button" role="radio" data-cook="claude" aria-checked="false">Claude</button><button type="button" role="radio" data-cook="gemini" aria-checked="false">Gemini</button><button type="button" role="radio" data-cook="local" aria-checked="false">Local</button>
+    </div>
+    <label class="switch-row"><span><b>Private</b><small>Stays on this PC. A step only a Cloud crew can do waits for your sign-off.</small></span><input type="checkbox" role="switch" id="private"><i aria-hidden="true"></i></label>
+    <p class="route" id="route" aria-live="polite"></p>
+  </form>
+  <div class="action-bar"><button class="btn primary block" id="send-btn" form="order-form" type="submit">Send to the Yard</button></div>
+</dialog>
+<dialog class="sheet" id="menu-sheet" aria-labelledby="menu-title">
+  <div class="grab" aria-hidden="true"></div>
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Close"><svg><use href="#i-x"/></svg></button><h2 id="menu-title">Settings</h2><span></span></div>
+  <div class="sheet-scroll" id="menu-body"></div>
+</dialog>
+<dialog class="sheet" id="cook-sheet" aria-labelledby="cook-title">
+  <div class="grab" aria-hidden="true"></div>
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Close"><svg><use href="#i-x"/></svg></button><h2 id="cook-title">Crew</h2><span></span></div>
+  <div class="sheet-scroll" id="cook-body"></div>
+</dialog>
+<dialog class="sheet" id="agent-sheet" aria-labelledby="agent-title">
+  <div class="grab" aria-hidden="true"></div>
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Close"><svg><use href="#i-x"/></svg></button><h2 id="agent-title">On the call</h2><span></span></div>
+  <div class="sheet-scroll" id="agent-body"></div>
+</dialog>
+<dialog class="sheet" id="legend-sheet" aria-labelledby="legend-title">
+  <div class="grab" aria-hidden="true"></div>
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Close"><svg><use href="#i-x"/></svg></button><h2 id="legend-title">What am I looking at?</h2><span></span></div>
+  <div class="sheet-scroll" id="legend-body"></div>
+</dialog>
+<dialog class="sheet" id="chats-sheet" aria-labelledby="chats-title">
+  <div class="grab" aria-hidden="true"></div>
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Close"><svg><use href="#i-x"/></svg></button><h2 id="chats-title">Chats</h2><span></span></div>
+  <div class="sheet-scroll" id="chats-body"></div>
+</dialog>
+<dialog class="sheet full" id="hunt-sheet" aria-labelledby="hunt-title">
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Back"><svg><use href="#i-back"/></svg></button><h2 id="hunt-title">Job hunt</h2><button class="text-btn" id="hunt-add">Add</button></div>
+  <div class="sheet-scroll" id="hunt-body"></div>
+</dialog>
+<dialog class="sheet full" id="answers-sheet" aria-labelledby="answers-title">
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Back"><svg><use href="#i-back"/></svg></button><h2 id="answers-title">My answers</h2></div>
+  <div class="sheet-scroll" id="answers-body"></div>
+</dialog>
+<dialog class="sheet full" id="draft-sheet" aria-labelledby="draft-title">
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Back"><svg><use href="#i-back"/></svg></button><h2 id="draft-title">Tailored draft</h2><button class="text-btn" data-copy-draft="all">Copy all</button></div>
+  <div class="sheet-scroll" id="draft-body"></div>
+</dialog>
+<dialog class="sheet full" id="ideas-sheet" aria-labelledby="ideas-title">
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Back"><svg><use href="#i-back"/></svg></button><h2 id="ideas-title">Ideas</h2><button class="text-btn" id="ideas-add">Add</button></div>
+  <div class="sheet-scroll" id="ideas-body"></div>
+</dialog>
+<dialog class="sheet full" id="clients-sheet" aria-labelledby="clients-title">
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Back"><svg><use href="#i-back"/></svg></button><h2 id="clients-title">Clients</h2><span></span></div>
+  <div class="sheet-scroll" id="clients-body"></div>
+</dialog>
+<dialog class="sheet" id="row-menu" aria-labelledby="row-menu-title">
+  <div class="grab" aria-hidden="true"></div>
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Close"><svg><use href="#i-x"/></svg></button><h2 id="row-menu-title" class="mono"></h2><span></span></div>
+  <div class="sheet-scroll" id="row-menu-body"></div>
+</dialog>
+<dialog class="sheet full peek" id="screen-sheet" aria-labelledby="peek-title">
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Close"><svg><use href="#i-x"/></svg></button><h2 id="peek-title">Screen peek</h2>
+    <button class="text-btn" id="peek-live" aria-pressed="false">Auto-refresh</button></div>
+  <div class="peek-area" id="peek-area"><img id="screen" alt="Your PC screen, view only" hidden><p class="peek-empty" id="peek-empty">Tap to take a picture of the PC screen.</p></div>
+  <div class="peek-foot mono" id="peek-foot">Desk PC · view only</div>
+</dialog>
+<dialog class="confirm" id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+  <h2 id="confirm-title"></h2><div id="confirm-text"></div>
+  <div class="confirm-actions"><button class="btn" id="confirm-no">Cancel</button><button class="btn primary" id="confirm-yes">Yes</button></div>
+</dialog>
+<div class="toasts" id="toasts" role="region" aria-label="Messages" aria-live="polite"></div>
+<script src="/app.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "description": "Tailor: paste a job posting; the local cook drafts a tailored summary, resume bullets and a short cover note from your canonical resume. Never leaves this PC; never invents experience.",
+  "vars": {
+    "posting": { "required": true, "max": 12000 }
+  },
+  "steps": [
+    { "station": "agent", "timeoutSec": 1500, "maxMB": 3000, "retries": 1,
+      "args": { "Role": "do", "Tools": "none", "MaxTurns": 3, "MaxBudgetUsd": 0.5, "Private": true, "Supplier": "local", "Model": "qwen3.5:9b",
+        "Context": "{{resume}};{{claims}}",
+        "SaveTo": "{{home}}\\gemini-brain\\projects\\career\\tailored\\{{job}}-draft.md",
+        "Prompt": "You help Jordan apply for this job. His real resume and the list of claims he can and cannot defend are attached below. Use ONLY facts from the attached resume. Never invent years, titles, numbers or tools; never use any claim the claims file says to avoid. If the posting asks for something he does not have, list it under Gaps instead of hiding it.\n\nTHE POSTING:\n{{posting}}\n\nWrite, in this order:\n# Fit\nThree lines: how well he fits, the strongest match, the biggest gap.\n# Summary\nA 2 to 3 sentence resume summary aimed at this posting.\n# Bullets\n5 to 7 resume bullets, reworded from his real experience to match the posting's language.\n# Cover note\nAt most 150 words, plain and confident, no buzzwords.\n# Gaps\nWhat the posting wants that he lacks, and one honest line he could say about each in an interview." } },
+    { "station": "tailor-check", "timeoutSec": 120, "retries": 0, "mustMatch": "TAILOR-CHECK PASS",
+      "args": {
+        "Draft": "{{home}}\\gemini-brain\\projects\\career\\tailored\\{{job}}-draft.md",
+        "Claims": "{{claims}}",
+        "Resume": "{{resume}}",
+        "Posting": "{{posting}}" } }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "note": "Known code-quality violations, recorded by scripts/quality/metrics.ps1 -WriteBaseline. longfn|file|function -> lines (over 80); nesting|file -> deepest control nesting (over 5); dup|file -> lines inside a 6-line block that also appears elsewhere. Only shrink it.",
+  "violations": {
+    "dup|kitchen/ats.ps1": 35,
+    "dup|kitchen/kitchen.ps1": 24,
+    "longfn|kitchen/kitchen.ps1|Check-Running": 116,
+    "longfn|kitchen/kitchen.ps1|Invoke-ChefUpdate": 102,
+    "longfn|kitchen/repo-config.ps1|Read-RepoConfig": 84,
+    "longfn|pass-app/public/live.js|startLive": 85,
+    "longfn|pass-app/server.mjs|act": 102,
+    "longfn|pass-app/server.mjs|handle": 170,
+    "nesting|kitchen/ats.ps1": 7,
+    "nesting|kitchen/cooks/agy.ps1": 7,
+    "nesting|kitchen/ideas.ps1": 6,
+    "nesting|kitchen/kitchen.ps1": 8,
+    "nesting|kitchen/stations/lint.ps1": 8,
+    "nesting|kitchen/stations/map.ps1": 6,
+    "nesting|kitchen/stations/merge.ps1": 6,
+    "nesting|kitchen/stations/mutate.ps1": 6,
+    "nesting|kitchen/talk.ps1": 6,
+    "nesting|scripts/restore-drill.ps1": 6,
+    "nesting|scripts/usage-report.ps1": 6
+  }
+}

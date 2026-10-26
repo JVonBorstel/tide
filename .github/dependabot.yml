@@ -1,0 +1,28 @@
+# Weekly dependency updates. The repo has no npm packages (Node scripts are dependency-free) and the Rust crate uses std only,
+# so in practice this keeps the pinned GitHub Actions current; cargo is listed so a crate added later is covered from day one.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+  - package-ecosystem: cargo
+    directory: /rust/kitchen-sandbox
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    groups:
+      cargo-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]

@@ -1,0 +1,17 @@
+# brain-monitor: agent rules (vendor-neutral)
+0. Read `kitchen/CREED.md` first: the rules every agent (crew, reviewer, Claude session) acts under. The Yard (code: `kitchen/`) puts it in front of every crew's prompt (code: cook); the toolbox talk (code: `memory/BOOT.md`) puts it in front of every session.
+   Names: `gemini-brain/projects/tide/naming/GLOSSARY.md` is the only naming source. Old names are still live in code, paths, IDs and stored values; leave those as they are.
+1. Read `README.md`. This repo monitors `%USERPROFILE%\gemini-brain`; follow the brain's own rules in its `AGENT_CONTEXT.md` first.
+2. Read-only on the brain. Output only into this repo's `data/`. Never open the brain's protected paths (listed in `scripts/memory-check.ps1`). Never print or store a secret value.
+3. No network, no installs, no scheduled tasks, no git remote, no model downloads without Jordan's explicit yes.
+4. A model may only propose (into `data/inbox/`); deterministic, tested scripts apply changes after approval.
+5. Tests first; all of `tests/Test-BrainMonitor.ps1` must pass before a commit. Keep the README's Limits section honest.
+
+## Yard rules (code: `kitchen`; resource safety, added 2026-10-09 after two hung test runs ate 10 GB RAM)
+- Run every test suite and every agent run through `brain-monitor/scripts/run-bounded.ps1 -Script <file> -TimeoutSeconds N -MaxMB N` (kills the whole process tree; exit 124 timeout, 125 memory cap). Never run an unbounded long command.
+- Run the Site check (code: `brain-monitor/scripts/kitchen-check.ps1`) at session start and end. It is read-only; report WARNs to Jordan; never kill processes without Jordan's yes.
+- Before finishing: no background job, process or temp folder you created may remain. Write down any job you leave running, with its end condition.
+- Never launch bare `python`/`python3` or pipe a heredoc into it: on this rig it is the Windows Store stub, which loops on stdin and wrote a 4.9 GB error log in 33 minutes (2026-10-09). Use `uv run` (once installed) or a bounded script.
+- Agent Standup (pinned third-party fork): start/stop only via `scripts/standup.ps1` (bounded, auto-expires). Demo mode for anything shown to others; live mode exposes real transcripts on localhost while running. Recaps are proposals into `memory/inbox/` via `scripts/standup-recap.ps1`; never auto-merged.
+- Gradle leaves a background daemon that holds the caller output pipe open: a tool-run build looks hung until the daemon exits (seen 2026-10-10, 1.4 GB, 2 hours). Redirect build output to a log file when running builds from a tool, and run `gradlew --stop` afterwards. D:\dev\gradle-home\gradle.properties now sets org.gradle.daemon.idletimeout=600000 (10 min).
+- Agent economy (2026-10-10, from the usage baseline): context re-reads dominate cost, so keep the main thread small and turns few. Batch independent tool calls in one message. Subcontractors (code: session subagents): one task each, name the model deliberately (haiku for read-only inventory/status/summaries; sonnet for builders and reviewers; strongest only for red-team of safety code), reports go to a file with <=15 lines back, no subcontractor spawns subcontractors, at most one multi-agent audit per week and none between 10-12 and 10-14. Measure with scripts/usage-report.ps1.

@@ -1,0 +1,13 @@
+{
+  "public": true,
+  "about": "news about AI models and tools",
+  "description": "Model scout: checks what's new in AI models (local and cloud) against what this kitchen runs, and recommends upgrades. Runs weekly on its own.",
+  "vars": { "focus": { "default": "all roles", "max": 500 } },
+  "steps": [
+    { "station": "inventory", "args": { "Out": "{{kitchen}}\\scout\\{{job}}-inventory.txt" }, "timeoutSec": 120, "retries": 1 },
+    { "station": "agent", "timeoutSec": 1800, "maxMB": 2500, "retries": 1, "mustMatch": "SOURCES",
+      "args": { "Role": "research", "Tools": "WebSearch,WebFetch", "MaxTurns": 40, "MaxBudgetUsd": 2, "Order": "AI model scout: newest local and cloud models ({{focus}})",
+        "Context": "{{kitchen}}\\scout\\{{job}}-inventory.txt", "SaveTo": "{{kitchen}}\\scout\\{{job}}-report.md",
+        "Prompt": "You are the kitchen's model scout. The attached inventory shows the machine (graphics card, memory), the local models in Ollama, the CLI versions and the sous chef's menu (which model each role uses). Focus: {{focus}}.\n\nFind what has changed in the last 30 days and what is the best choice today for each role: the local judge (tiny, fast, strict JSON, runs on the processor), local coder, local writer/taster, local reasoning model (all must fit the graphics card shown, quantized), and the cloud tiers (Claude and Gemini model names available to a subscription through their command-line tools). Prefer official model cards, the Ollama library, Hugging Face and reputable benchmarks; check that every Ollama tag you name really exists. For each role say: keep or change, the exact tag or model name, size, why, and one source URL. Mark anything you could not verify. End with a section headed RECOMMENDED CHANGES (exact ollama pull commands and kitchen.json edits; say 'none' if nothing should change) and then a section headed SOURCES listing the URLs. Under 80 lines." } }
+  ]
+}

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- The body is model-written from employer text: nothing on this page may load or run (no web, no file:, no script). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resume</title>
+<style>
+  @page {
+    size: letter;
+    margin: 0.45in 0.5in;
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  html, body {
+    height: 100%;
+    background: #ffffff;
+    color: #1a1a1a;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 9.5pt;
+    line-height: 1.35;
+  }
+  .resume-page {
+    width: 100%;
+    max-width: 7.5in;
+    margin: 0 auto;
+  }
+  header, .contact-header {
+    text-align: center;
+    border-bottom: 1.5px solid #222;
+    padding-bottom: 5px;
+    margin-bottom: 8px;
+  }
+  header h1, h1, .contact-header h1 {
+    font-size: 18pt;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #111;
+    margin-bottom: 2px;
+  }
+  .contact-info, .contact-line {
+    font-size: 9pt;
+    color: #444;
+  }
+  .contact-info span + span::before, .contact-line span + span::before {
+    content: " • ";
+    padding: 0 4px;
+    color: #888;
+  }
+  section, .resume-section {
+    margin-bottom: 8px;
+  }
+  section:last-child, .resume-section:last-child {
+    margin-bottom: 0;
+  }
+  h2, .section-title {
+    font-size: 10.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    border-bottom: 1px solid #888;
+    padding-bottom: 1px;
+    margin-bottom: 4px;
+    color: #222;
+  }
+  .summary, .summary-text {
+    font-size: 9.5pt;
+    text-align: justify;
+  }
+  .skills, .skills-list, .skills-grid {
+    font-size: 9pt;
+    line-height: 1.35;
+  }
+  .job, .job-block {
+    margin-bottom: 5px;
+  }
+  .job:last-child, .job-block:last-child {
+    margin-bottom: 0;
+  }
+  .job-header {
+    display: flex;
+    justify-content: space-between;
+    font-weight: 600;
+    font-size: 9.5pt;
+  }
+  .job-sub {
+    display: flex;
+    justify-content: space-between;
+    font-style: italic;
+    font-size: 9pt;
+    color: #444;
+    margin-bottom: 2px;
+  }
+  ul, ul.bullets {
+    padding-left: 16px;
+    margin-top: 2px;
+  }
+  li {
+    margin-bottom: 2px;
+    font-size: 9pt;
+  }
+  .edu-row, .edu-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9pt;
+  }
+  @media print {
+    html, body {
+      background: none;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="resume-page">
+    {{body}}
+  </div>
+</body>
+</html>

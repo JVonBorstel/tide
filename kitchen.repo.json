@@ -1,0 +1,8 @@
+{
+  "github": "JVonBorstel/brain-monitor",
+  "commitBudget": {
+    "files": 8,
+    "lines": 400,
+    "_why": "interim 10-22 until J246 budget-by-size; the station default 4/150 refused most size-M orders"
+  }
+}

@@ -1,0 +1,79 @@
+# The quick check machine, on every push to main and every pull request (ubuntu, a few minutes, billed 1x):
+#   parse every PowerShell file, node --check, JSON validity, secret scan, Rust check (job "checks"), and the code-quality ratchet (job
+#   "quality"). Both jobs run side by side and write their counts to the run's summary page.
+# The full Windows suite is NOT here: it lives in windows-suite.yml (weekly, by hand, and on ci/** branches). The kitchen already runs
+# the whole suite sandboxed on Jordan's PC before every PR (tests station) and again on main after the merge (verify), so a Windows
+# run per PR and per merge was the 3rd and 4th copy, and at ~28 min x2 (Windows bills double) it spent the free 2000 minutes in about
+# 15 merges. The cheap gate stays per change; the clean-box Windows run stays as a weekly drift check.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  # a run on main is never cancelled (release.yml tags what passed there); PR runs replaced by a newer push are
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+permissions:
+  contents: read
+jobs:
+  # Code-quality ratchet (scripts/quality/metrics.ps1 over kitchen/quality-baseline.json): new long functions, deep nesting and duplicated
+  # blocks fail, growth warns; PSScriptAnalyzer regressions on the PowerShell files this change touched (only when the runner image
+  # already has the module; nothing is installed). fetch-depth 2 gives HEAD^1, the base the change is compared with: on a pull request
+  # HEAD is GitHub's merge commit and HEAD^1 is the base branch; on main it is the commit before. Ubuntu, so billed 1x.
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Quality ratchet (long functions, nesting, duplicates, analyzer on changed files)
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/quality/metrics.ps1 -ChangedSince HEAD^1 -Summary $env:GITHUB_STEP_SUMMARY
+      # Old names guard (Tide rename): lists kitchen words in the display text this change adds, against the same HEAD^1 base. Report
+      # only for now (exit 0); enforce mode is the -Enforce flag on this line, after the S1 display slices land (RENAME-PLAN.md section 4).
+      - name: Old names guard (report only; scripts/check-names.ps1)
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/check-names.ps1 -Base HEAD^1 -Summary $env:GITHUB_STEP_SUMMARY
+      - name: Quality tests (tests/Test-Quality.ps1)
+        shell: pwsh
+        run: |
+          $out = pwsh -NoProfile -File tests/Test-Quality.ps1 2>&1 | Out-String; $code = $LASTEXITCODE
+          Write-Output $out
+          $line = ($out -split "`n" | Where-Object { $_ -match '^Quality tests:' } | Select-Object -Last 1)
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "`n## Tests`n`n- tests/Test-Quality.ps1: $line"
+          exit $code
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: PowerShell parse, node --check, JSON validity, secret scan
+        shell: pwsh
+        run: |
+          $out = pwsh -NoProfile -File scripts/ci-quick-checks.ps1 2>&1 | Out-String; $code = $LASTEXITCODE
+          Write-Output $out
+          # The job summary page: the counts line and every FAIL line, so the result reads without opening the log.
+          $keep = @($out -split "`n" | Where-Object { $_ -match '^(Quick checks:|FAIL:)' } | ForEach-Object { "- $($_.Trim())" })
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value (@('## Quick checks', '') + $keep)
+          exit $code
+      - name: Rust check (kitchen-sandbox targets Windows; checked from Linux, no linking)
+        working-directory: rust/kitchen-sandbox
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          cargo check --offline --locked --target x86_64-pc-windows-gnu
+      - name: Rust clippy (advisory, never fails the build)
+        working-directory: rust/kitchen-sandbox
+        continue-on-error: true
+        run: cargo clippy --offline --locked --target x86_64-pc-windows-gnu

@@ -1,0 +1,19 @@
+{
+  "name": "The Board",
+  "short_name": "The Board",
+  "id": "/",
+  "description": "Tide's Board: every site at a glance. Watch and run the work from anywhere.",
+  "start_url": "/#/pass",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1A1412",
+  "theme_color": "#1A1412",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }],
+  "shortcuts": [
+    { "name": "Needs sign-off", "url": "/#/pass/needs" },
+    { "name": "Talk", "url": "/#/talk" },
+    { "name": "Live", "url": "/#/cooks" },
+    { "name": "Activity", "url": "/#/activity" }
+  ]
+}
