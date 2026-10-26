@@ -52,12 +52,12 @@ try {
     G remote add private "ext::git %s $($priv -replace '\\', '/')"; G remote add origin "ext::git %s $($tide -replace '\\', '/')"
 
     # the old private main: a private word in a.txt
-    [IO.File]::WriteAllText((Join-Path $repo 'a.txt'), "line1`nhello PRIVATE-NAME`nline3`n"); [IO.File]::WriteAllText((Join-Path $repo 'b.txt'), "bee`n"); [IO.File]::WriteAllText((Join-Path $repo 'c.txt'), "sea`n")
+    [IO.File]::WriteAllText((Join-Path $repo 'a.txt'), "line1`nhello PRIVATE-NAME`nline3`n"); [IO.File]::WriteAllText((Join-Path $repo 'b.txt'), "bee`n"); [IO.File]::WriteAllText((Join-Path $repo 'c.txt'), "sea`n"); [IO.File]::WriteAllText((Join-Path $repo 'd.txt'), "d1`nd2`nd3`nd4`n")
     G add -A; G commit -q -m 'private main'; G push -q private pmain:main; G branch private-main pmain
     # tide: the cleaned first commit (no shared history), then a tide-only commit that a port must never revert
     G checkout -q --orphan tmain; [IO.File]::WriteAllText((Join-Path $repo 'a.txt'), "line1`nhello public-name`nline3`n")
     G add -A; G commit -q -m 'tide first commit'
-    [IO.File]::WriteAllText((Join-Path $repo 'c.txt'), "sea`ntide edit`n"); [IO.File]::WriteAllText((Join-Path $repo 'tide.txt'), "tide only`n")
+    [IO.File]::WriteAllText((Join-Path $repo 'c.txt'), "sea`ntide edit`n"); [IO.File]::WriteAllText((Join-Path $repo 'tide.txt'), "tide only`n"); [IO.File]::WriteAllText((Join-Path $repo 'd.txt'), "d1`nd2`nd3`nLIVE-VALUE on tide main`n")
     G add -A; G commit -q -m 'tide-only commit'; G push -q origin tmain:main
     $tideMain = Ref $tide 'refs/heads/main'
     G checkout -q pmain
@@ -152,6 +152,16 @@ try {
     Check 'class: -Continue -Allow job-words -> opened, the body says it was allowed' ($r.code -eq 0 -and $p7 -and $p7.body -match 'allowed by a person: job-words in j\.txt')
     $r = Port 2 @('-Continue', '-Allow', 'LIVE:*')
     Check 'class: -Allow never lets a live hit through' ($r.code -eq 1 -and $r.out -match 'LIVE:test in leak\.txt' -and -not (Ref $tide 'refs/heads/port/feat-live'))
+
+    # ---- 8b. a live hit already on tide main in a changed file: not this port's to add, so named loudly, not refused; one more is
+    $null = PrivBranch 'feat-base' @{ 'd.txt' = "d1 changed`nd2`nd3`nd4`n" }; AddPrivPr 11 'feat-base' 'Base hit' ''
+    $r = Port 11
+    $p11 = Prs $tideSlug | Where-Object headRefName -eq 'port/feat-base'
+    Check 'base hit: a live hit already on tide main -> ported (0) with a WARNING naming it; the PR body says so' ($r.code -eq 0 -and $r.out -match 'WARNING: live hits already on tide main.*LIVE:test in d\.txt \(1\)' -and $p11.body -match 'already on tide main before this port, not added by it' -and $r.out -notmatch 'LIVE-VALUE')
+    Check 'base hit: the port kept tide main''s line and added its own change' ((Show $tide "$(Ref $tide 'refs/heads/port/feat-base'):d.txt") -eq "d1 changed`nd2`nd3`nLIVE-VALUE on tide main")
+    $null = PrivBranch 'feat-base2' @{ 'd.txt' = "d1`nLIVE-VALUE again`nd3`nd4`n" }; AddPrivPr 12 'feat-base2' 'Base hit plus one' ''
+    $r = Port 12
+    Check 'base hit: a port that adds one more live hit to that file -> refused (+1 new)' ($r.code -eq 1 -and $r.out -match 'LIVE:test in d\.txt \(\+1 new\)' -and -not (Ref $tide 'refs/heads/port/feat-base2'))
 
     # ---- 9. nothing to port, a closed PR, a failed scan, a missing cleaning script
     $null = PrivBranch 'feat-none' @{} -Empty; AddPrivPr 8 'feat-none' 'None' ''

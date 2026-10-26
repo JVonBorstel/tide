@@ -8,7 +8,7 @@
 #   3. Diff cleaned(M) -> cleaned(B) and `git apply -3` that patch onto a new branch (default port/<B>) from tide main, in its own
 #      worktree (<WorktreeRoot>/port-<B>, slashes as dashes). A conflict stops here: the worktree is kept for a hand fix, then run again with -Continue.
 #   4. Privacy scan (public-tide-scan.ps1 -Json) of every changed file, the commit message and the PR text, against the same files on
-#      tide main. Any live hit (LIVE:*, owner-full-name, project-name) refuses; another class that is new in a changed file refuses
+#      tide main. Any live hit (LIVE:*, owner-full-name, project-name) the port adds refuses (one already on tide main in that file is named, not refused); another class that is new in a changed file refuses
 #      unless -Allow names it (a person read it). A live hit only in the private PR's title or description drops that text instead.
 #   5. Commit as the owner's name (-AuthorName, else git config user.name) and Jordan's noreply email (-AuthorEmail), naming the private PR and its head commit; push the branch (never forced); open the PR on
 #      tide (or reuse the open one) with a body that links the private PR; -Comment also links the tide PR on the private PR.
@@ -265,17 +265,20 @@ $(if ($Note) { "`n## Done by hand in the port`n`n$Note`n" })
     [IO.File]::WriteAllText((Join-Path $tt 'own-body.md'), (Own-Body '0 live hits.'), $utf8)
     [IO.File]::WriteAllText((Join-Path $tt 'commit.md'), $commitBody + "`n" + ($Trailer -join "`n"), $utf8)
     $newCount = Count-Hits (Scan $sNew); $oldCount = Count-Hits (Scan $sOld)
-    $bad = @(); $notes = @()
+    $bad = @(); $notes = @(); $onBase = @()
     foreach ($k in $newCount.Keys) {
         $cls, $file = $k -split '\|', 2
         if ($file -like '_port-text/*') { $bad += "$cls in this tool's own text ($file)"; continue }
-        if ($cls -match $liveRx) { $bad += "$cls in $file ($($newCount[$k]))"; continue }
         $extra = $newCount[$k] - [int]$oldCount[$k]
+        # a live hit the port adds always refuses (no -Allow); one already on tide main in that file (2026-10-26: the owner's name in
+        # kitchen/BUILDING.md's commit-identity rule) is not this port's to add or remove: it is named loudly, in the output and the PR
+        if ($cls -match $liveRx) { if ($extra -gt 0) { $bad += "$cls in $file (+$extra new)" } else { $onBase += "$cls in $file ($($newCount[$k]))" }; continue }
         if ($extra -le 0) { continue }
         if (@($Allow | Where-Object { $cls -like $_ }).Count) { $notes += "$cls in $file (+$extra, allowed)" } else { $bad += "$cls in $file (+$extra new)" }
     }
     if ($bad.Count) { Refuse "the privacy scan found: $($bad -join '; '). Nothing committed or pushed$(if (-not $committed) { "; the worktree $wt is kept" }). A non-live class a person checked can pass with -Allow <class>" }
-    $scanLine = "0 live hits in $($cur.Count) changed file(s)$(if ($notes.Count) { "; allowed by a person: $($notes -join '; ')" })$(if ($dropTitle) { '; the private title was left out (scan hit)' })$(if ($dropBody) { '; the private description was left out (scan hit)' })."
+    if ($onBase.Count) { Say "WARNING: live hits already on tide $Base, not added by this port (left as they are; the owner decides): $($onBase -join '; ')" }
+    $scanLine = "0 live hits added in $($cur.Count) changed file(s)$(if ($onBase.Count) { "; already on tide $Base before this port, not added by it (the owner decides): $($onBase -join '; ')" })$(if ($notes.Count) { "; allowed by a person: $($notes -join '; ')" })$(if ($dropTitle) { '; the private title was left out (scan hit)' })$(if ($dropBody) { '; the private description was left out (scan hit)' })."
     Say "scan: $scanLine"
 } finally { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
 
