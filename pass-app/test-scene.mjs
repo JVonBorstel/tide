@@ -1,7 +1,7 @@
 // Tests for the animated kitchen (pass-app/public/scene.js and sprites.js, pass-app/SCENE.md). Pure layout, markup and pixel data;
 // the canvas is a recording mock (no browser, no node canvas). Prints a JSON list of {name, pass}; tests/Test-PassApp.ps1 runs it.
 import fs from 'node:fs';
-import { layoutScene, sceneHtml, stationFor, cookOf, lookOf, skyAt, hashId, activityWord, ANIMATED, STATIONS, COOK_COLORS,
+import { layoutScene, sceneHtml, stationFor, cookOf, lookOf, skyAt, hashId, activityWord, STATIONS, COOK_COLORS,
   STAGE, pixelScale, stageNew, stageSync, stageTick, drawStage, makeKit, makeLoop, hitItems, hitHtml,
   stageCalm, frameStats } from './public/scene.js';
 import { stageOk, stageFps, stageWalking, frameKey } from './public/frame.js';
@@ -35,7 +35,7 @@ check('place: at most 6 chefs on the floor and 8 tickets on the rail', many.chef
 check('place: compact (Pass tab) keeps 4 chefs and no words', layoutScene({ jobs: many.chefs.map((c) => job(c.id)) }, [], { compact: true }).chefs.every((c) => !c.word) && layoutScene({ jobs: Array.from({ length: 10 }, (_, i) => job('J' + i)) }, [], { compact: true }).chefs.length === 4);
 const wait = layoutScene({ jobs: [job('J5', { status: 'waiting-approval' }), job('J6', { status: 'needs-human' }), job('J7', { status: 'waiting-approval' }), job('J8', { status: 'waiting-approval' })] });
 check('pass: a waiter at the pass for each order waiting for Jordan (3 at most), and the count', wait.waiters.length === 3 && wait.pass === 4 && wait.waiters.every((w) => w.x >= 320));
-check('nothing cooking: the sleepy chef is on his crate', wait.idle && /data-key="idle"/.test(sceneHtml({ jobs: [] }, [])));
+check('nothing cooking: the sleepy chef is on his crate; the still card says Nothing building.', wait.idle && /<p class="sc-idle" data-key="idle">Nothing building\.<\/p>/.test(sceneHtml({ jobs: [] }, [])));
 const now = Date.parse('2026-10-15T12:00:00Z');
 const ev = [{ type: 'job.done', job: 'J9', ts: '2026-10-15T11:59:00Z' }, { type: 'job.done', job: 'J10', ts: '2026-10-15T11:40:00Z' }];
 const run = layoutScene({ jobs: [] }, ev, {}, now);
@@ -69,18 +69,22 @@ check('words: a public order shows what the cook is doing', /Editing app\.js/.te
 check('words: order names never appear in the scene', !/secret plan/.test(sceneHtml({ jobs: [job('J13')] }, [])));
 check('escape: odd ids cannot break the markup', !/<script/.test(sceneHtml({ jobs: [job('J1"><script>')] }, [])));
 
-// the J74 bug: an animation on the same element as an actor's position snaps it to the corner
+// the still card (rename S7a): before sprites.js loads, or for good if it cannot, the scene is a card with the same links and no motion
 const full = sceneHtml({ jobs: [...Array.from({ length: 8 }, (_, i) => job('J' + (20 + i), { role: ['plan', 'do', 'check', 'do', 'plan', 'do', 'do', 'do'][i] })),
-  job('J30', { status: 'waiting-approval' }), job('J31', { status: 'waiting-approval' }), job('J32', { status: 'waiting-approval' })] }, ev);
-const tags = full.match(/<[a-z][^>]*>/g) || [];
-const animatedTags = tags.filter((t) => { const c = / class="([^"]*)"/.exec(t); return c && c[1].split(' ').some((k) => ANIMATED.includes(k)); });
-check('motion: no animated part also carries a position (transform) or is an actor', animatedTags.length > 0 && animatedTags.every((t) => !/ transform=|data-css="[^"]*transform|class="[^"]*\bactor\b/.test(t)));
-check('motion: every chef, waiter and ticket carries its place on its outer element', tags.filter((t) => /class="(actor|sc-ticket)\b/.test(t)).every((t) => /data-css="[^"]*transform:translate\(/.test(t)));
-check('motion: chefs, waiters and tickets are links to their order', /<a class="actor chef[^>]*href="#\/job\/J20"/.test(full) && /<a class="actor waiter[^>]*href="#\/job\/J30"/.test(full) && /<a class="sc-ticket[^>]*href="#\/job\/J20"/.test(full));
-// budget (SCENE.md): at most 60 animated elements and about 25 KB of markup, on a busy floor
-check(`budget: at most 60 animated elements (${animatedTags.length})`, animatedTags.length <= 60);
-check(`budget: about 25 KB of markup at most (${full.length} bytes)`, full.length <= 25600);
-
+  job('J30', { status: 'waiting-approval' }), job('J31', { status: 'waiting-approval' }), job('J32', { status: 'waiting-approval' }), job('J33', { status: 'needs-human' })] }, ev, {}, now);
+const links = full.match(/<a [^>]*>/g) || [];
+check('StillCardLinks: every crew member, work-order card, runner and handed-over work order is a link to its order, with its words', /<a class="sc-crew cook-claude" href="#\/job\/J20"[^>]*aria-label="WO-0020 planning, open it, crew claude"/.test(full)
+  && /<a class="sc-card" href="#\/job\/J20"/.test(full) && /<a class="sc-wait" href="#\/job\/J30"[^>]*aria-label="WO-0030 needs your sign-off, open it"/.test(full)
+  && /<a class="sc-done" href="#\/job\/J9"/.test(full) && links.length === 6 + 8 + 3 + 1 && links.every((t) => /href="#\/job\/[^"]+" data-key="[^"]+" aria-label="[^"]+"/.test(t)) && /<span class="sc-more">\+1<\/span>/.test(full));
+check('StillCardSite: the card speaks site words (Survey table, Workbench, Inspection desk; Job board, Sign-off window) and no kitchen words',
+  /Survey table/.test(full) && /Workbench/.test(full) && /Inspection desk/.test(full) && /Job board/.test(full) && /Sign-off window/.test(full)
+  && !/chef|cook\b|toque|stove|sink|pass\b|PASS|plate|ticket|rail|cloche|kitchen/i.test(full.replace(/cook-\w+|--cook:/g, '')));
+check('StillCardStill: no SVG, no animation, no transform and no style attribute in the card (0 animated parts)', !/<svg|animat|transform|style=|class="[^"]*\b(actor|bob|walking|flame|bell)\b/.test(full));
+const stillCss = (() => { const css = fs.readFileSync(new URL('./public/app.css', import.meta.url), 'utf8'), i = css.indexOf('/* ---- the scene before the pixel stage'); return i < 0 ? '' : css.slice(i, css.indexOf('/* ----', i + 10)); })();
+check('StillCardStill: its CSS (app.css) has no animation, transition or keyframes, and every link is 44 px to tap', stillCss.length > 100 && !/animation|transition|@keyframes/.test(stillCss) && /\.scene-stage a\{[^}]*min-height:44px/.test(stillCss));
+check(`budget: the still card is at most 25 KB of markup on a busy floor (${full.length} bytes)`, full.length <= 25600);
+const cardPriv = sceneHtml({ jobs: [priv, job('J12', { activity: [{ tool: 'Edit', target: 'pass-app/public/app.js' }] })] }, [], { compact: true });
+check('StillCardPrivate: a private work order gives its number only; the compact card (Board tab) shows no bubble words', !/diary|secret/.test(cardPriv) && !/<i>Editing/.test(cardPriv) && /WO-0011 a private work order, open it"/.test(cardPriv));
 // ---- the pixel stage (sprites.js + the canvas renderer in scene.js) ----
 // a recording canvas: it checks every write lands inside it on whole pixels, and counts draws
 const errors = [];
@@ -412,5 +416,5 @@ const stageBr = ['scene.js', 'sprites.js', 'world.js', 'frame.js', 'moments.js']
 // frame.js) +7,822; Chef 2.9.1 trims 332 of it (scene.js and world.js share esc/ticket, a shorter scene.js header): +7,490; wave 2
 // (moments.js, the moment sprites, the cook spread, the bubble placement) +5,486. Ceiling +13,000 (was +8,000 for wave 1 + W4
 // alone): about 2 KB over the two plan budgets together (1.5 from wave 1 + W4, 0.5 from wave 2); the PR says so
-check(`budget: the stage files (scene, sprites, world, frame, moments) are at most 34.6 KB brotli (${(stageBr / 1000).toFixed(1)} KB; 21.6 KB before wave 1; plan +6 KB wave 1, +5 KB wave 2; ceiling +13 KB)`, stageBr <= 21615 + 13000);
+check(`budget: the stage files (scene, sprites, world, frame, moments) are at most 34,615 bytes brotli (${stageBr}; 21.6 KB before wave 1; plan +6 KB wave 1, +5 KB wave 2; ceiling +13 KB)`, stageBr <= 21615 + 13000);
 console.log(JSON.stringify(out));
