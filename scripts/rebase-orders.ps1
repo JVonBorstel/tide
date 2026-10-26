@@ -55,6 +55,11 @@ function JobRepo($j) {
     ''
 }
 function JobRecipe($j) { if ([string]$j.recipe -match '^[\w-]{1,40}$') { [string]$j.recipe } elseif ([string]$j.name -match '^([\w-]+):') { $Matches[1] } else { '' } }
+# a worktree moves with git (it stays registered); a plain folder is renamed. '' = moved, else git's or the system's words
+function Move-Folder([string]$From, [string]$To) {
+    if (Test-Path -LiteralPath (Join-Path $From '.git')) { $o = "$(& git -C $Repo worktree move $From $To 2>&1)".Trim(); if ($LASTEXITCODE) { if ($o) { return $o } else { return "git exit $LASTEXITCODE" } }; return '' }
+    try { Move-Item -LiteralPath $From -Destination $To -ErrorAction Stop; '' } catch { $_.Exception.Message }
+}
 function Created($j) { $c = $j.created; if ($c -is [DateTime]) { return $c.ToUniversalTime() }; try { [DateTimeOffset]::Parse([string]$c).UtcDateTime } catch { $null } }
 
 # ---- the affected orders, derived from the jobs folder and git
@@ -126,8 +131,8 @@ foreach ($id in $Ids) {
         if (Test-Path -LiteralPath $wtTo) { Say "  3. FAILED: $wtTo already exists; stopped here (move the folder by hand, then run this again)"; Note $id 'move' $false "$wtTo exists"; $bad++; continue }
         $isGit = Test-Path -LiteralPath (Join-Path $wt '.git')
         if ($Apply) {
-            if ($isGit) { $o = & git -C $Repo worktree move $wt $wtTo 2>&1 } else { try { Move-Item -LiteralPath $wt -Destination $wtTo -ErrorAction Stop; $o = ''; $global:LASTEXITCODE = 0 } catch { $o = $_.Exception.Message; $global:LASTEXITCODE = 1 } }
-            if ($LASTEXITCODE) { Say "  3. FAILED to move ${wt}: $o. Stopped here; the label is made, the order is unchanged"; Note $id 'move' $false "$o"; $bad++; continue }
+            $o = Move-Folder $wt $wtTo
+            if ($o) { Say "  3. FAILED to move ${wt}: $o. Stopped here; the label is made, the order is unchanged"; Note $id 'move' $false $o; $bad++; continue }
             $moved = $true; Note $id 'move' $true $wtTo; Say "  3. moved $wt to $wtTo"
         } else { Say "  3. move $wt to $wtTo ($(if ($isGit) { 'git worktree move' } else { 'a folder rename' }))" }
     } else { Say '  3. no worktree folder: nothing to move' }
@@ -140,12 +145,9 @@ foreach ($id in $Ids) {
         if ($cc -or -not $c -or -not $c.ok -or [string]$c.job -notmatch '^J\d+$') {
             $err = if ($c -and $c.error) { [string]$c.error } else { $out.Trim() }
             Note $id 'cook' $false $err
-            $back = ''
-            if ($moved) {
-                if (Test-Path -LiteralPath (Join-Path $wtTo '.git')) { $o = & git -C $Repo worktree move $wtTo $wt 2>&1 } else { try { Move-Item -LiteralPath $wtTo -Destination $wt -ErrorAction Stop; $o = ''; $global:LASTEXITCODE = 0 } catch { $o = $_.Exception.Message; $global:LASTEXITCODE = 1 } }
-                $back = if ($LASTEXITCODE) { " The folder could NOT be moved back ($o): it is at $wtTo; move it to $wt before the Yard resumes." } else { ' The folder is moved back.' }
-                Note $id 'move-back' (-not $LASTEXITCODE) "$o"
-            }
+            $o = if ($moved) { Move-Folder $wtTo $wt } else { '' }
+            $back = if (-not $moved) { '' } elseif ($o) { " The folder could NOT be moved back ($o): it is at $wtTo; move it to $wt before the Yard resumes." } else { ' The folder is moved back.' }
+            if ($moved) { Note $id 'move-back' (-not $o) $o }
             Say "  4. FAILED to re-cook recipe $($a.recipe): $err. Stopped here; the old order is unchanged.$back"; $bad++; continue
         }
         $new = [string]$c.job; $made += $new; Note $id 'cook' $true $new; Say "  4. re-cooked recipe $($a.recipe) as $new (starts from $mainName when the Yard runs)"

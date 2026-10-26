@@ -14,7 +14,7 @@ function Tool([string[]]$more = @()) {
     $o = (& pwsh -NoProfile -File $tool -Repo $repo -KitchenScript $fakeK -CookScript $fakeC @more 2>&1 | Out-String)
     [pscustomobject]@{ code = $LASTEXITCODE; out = $o }
 }
-function Job([string]$id, [string]$status, [string]$created, [string]$r = $repo, [int]$cursor = 0) {
+function New-TestJob([string]$id, [string]$status, [string]$created, [string]$r = $repo, [int]$cursor = 0) {
     @{ id = $id; name = "improve: goal $id"; recipe = 'improve'; status = $status; cursor = $cursor; created = $created; history = @()
         vars = @{ goal = "goal of $id"; repo = $r }; steps = @(@{ script = 'C:\x\worktree.ps1'; args = @{ Repo = $r } }, @{ script = 'C:\x\tests.ps1'; args = @{} }) } |
         ConvertTo-Json -Depth 6 | Set-Content (Join-Path $kr "jobs\$id.json")
@@ -48,8 +48,8 @@ if ($env:FAKE_C_FAIL) { @{ ok = $false; error = 'no cook today' } | ConvertTo-Js
     G branch -m main old-main; G checkout -q --orphan main; G commit -q -m 'fresh history'
     G branch kitchen/J9   # an order already on the new history: not affected
     $past = '2000-01-01T00:00:00Z'; $future = [DateTime]::UtcNow.AddHours(1).ToString('o')
-    Job 'J1' 'pending' $past -cursor 1; Job 'J2' 'pending' $past; Job 'J3' 'pending' $future; Job 'J4' 'done' $past; Job 'J5' 'pending' $past $other
-    Job 'J6' 'quarantined' $past -cursor 1; Job 'J7' 'running' $past -cursor 1; Job 'J8' 'needs-human' $past -cursor 1; Job 'J9' 'pending' $past -cursor 1
+    New-TestJob 'J1' 'pending' $past -cursor 1; New-TestJob 'J2' 'pending' $past; New-TestJob 'J3' 'pending' $future; New-TestJob 'J4' 'done' $past; New-TestJob 'J5' 'pending' $past $other
+    New-TestJob 'J6' 'quarantined' $past -cursor 1; New-TestJob 'J7' 'running' $past -cursor 1; New-TestJob 'J8' 'needs-human' $past -cursor 1; New-TestJob 'J9' 'pending' $past -cursor 1
     $orig1 = Get-Content (Join-Path $kr 'jobs\J1.json') -Raw
 
     # 1. no -Ids: lists the affected orders only, changes nothing
