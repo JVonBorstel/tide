@@ -2,7 +2,8 @@
 # State lives in FAKE_GH_DIR: repos.txt (repos that exist, one owner/name per line), prs.json (the pull requests), checks.json
 # ({ "<head sha>": [statusCheckRollup items] }), mergeable.txt (overrides MERGEABLE), offline.txt (every call fails like a dropped
 # network), signedout.txt (every call fails as gh does when signed out), calls.log (every call, one per line). FAKE_GH_BARE is the bare repo that stands in for GitHub's git side.
-# Speaks only what the kitchen uses: repo view, pr list / create / edit / view / merge.
+# Speaks only what the kitchen uses: repo view, pr list / create / edit / view / merge / comment. A PR record with a "bare" field reads its
+# head from that bare repo instead (tests/Test-PortPrivate.ps1: the private repo and tide are two bare repos).
 $ErrorActionPreference = 'Stop'
 $dir = $env:FAKE_GH_DIR; $bare = $env:FAKE_GH_BARE
 Add-Content -LiteralPath (Join-Path $dir 'calls.log') -Value ($args -join ' ')
@@ -19,13 +20,13 @@ $prsPath = Join-Path $dir 'prs.json'
 $db = if (Test-Path -LiteralPath $prsPath) { Get-Content -LiteralPath $prsPath -Raw | ConvertFrom-Json -AsHashtable } else { @{ next = 1; prs = @() } }
 function Save { $db | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $prsPath -Encoding utf8 }
 function Fail([string]$m) { [Console]::Error.WriteLine($m); exit 1 }
-function Head([string]$branch) { "$(& git -C $bare rev-parse --verify --quiet "refs/heads/$branch" 2>$null)".Trim() }
+function Head([string]$branch, [string]$in = $bare) { "$(& git -C $in rev-parse --verify --quiet "refs/heads/$branch" 2>$null)".Trim() }
 function Pick([hashtable]$o, [string]$fields) { $r = [ordered]@{}; foreach ($f in ($fields -split ',')) { $r[$f] = $o[$f] }; $r }
 function View([hashtable]$p) {
-    $h = if ($p.state -eq 'OPEN') { Head $p.headRefName } else { [string]$p.headRefOid }
+    $h = if ($p.state -eq 'OPEN') { Head $p.headRefName $(if ($p.bare) { $p.bare } else { $bare }) } else { [string]$p.headRefOid }
     $checks = @{}; $cp = Join-Path $dir 'checks.json'; if (Test-Path -LiteralPath $cp) { $checks = Get-Content -LiteralPath $cp -Raw | ConvertFrom-Json -AsHashtable }
     $mg = if (Test-Path -LiteralPath (Join-Path $dir 'mergeable.txt')) { (Get-Content -LiteralPath (Join-Path $dir 'mergeable.txt') -Raw).Trim() } else { 'MERGEABLE' }
-    @{ number = $p.number; url = $p.url; state = $p.state; headRefName = $p.headRefName; headRefOid = $h; mergedAt = $p.mergedAt; mergedBy = $(if ($p.mergedBy) { @{ login = $p.mergedBy } } else { $null })
+    @{ number = $p.number; url = $p.url; state = $p.state; headRefName = $p.headRefName; headRefOid = $h; title = $p.title; body = $p.body; baseRefName = 'main'; mergedAt = $p.mergedAt; mergedBy = $(if ($p.mergedBy) { @{ login = $p.mergedBy } } else { $null })
         statusCheckRollup = @($(if ($checks[$h]) { $checks[$h] } else { @() })); mergeable = $mg; mergeCommit = $(if ($p.mergeCommit) { @{ oid = $p.mergeCommit } } else { $null }) }
 }
 function Find([string]$n) { $p = @($db.prs | Where-Object { [string]$_.number -eq $n -and $_.repo -eq $repo }); if (-not $p.Count) { Fail "GraphQL: Could not resolve to a PullRequest with the number of $n." }; $p[0] }
@@ -49,6 +50,7 @@ switch ($cmd) {
         Save; "https://github.com/$repo/pull/$n"; exit 0
     }
     'pr edit' { $p = Find $pos[2]; $p.body = (Get-Content -LiteralPath $opt['--body-file'] -Raw); Save; "https://github.com/$repo/pull/$($p.number)"; exit 0 }
+    'pr comment' { $p = Find $pos[2]; $p.comments = @($p.comments | Where-Object { $_ }) + @($opt['--body']); Save; "https://github.com/$repo/pull/$($p.number)#issuecomment-1"; exit 0 }
     'pr view' { $p = Find $pos[2]; Pick (View $p) $opt['--json'] | ConvertTo-Json -Depth 8 -Compress; exit 0 }
     'pr merge' {
         $p = Find $pos[2]
