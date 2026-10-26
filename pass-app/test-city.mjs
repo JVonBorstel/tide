@@ -326,5 +326,23 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   function BEACONK(k) { return ARTS.BEACON[k]; }
 }
 
+// ---- G5: navigation (public/city-nav.js): routes, Back, breadcrumb, gestures, camera ----
+{
+  const N = await import('./public/city-nav.js');
+  check('Nav_Routes: #/pass is the City, #/city/<key> one building, #/city/<key>/f/<pr> a floor; junk is the City', JSON.stringify([N.routeOf('#/pass'), N.routeOf('#/city/td'), N.routeOf('#/city/td/f/121'), N.routeOf('#/city/../x'), N.routeOf('#/city/TD')]) === JSON.stringify([{ level: 0, key: null, pr: null }, { level: 1, key: 'td', pr: null }, { level: 2, key: 'td', pr: 121 }, { level: 0, key: null, pr: null }, { level: 0, key: null, pr: null }]));
+  check('Nav_BackZoomsOut: Back from a floor is its building, from a building the City; a route and its hash go both ways', N.hashOf(N.upOf(N.routeOf('#/city/td/f/9'))) === '#/city/td' && N.hashOf(N.upOf(N.routeOf('#/city/td'))) === '#/pass' && ['#/pass', '#/city/td', '#/city/td/f/9'].every((h) => N.hashOf(N.routeOf(h)) === h));
+  check('Nav_SwipeNeighbour: a sideways swipe on a building goes to the next one and wraps around', N.neighbourOf(['a', 'b', 'c'], 'c', 1) === 'a' && N.neighbourOf(['a', 'b', 'c'], 'a', -1) === 'c' && N.neighbourOf(['a'], 'x', 1) === null);
+  const r0 = N.routeOf('#/pass'), r1 = N.routeOf('#/city/b'), keys = ['a', 'b', 'c'];
+  check('Nav_Gestures: tap a building = in one level (never the gate); pinch out = in on the building under the fingers; pinch in = out one level; swipe left = the next building',
+    N.gestureTo({ gesture: 'tap' }, r0, 'b', keys)?.key === 'b' && N.gestureTo({ gesture: 'tap' }, r0, 'gate', keys) === null && N.gestureTo({ gesture: 'pinch-out' }, r0, 'c', keys)?.key === 'c'
+    && N.gestureTo({ gesture: 'pinch-in' }, r1, 'b', keys)?.level === 0 && N.gestureTo({ gesture: 'swipe', dx: -80 }, r1, null, keys)?.key === 'c' && N.gestureTo({ gesture: 'swipe', dx: 80 }, r0, null, keys) === null);
+  const esc2 = (v) => String(v).replace(/</g, '&lt;');
+  const cr = N.crumbsHtml(N.routeOf('#/city/td/f/121'), (k) => (k === 'td' ? 'Tide' : k), esc2);
+  check('Nav_Breadcrumb: City › Tide › PR #121, every crumb but the last a link; none on the City itself', cr.includes('<a href="#/pass">City</a>') && cr.includes('<a href="#/city/td">Tide</a>') && cr.includes('<span aria-current="page">PR #121</span>') && N.crumbsHtml(r0, (k) => k, esc2) === '' && !N.crumbsHtml(N.routeOf('#/city/x'), () => '<b>', esc2).includes('<b>'));
+  let cut = 0; N.cameraMove({ animate: () => { throw new Error('animated under reduced motion'); } }, 0.5, true, true, () => cut++);
+  let anim = null; N.cameraMove({ animate: (k, o) => (anim = { k, o, onfinish: null }) }, 0.25, true, false, () => cut++); anim.onfinish(); let out = null; N.cameraMove({ animate: (k, o) => (out = o) }, 0.5, false, false, () => {});
+  check('Nav_Camera: zoom in 280 ms and out 220 ms toward the building, ease-out; an instant cut under reduced motion', cut === 2 && anim.o.duration === 280 && out.duration === 220 && anim.k[1].transformOrigin.startsWith('25%'));
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(JSON.stringify(out));

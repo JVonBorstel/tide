@@ -3,6 +3,7 @@
 import { cookOf, stationFor, skyAt, COOK_COLORS, makeLoop } from './scene.js';
 import { paletteFor, PALETTE } from './sprites.js';
 import { GL, PAINT, WORKER, TOOLS, PALLET, LOCK, FLAG, SKIP, RAMPS, BEACON, CI } from './city-art.js';
+import { routeOf, hashOf, upOf, crumbsHtml, gestureTo, attachGestures, cameraMove } from './city-nav.js';
 
 const MS = { min: 6e4, hour: 36e5, day: 864e5 };
 const t = (v) => { const n = Date.parse(v); return Number.isFinite(n) ? n : null; };
@@ -241,7 +242,8 @@ function yard(g, it, c, ph) {
   for (let i = 0; i < Math.min(5, y.queued); i++) S(PALLET, x + w + 1, G - 3 - i * 3);
   if (y.beacon) beacon(g, x + w - 5, top - 5, y.beacon, ph.blink); if (y.private) S(LOCK, x + 1, top - 6);
 }
-// the whole City into a fresh buffer; ph = { blink, step } (both still under reduced motion: the beacon steady and lit)
+// the whole City into a fresh buffer; ph = { blink, step, focus } (blink and step still under reduced motion: the beacon steady and lit;
+// focus: the building the route is on, marked at once so a tap feels instant)
 export function paintCity(c, W, hour, ph = { blink: 1, step: 0 }, pal = palettes(c.sky)) {
   const g = painter(W, ART.H, pal); sky(g, hour); const items = layoutCity(c, W); const boxes = {};
   let i = 0;
@@ -249,7 +251,10 @@ export function paintCity(c, W, hour, ph = { blink: 1, step: 0 }, pal = palettes
     if (it.kind === 'gate') gate(g, it, c, ph); else if (it.kind === 'yard') yard(g, it, c, ph);
     else if (it.kind === 'tower') boxes[it.key] = tower(g, it, it.l, i++, c, ph); else if (it.kind === 'lot') lot(g, it, it.l); else if (it.kind === 'office') office(g, it, it.l);
   }
-  street(g); return { g, items, boxes };
+  street(g);
+  const f = items.find((it) => it.key === ph.focus);
+  if (f) { for (let y = 8; y < ART.GROUND; y += 2) { g.P(f.slot[0], y, 't'); g.P(f.slot[1] - 1, y, 't'); } g.R(f.x + (f.w >> 1) - 3, ART.GROUND + 1, 7, 1, 't'); }
+  return { g, items, boxes };
 }
 // the horizon strip (40 CSS px on the other tabs): every building's height on one scale, a lit top for today's floors, a beacon, red
 // tape for a red main, PAUSED at the left; quiet (no beacon, no tape, no word) when nothing needs Jordan
@@ -287,7 +292,7 @@ export function legendRows(c) {
   return rows.filter((r) => r[1]).map((r) => r[0]);
 }
 export function mountCity(o) {
-  const M = { towers: null, v: null, busy: false, c: null, key: '', canvas: null, visible: true, failed: null };
+  const M = { towers: null, v: null, busy: false, c: null, key: '', canvas: null, visible: true, failed: null, r: routeOf(''), items: [], W: 1, depth: 0, moving: false };
   const ctx2d = (cv) => { const x = cv.getContext('2d'); x.imageSmoothingEnabled = false; return x; };
   function blit(cv, g, scale, dpr) {
     if (cv.width !== g.W * scale || cv.height !== g.H * scale) { cv.width = g.W * scale; cv.height = g.H * scale; cv.style.width = g.W * scale / dpr + 'px'; cv.style.height = g.H * scale / dpr + 'px'; }
@@ -299,18 +304,20 @@ export function mountCity(o) {
     o.api('/api/towers').then((r) => { if (r?.ok) { M.towers = r; M.failed = null; } else M.failed = r?.error || 'the City could not be read'; }).finally(() => { M.busy = false; M.key = ''; update(); });
   }
   function frame() {
-    const { s, ev, view, lastSeen } = o.get(); const now = Date.now(); const rm = reducedMotion();
+    if (M.moving) return;
+    const { s, ev, view, lastSeen } = o.get(); const now = Date.now(); const rm = reducedMotion(); const rt = M.r;
     const c = M.c = cityOf(M.towers, s, ev || [], now, { lastSeen }); const ph = { blink: rm ? 1 : Math.floor(now / 500) % 2, step: rm ? 0 : Math.floor(now / 260) % 2 };
     const dpr = globalThis.devicePixelRatio || 1; const home = view === 'pass';
-    const key = [home, M.v, M.towers?.at && M.c.k, JSON.stringify(c.lots), JSON.stringify(c.gate), JSON.stringify(c.yard), ph.blink, ph.step, Math.floor(now / 6e4), o.home.clientWidth, o.strip.clientWidth].join('|');
+    const key = [home, hashOf(rt), M.v, M.towers?.at && M.c.k, JSON.stringify(c.lots), JSON.stringify(c.gate), JSON.stringify(c.yard), ph.blink, ph.step, Math.floor(now / 6e4), o.home.clientWidth, o.strip.clientWidth].join('|');
     if (key === M.key) return; M.key = key;
     o.strip.hidden = home || !s; o.home.hidden = !home;
     if (home) {
       const box = o.home.clientWidth || 343; const dev = Math.max(200, Math.floor(box * dpr)); const scale = Math.max(1, Math.floor(dev / minWidth(c))); const W = Math.floor(dev / scale);
       const cv = o.home.querySelector('canvas') || o.home.insertBefore(Object.assign(document.createElement('canvas'), { className: 'city-canvas' }), o.home.firstChild); cv.setAttribute('aria-hidden', 'true');
-      blit(cv, paintCity(c, W, new Date(now).getHours() + new Date(now).getMinutes() / 60, ph).g, scale, dpr);
+      const p = paintCity(c, W, new Date(now).getHours() + new Date(now).getMinutes() / 60, { ...ph, focus: rt.key }); M.items = p.items; M.W = W; blit(cv, p.g, scale, dpr);
       const cap = c.loading ? (M.failed ? 'The City could not be read: ' + M.failed : 'Reading the City…') : M.failed ? `Showing the last read: ${M.failed}` : c.gate.github ? c.gate.github.text : '';
-      const html = `<ul class="city-names">${c.lots.map((l) => `<li data-kind="${l.kind}" aria-label="${esc(sentence(l))}"><b>${esc(l.name)}</b><span aria-hidden="true">${l.kind === 'tower' ? l.floors : l.kind === 'lot' ? 'lot' : 'office'}</span></li>`).join('')}</ul>`
+      const nameOf = (k) => c.lots.find((l) => l.key === k)?.name || (k === 'yard' ? 'Yard lot' : k); const on = c.lots.find((l) => l.key === rt.key);
+      const html = crumbsHtml(rt, nameOf, esc) + (on ? `<p class="city-cap">${esc(sentence(on))}</p>` : '') + `<ul class="city-names">${c.lots.map((l) => `<li data-kind="${l.kind}"><a href="#/city/${esc(l.key)}"${l.key === rt.key ? ' aria-current="page"' : ''} aria-label="${esc(sentence(l))}"><b>${esc(l.name)}</b><span aria-hidden="true">${l.kind === 'tower' ? l.floors : l.kind === 'lot' ? 'lot' : 'office'}</span></a></li>`).join('')}</ul>`
         + `<p class="city-cap"${cap ? '' : ' hidden'} role="status">${esc(cap)}</p>` + (!c.loading && !c.lots.length ? '<p class="city-cap">No projects yet: the City fills in as work merges.</p>' : '');
       if (o.names.innerHTML !== html) o.names.innerHTML = html;
     } else if (s && !c.loading) {
@@ -321,14 +328,27 @@ export function mountCity(o) {
   }
   const loop = makeLoop({ raf: (f) => requestAnimationFrame(f), fps: () => (M.c && (needsYou(M.c) || M.c.lots.some((l) => l.crews.length || l.cranes.some((x) => x.crew || x.beacon)) || M.c.yard.beacon) ? 10 : 1),
     ok: () => !document.hidden && !reducedMotion() && M.visible, frame });
+  // a new route: the camera moves toward the building (in) or away from it (out), then the new level is drawn crisp
+  function follow() {
+    const r = routeOf(location.hash); const was = M.r; if (hashOf(r) === hashOf(was)) return;
+    if (r.level !== was.level) M.depth = r.level > was.level ? M.depth + 1 : Math.max(0, M.depth - 1); M.r = r;
+    const it = M.items.find((x) => x.key === (r.key || was.key)); const cv = o.home.querySelector('canvas');
+    if (o.get().view !== 'pass' || !it || !cv || r.level === was.level) { M.key = ''; return; }
+    M.moving = true; cameraMove(cv, (it.x + it.w / 2) / M.W, r.level > was.level, reducedMotion(), () => { M.moving = false; M.key = ''; frame(); });
+  }
+  // one level up: Back where the City put the level above in the history, else that level in its place
+  const up = () => { const u = hashOf(upOf(M.r)); if (M.depth > 0) history.back(); else location.replace(u); };
   function update() {
-    const s = o.get().s; const v = s?.towersV ?? null; if (v && v !== M.v && !M.busy) { M.v = v; fetchTowers(); }
+    follow(); const s = o.get().s; const v = s?.towersV ?? null; if (v && v !== M.v && !M.busy) { M.v = v; fetchTowers(); }
     frame(); loop.start();
   }
   o.strip.addEventListener('click', () => o.go('#/pass'));
+  const hitAt = (x) => M.items.find((it) => x * M.W >= it.slot[0] && x * M.W < it.slot[1])?.key || null;
+  attachGestures(o.home, { at: hitAt, buzz: o.buzz, onLong: o.onLong, onGesture: (g) => { if (g.gesture === 'pinch-in' || (g.gesture === 'tap' && hitAt(g.at) === M.r.key)) { if (g.gesture === 'pinch-in' && M.r.level) up(); return; } const to = gestureTo(g, M.r, hitAt(g.at), M.c.lots.map((l) => l.key)); if (to && to.level === M.r.level) location.replace(hashOf(to)); else if (to) o.go(hashOf(to)); } });   // a sideways move replaces the route: Back still zooms out
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && M.r.level && o.get().view === 'pass' && !document.querySelector('dialog[open]')) up(); });
   o.cap?.addEventListener('click', () => o.legend(`<ul class="city-legend">${legendRows(M.c).map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`));
   if (typeof IntersectionObserver === 'function') new IntersectionObserver((es) => { M.visible = es.some((e) => e.isIntersecting); if (M.visible) loop.start(); }).observe(o.home);
   if (typeof ResizeObserver === 'function') new ResizeObserver(() => { M.key = ''; frame(); }).observe(o.home);
   setInterval(() => { if (reducedMotion()) { M.key = ''; frame(); } }, 60000);
-  return { update, model: () => M.c };
+  return { update, model: () => M.c, route: () => M.r };
 }
