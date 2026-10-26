@@ -11,7 +11,7 @@ The rest of this page also covers the scripts that keep the agents' notes (the "
 
 **Status.** This is personal infrastructure, shared as it is so others can read it and its tests can run on GitHub Actions. It is built for one machine: paths default to `%USERPROFILE%`, and private settings (push topic, pass key, job-search settings) live outside the repo, in `%LOCALAPPDATA%\brain-kitchen`. Nothing personal is in the repo. Issues are welcome. Pull requests from outside are read by hand, and CI on them waits for approval.
 
-**History.** This repo starts from a cleaned snapshot taken on 2026-10-24. The earlier history stays private.
+**History.** This repo starts from a cleaned snapshot taken on 2026-10-24. The earlier history stays private. Since 2026-10-26 this repo is Tide's home: its pull requests, CI and merges happen here. How work lands in a public repo (commit and merge identity, where personal settings live, how older private work is ported): "Building in public" in `kitchen/BUILDING.md`.
 
 **Licence.** MIT (see `LICENSE`). The bundled font, JetBrains Mono, is under the SIL Open Font License (`pass-app/public/OFL.txt`). To report a security problem, see `SECURITY.md`. Not affiliated with any company named in examples.
 
