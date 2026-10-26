@@ -378,7 +378,7 @@ function renderPass() {
   };
   const stuck = stuckAlarm(jobs);
   const blocks = [stuck && { k: 'stuck', h: stuck }, ...['needs', 'cooking', 'rail'].filter((k) => secs[k]).map((k) => ({ k, h: secShell(k, secs[k].title, secs[k].hot) })),
-    quiet && { k: 'quiet', h: `<div class="quiet"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#i-cloche"/></svg><p>Nothing on the stove.</p><button class="btn" data-quiet-order>New work order</button></div>` },
+    quiet && { k: 'quiet', h: `<div class="quiet"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#i-cloche"/></svg><p>Nothing building.</p><button class="btn" data-quiet-order>New work order</button></div>` },
     ...['aside', 'plated'].filter((k) => secs[k]).map((k) => ({ k, h: secShell(k, secs[k].title, secs[k].hot) }))].filter(Boolean);
   const board = $('board'); if (!board._keyed) board.innerHTML = '';   // from the skeleton or the offline card to the board
   syncList(board, blocks, { key: (b) => b.k, html: (b) => b.h });

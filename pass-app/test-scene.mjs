@@ -463,6 +463,19 @@ const card = one1('ticket'), onPaper = (x0, x1, rows) => rows.every((y) => card[
 check(`SiteRoom: the work-order card's digits and step bar land on paper and read (digits ${ratio(P.PALETTE.a, P.PALETTE.p).toFixed(1)}:1, bar ${ratio(P.PALETTE.r, P.PALETTE.p).toFixed(1)}:1)`,
   onPaper(2, 8, [3, 4, 5, 6, 7, 10]) && ratio(P.PALETTE.a, P.PALETTE.p) >= 4.5 && ratio(P.PALETTE.r, P.PALETTE.p) >= 3 && P.SPRITES.ticket.w === 11 && P.SPRITES.ticket.h === 13);
 check('SiteRoom: the job board and the sign-off window wear hazard tape (yellow and black)', /H/.test(one1('rail').join('')) && /H/.test(one1('pass').slice(0, 3).join('')));
+// the words around the scene (rename S7g): nothing a person reads or hears from the scene is a kitchen word any more
+const KITCHEN_WORDS = /\b(toques?|cloches?|chefs?|order up|kitchen|cooks?|cooking|stove|sink|plates?|tickets?|rail|waiters?|sous|pass|coin jar|chalkboard|cork board|recipes?|fuse box|heat lamps?|hatch|window sign|closed)\b/i;
+const busyL = layoutScene(busy, [{ type: 'job.done', job: 'J39', ts: new Date(T0 - 60000).toISOString() }], {}, T0), cardHtml = sceneHtml(busy, [{ type: 'job.done', job: 'J39', ts: new Date(T0 - 60000).toISOString() }], {}, T0);
+const heard = [...legendRows(layoutScene(fullState(), fullEvents(), {}, T0)).map((r) => r.text), busyL.summary, layoutScene(fullState(), fullEvents(), {}, T0).summary,
+  ...hitItems(busyL).map((it) => it.label || it.word || ''), ...[...cardHtml.matchAll(/aria-label="([^"]*)"|>([^<>]+)</g)].map((m) => m[1] || m[2]), ...P.SIGN_WORDS, P.BANNER_WORDS,
+  ...Object.values(STATIONS).map((s) => s.label)];
+const appSrc = fs.readFileSync(new URL('./public/app.js', import.meta.url), 'utf8'), pageSrc = fs.readFileSync(new URL('./public/index.html', import.meta.url), 'utf8');
+const said = heard.filter((w) => KITCHEN_WORDS.test(w));
+check(`SiteWords: no toque, cloche, chef, ORDER UP or other kitchen word in what the scene shows or says (${heard.length} strings${said.length ? '; found: ' + said.slice(0, 3).join(' | ') : ''}); the empty Board says "Nothing building."; the listen button says "work order"`,
+  said.length === 0 && heard.length > 40 && /<p>Nothing building\.<\/p>/.test(appSrc) && !/Nothing on the stove/.test(appSrc) && /aria-label="Listen to this work order"/.test(pageSrc) && !/Listen to this ticket/.test(pageSrc));
+const siteChrome = P.chromeSprites(mk);
+check('SiteChrome: loading, offline and empty are drawn as site art (32x32: 4, 2 and 2 frames) and the empty one holds no clipboard or cloche (a shovel and an empty pallet)',
+  siteChrome.load.width === 128 && siteChrome.off.width === 64 && siteChrome.empty.width === 64 && !/cloche/.test(fs.readFileSync(new URL('./public/sprites.js', import.meta.url), 'utf8').match(/one\('empty'[^\n]*/)[0]));
 const br = (f) => zlib.brotliCompressSync(fs.readFileSync(new URL('./public/' + f, import.meta.url))).length;
 const stageBr = ['scene.js', 'sprites.js', 'world.js', 'frame.js', 'moments.js'].reduce((n, f) => n + br(f), 0);
 // main before wave 1 (with the Live call art): 21,615 bytes. Plan: wave 1 +6 KB, wave 2 +5 KB. Measured 10-22: wave 1 + W4 (frame key,

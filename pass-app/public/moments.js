@@ -118,11 +118,11 @@ export function propRects(world, P) {
   return R;
 }
 const hits = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-// speech bubbles: over the chef's head, then higher, then sideways, then on the floor in front of the counter: the first spot that covers no WORLD prop and
+// speech bubbles: over the crew member's head, then higher, then sideways, then on the floor in front of the counter: the first spot that covers no WORLD prop and
 // no other bubble; k = CSS px per art px (the bubble is 9 px text: about 5.4 px a letter plus 12 px of padding, 14 px tall)
 export function placeSays(items, rects, k = 1.5, W = STAGE.w) {
   const taken = [...rects], lo = -((W - STAGE.w) >> 1), hi = STAGE.w - lo, out = [];
-  for (const it of [...items].sort((a, b) => !!b.show - !!a.show)) {   // a tapped chef's first; no free spot: no bubble
+  for (const it of [...items].sort((a, b) => !!b.show - !!a.show)) {   // a tapped crew member's first; no free spot: no bubble
     const w = (it.word.length * 5.4 + 12) / k, h = 14 / k, top = STAGE.aisle - 24;
     const spots = [];
     for (const r of [0, 1, 2]) for (const dx of [0, -10, 10, -20, 20]) spots.push([it.x + dx, top - h - r * (h + 1)]);
