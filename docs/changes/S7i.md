@@ -70,3 +70,40 @@ this slice. S7j adds the floor-only option, which moves them to the City gate an
 ## Seen in a browser
 A look-only harness (made-up work orders, never the live Board) at 375 and 411 px, light and dark, by day and at night (the time
 zone emulated), before and after. The shots are in the private notes and wait for Jordan's yes. Not seen on Jordan's phone yet.
+
+## Art fix: the critic's 7 MUST items (2026-10-26, audits/art-critique-S7-2026-10-26.md)
+Jordan's order: "change the art first then go". Five commits on this PR:
+1. **Nothing floats** (MUST #1): a hazard-striped gantry beam spans the top of the sky. The gate sign and the budget meter hang
+   by two chains each, and the power board hangs right under the beam. Positions are unchanged. The caged work light is drawn only
+   when its field (`breaker`) exists.
+2. **Words match the stations** (MUST #2): the Inspection desk says "inspecting" and the Test rig says "testing" (all lower case).
+   A bubble stands at most one bubble height over its crew's head, or on the floor in front of its station.
+3. **The Purpose Ledger is machine-checked** (MUST #3, new `pass-app/public/purpose.js`): one row per thing the stage draws, with
+   its sprites, its state fields, its endpoint, its events, what changes it, what shows when it is absent, and its door. Ground
+   (no field) is capped at 19 sprite names. The legend sheet is generated from it. Tests: PurposeNoUndeclared, PurposeBound,
+   MomentsBound, PurposeDoors, PurposeFlips (9 flips), PurposeLegend.
+4. **Every data mark is a door** (MUST #4): the cabin window and each sign-off light open their work order. The other data marks
+   (14 on a full floor) open the legend sheet scrolled to their line. A runner carrying a crate out links its work order.
+5. **Evidence** (MUST #5): shots of the hoist open (day, light 411, night), the warm, amber and red sign-off lights, and the
+   greyscale 1-second panel (quiet, busy, needs you, paused) at 25 % in light and dark. They are in the private notes,
+   `site-scene-shots/S7i-fix/`.
+   - To tell quiet from paused at 25 %: paused strings hazard tape across every station and dims the floor more (DIM 0.34 -> 0.48;
+     the sky keeps the hour).
+   - The night pool shows only on a night shift (crews at work after dark, the light on).
+6. **"Scene frame"** in Settings > About (MUST #6).
+7. **No lost taps** (MUST #7): the link layer is rewritten only when its markup changes, and a replaced stage disconnects its
+   observers.
+
+Bytes (information only now; Jordan approved a phone speed budget instead of byte caps):
+- Stage (5 files, LF) 32,988 -> 34,135.
+- `purpose.js` 3,156 (not counted in the stage sum).
+
+Files outside ART's own:
+- `pass-app/public/sw.js`: `/purpose.js` is added to the offline shell. Test-PassApp requires every script there.
+- `app.js`: two strings in the scene section.
+
+SHOULD items left for the next slice:
+- #8: the cabin still reads a little like a hatch, and the amber lamp is close to the glow.
+- #9: the runners stand far from the cabin.
+- #10: the stool.
+- #12: the card digits and the moustache.
