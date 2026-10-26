@@ -7,7 +7,19 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('mpr-' + [guid]::NewGuid().ToStrin
 $bin = Join-Path $root 'bin'; $kr = Join-Path $root 'kitchen'; $log = Join-Path $kr 'merges.jsonl'
 $script:pass = 0; $script:fail = 0
 function Check($n, $c) { if ($c) { $script:pass++ } else { $script:fail++; Write-Host "FAIL: $n" } }
-$A = 'a' * 40; $B = 'b' * 40
+# A real repo stands in for GitHub's git side (the merge commit is made locally and pushed, merge-pr.ps1 step 5): main at $M, the PR's
+# commits $A then $B; a pre-receive hook refuses every push while pushfail.txt exists (the base moved meanwhile).
+$src = Join-Path $root 'src'; $bare = Join-Path $root 'gh.git'
+New-Item -ItemType Directory -Force -Path $src | Out-Null
+function G { & git -C $src -c user.name=t -c user.email=t@example.invalid @args 2>&1 | Out-Null }
+& git init -q -b main $src 2>&1 | Out-Null
+Set-Content "$src\a.txt" 'base'; G add -A; G commit -q -m base; $M = "$(& git -C $src rev-parse HEAD)".Trim()
+G checkout -q -b feature; Set-Content "$src\b.txt" 'feature'; G add -A; G commit -q -m feature; $A = "$(& git -C $src rev-parse HEAD)".Trim()
+Set-Content "$src\c.txt" 'more'; G add -A; G commit -q -m more; $B = "$(& git -C $src rev-parse HEAD)".Trim()
+& git clone -q --bare $src $bare 2>&1 | Out-Null
+[IO.File]::WriteAllText((Join-Path $bare 'hooks\pre-receive'), "#!/bin/sh`nif [ -f `"`$FAKE_GH_DIR/pushfail.txt`" ]; then echo 'rejected: main moved' >&2; exit 1; fi`nexit 0`n")
+function MainNow { "$(& git -C $bare rev-parse refs/heads/main)".Trim() }
+function MergeCommit { "$(& git -C $bare log -1 --format='%P|%ae|%ce|%s|%b' refs/heads/main)" }
 $green = @(@{ name = 'checks'; status = 'completed'; conclusion = 'success' }, @{ name = 'lint'; status = 'completed'; conclusion = 'skipped' }, @{ name = 'notes'; status = 'completed'; conclusion = 'neutral' })
 $fake = @'
 // fake gh for Test-MergePr.ps1 (node: starts in a tenth of the time pwsh does). Plays GitHub from scenario.json; logs every call.
@@ -26,22 +38,23 @@ else if (a[0] === 'api') {
   else if (/\/contents\/kitchen\.repo\.json/.test(ep)) { if (!s.config) { out('{"message":"Not Found","status":"404"}'); err('gh: Not Found (HTTP 404)', 1); } else out(s.config); }
   else err('fake gh: unknown endpoint ' + ep, 3);
 } else if (a[0] === 'pr' && a[1] === 'merge') {
-  if (s.mergeFail) err(s.mergeFail, 1);
-  else if (a[a.indexOf('--match-head-commit') + 1] !== heads[heads.length - 1]) err('GraphQL: Head branch was modified. Review and try the merge again.', 1);
-  else fs.writeFileSync(f('merged.txt'), a.join(' '));
+  err('fake gh: merge-pr.ps1 must not ask GitHub to merge (GitHub would stamp the primary email)', 3);
 } else err('fake gh: unknown call ' + a.join(' '), 3);
 '@
 function Scenario([hashtable]$s) {
     $d = @{ state = 'open'; merged = $false; draft = $false; heads = @($A); checks = $green; config = $null }; foreach ($k in $s.Keys) { $d[$k] = $s[$k] }
     $d | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $bin 'scenario.json') -Encoding utf8
-    foreach ($f in 'pulls.count', 'merged.txt', 'calls.log') { Remove-Item (Join-Path $bin $f) -ErrorAction SilentlyContinue }
+    foreach ($f in 'pulls.count', 'pushfail.txt', 'calls.log') { Remove-Item (Join-Path $bin $f) -ErrorAction SilentlyContinue }
+    & git -C $bare update-ref refs/heads/main $M; & git -C $bare update-ref refs/pull/7/head @($d.heads)[-1]
+    if ($s.pushFail) { Set-Content (Join-Path $bin 'pushfail.txt') 'x' }
     Remove-Item $log -ErrorAction SilentlyContinue
 }
 function Run([hashtable]$more = @{}) {
     $o = & $script -Repo "JVonBorstel/demo" -Pr 7 @more *>&1 | Out-String   # in this process: exit inside the script returns here
-    [pscustomobject]@{ Out = $o; Code = $LASTEXITCODE; Merged = (Test-Path (Join-Path $bin 'merged.txt')); Log = @(if (Test-Path $log) { Get-Content $log | ForEach-Object { $_ | ConvertFrom-Json } }) }
+    [pscustomobject]@{ Out = $o; Code = $LASTEXITCODE; Merged = ((MainNow) -ne $M); Log = @(if (Test-Path $log) { Get-Content $log | ForEach-Object { $_ | ConvertFrom-Json } }) }
 }
-$old = @{ path = $env:PATH; k = $env:BRAIN_KITCHEN; gh = $env:KITCHEN_GH; d = $env:FAKE_GH_DIR; n = $env:KITCHEN_FREEZE_NOW }
+$old = @{ path = $env:PATH; k = $env:BRAIN_KITCHEN; gh = $env:KITCHEN_GH; d = $env:FAKE_GH_DIR; n = $env:KITCHEN_FREEZE_NOW; r = $env:KITCHEN_GITHUB_REMOTE }
+$env:KITCHEN_GITHUB_REMOTE = $bare
 try {
     New-Item -ItemType Directory -Force -Path $bin, $kr | Out-Null
     Set-Content (Join-Path $bin 'fake-gh.js') $fake -Encoding utf8
@@ -50,12 +63,13 @@ try {
     Check 'the fake gh is the one first on PATH' ((Get-Command gh).Source -eq (Join-Path $bin 'gh.cmd'))
 
     Scenario @{}; $r = Run @{ Why = 'CI green, Jordan asked for it' }
-    $call = if ($r.Merged) { Get-Content (Join-Path $bin 'merged.txt') -Raw } else { '' }
+    $call = if ($r.Merged) { MergeCommit } else { '' }
     Check 'all checks green: merges' ($r.Code -eq 0 -and $r.Merged -and $r.Out -match 'MERGED JVonBorstel/demo#7' -and $r.Out -match 'all 3 check')
-    Check 'all checks green: pinned to the head sha, labelled a Claude session merge' ($call -match "--match-head-commit $A" -and $call -match '--merge' -and $call -match '\(Claude session\)' -and $call -match 'Merged by a Claude session')
+    Check 'all checks green: one merge commit of main and exactly the checked head, labelled a Claude session merge' ($call -like "$M $A|*" -and $call -match '\(Claude session\)' -and $call -match 'Merged by a Claude session')
+    Check 'GitHub is never asked to merge (it would stamp the primary email)' ((Get-Content (Join-Path $bin 'calls.log') -Raw) -notmatch 'pr merge')
     Check 'all checks green: logs pr, repo, sha, actor claude-session, why, at' ($r.Log.Count -eq 1 -and $r.Log[0].pr -eq 7 -and $r.Log[0].repo -eq 'JVonBorstel/demo' -and $r.Log[0].sha -eq $A -and $r.Log[0].actor -eq 'claude-session' -and $r.Log[0].why -eq 'CI green, Jordan asked for it' -and $r.Log[0].at -and $r.Log[0].ok -eq $true)
 
-    Check "all checks green: the merge commit's author is the account's noreply address, never its primary email" ($call -match '--author-email 1001\+fake-owner@users\.noreply\.github\.com')
+    Check "all checks green: the merge commit's author and committer are the account's noreply address, never its primary email" ($call -like '*|1001+fake-owner@users.noreply.github.com|1001+fake-owner@users.noreply.github.com|*')
     Scenario @{ noUser = $true }; $r = Run
     Check 'gh cannot say who is signed in: refuses (author email unknown), nothing merged' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'REFUSED' -and $r.Out -match 'noreply')
 
@@ -73,10 +87,12 @@ try {
     Check 'more checks than one read sees refuses' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match '150 checks')
 
     Scenario @{ heads = @($A, $B) }; $r = Run
-    Check 'a head sha that moved refuses' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'moved from aaaaaaa to bbbbbbb')
+    Check 'a head sha that moved refuses' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match "moved from $($A.Substring(0, 7)) to $($B.Substring(0, 7))")
 
-    Scenario @{ mergeFail = 'GraphQL: Head branch was modified. Review and try the merge again.' }; $r = Run
-    Check 'a failed merge is logged with its error' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'FAILED' -and $r.Log.Count -eq 1 -and $r.Log[0].ok -eq $false -and $r.Log[0].error -match 'Head branch was modified' -and $r.Log[0].actor -eq 'claude-session')
+    Scenario @{ pushFail = $true }; $r = Run
+    Check 'a refused push (the base moved) is a failed merge, logged with its error; main untouched' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'FAILED' -and $r.Log.Count -eq 1 -and $r.Log[0].ok -eq $false -and $r.Log[0].error -match 'push to main was refused' -and $r.Log[0].actor -eq 'claude-session')
+    Scenario @{ heads = @($A) }; & git -C $bare update-ref refs/pull/7/head $B; $r = Run
+    Check 'GitHub says one head but the pull ref holds another: refuses to merge an unchecked commit' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match "no longer at $($A.Substring(0, 7))")
 
     Scenario @{}; $r = Run @{ DryRun = $true }
     Check '-DryRun never merges (prints the decision, logs nothing)' ($r.Code -eq 0 -and -not $r.Merged -and $r.Out -match 'DRY RUN.*would merge' -and $r.Log.Count -eq 0 -and -not ((Get-Content (Join-Path $bin 'calls.log') -Raw) -match 'pr merge'))
@@ -111,7 +127,7 @@ try {
     Scenario @{}; $r = Run @{ DryRun = $true }
     Check 'main red: -DryRun refuses too' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'site closed')
     Scenario @{}; $r = Run @{ FixesRed = $true; Why = 'fixes train.ps1 not found' }
-    $call = if ($r.Merged) { Get-Content (Join-Path $bin 'merged.txt') -Raw } else { '' }
+    $call = if ($r.Merged) { MergeCommit } else { '' }
     Check 'main red, -FixesRed: merges, says it is the fix' ($r.Code -eq 0 -and $r.Merged -and $r.Out -match 'MERGED JVonBorstel/demo#7 .*as the fix for a red main \(demo main is red' -and $r.Out -match 'fixesRed' -and $call -match 'as the fix for a red main')
     Check 'main red, -FixesRed: logged as the fix, with what main was and why' ($r.Log.Count -eq 1 -and $r.Log[0].ok -eq $true -and $r.Log[0].fixesRed -eq $true -and $r.Log[0].mainWas -eq 'red' -and $r.Log[0].mainStatus -match 'Failed: Test-VerifyCache, Test-PassApp' -and $r.Log[0].actor -eq 'claude-session' -and $r.Log[0].why -eq 'fixes train.ps1 not found')
     Status 'aaaaaaaaaaaa.json' 'Demo' 'red'; Scenario @{}; $r = Run
@@ -134,7 +150,7 @@ try {
     Check 'no main status recorded at all: open (verify never checked it), merges' ($r.Code -eq 0 -and $r.Merged)
 }
 finally {
-    $env:PATH = $old.path; $env:BRAIN_KITCHEN = $old.k; $env:KITCHEN_GH = $old.gh; $env:FAKE_GH_DIR = $old.d; $env:KITCHEN_FREEZE_NOW = $old.n
+    $env:PATH = $old.path; $env:BRAIN_KITCHEN = $old.k; $env:KITCHEN_GH = $old.gh; $env:FAKE_GH_DIR = $old.d; $env:KITCHEN_FREEZE_NOW = $old.n; $env:KITCHEN_GITHUB_REMOTE = $old.r
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
 Write-Output "MergePr tests: $script:pass passed, $script:fail failed"
