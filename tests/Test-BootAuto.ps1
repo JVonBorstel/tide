@@ -63,6 +63,16 @@ $sw = [Diagnostics.Stopwatch]::StartNew()
 $o4 = '{}' | pwsh -NoProfile -File $rb -BrainPath $brain -Repos $root -KitchenScript $hangK -KitchenTimeoutSeconds 2 -StandupDir (Join-Path $root 'none') 2>&1 | Out-String
 Check 'hung kitchen bounded' ($LASTEXITCODE -eq 0 -and $sw.Elapsed.TotalSeconds -lt 40)
 
+# no -Repos: the state-folder kitchen.json "bootRepos" is the repo list (this PC's layout stays out of the public code)
+$savedK = $env:BRAIN_KITCHEN; $sk = Join-Path $root 'state'; New-Item -ItemType Directory $sk | Out-Null; $env:BRAIN_KITCHEN = $sk
+$mine = Join-Path $root 'my-local-repo'; New-Item -ItemType Directory $mine | Out-Null
+try {
+    @{ bootRepos = @($mine) } | ConvertTo-Json | Set-Content (Join-Path $sk 'kitchen.json')
+    Remove-Item $boot -ErrorAction SilentlyContinue
+    $null = '{}' | pwsh -NoProfile -File $rb -BrainPath $brain -KitchenScript $fakeK -StandupDir (Join-Path $root 'none') 2>&1 | Out-String
+    Check 'refresh with no -Repos lists the bootRepos from the state-folder kitchen.json' ($LASTEXITCODE -eq 0 -and (Test-Path $boot) -and (Get-Content $boot -Raw) -match 'my-local-repo')
+} finally { $env:BRAIN_KITCHEN = $savedK }
+
 Remove-Item -Recurse -Force $root
 Write-Host "BootAuto tests: $pass passed, $fail failed"
 exit ([int]($fail -gt 0))

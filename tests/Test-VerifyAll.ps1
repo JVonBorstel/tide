@@ -56,6 +56,14 @@ Va (Join-Path $root 'bad.json'); Check 'bad config exit 2' ($ec -eq 2)
 Start-Sleep -Milliseconds 800
 Check 'no leftover hung pwsh' (@(Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" | Where-Object { $_.CommandLine -like "*$root*" }).Count -eq 0)
 
+# no -ConfigPath: a state-folder verify-all.json (this PC's repo list) wins over the repo copy, and says so
+$savedK = $env:BRAIN_KITCHEN; $sk = Join-Path $root 'state'; New-Item -ItemType Directory $sk | Out-Null; $env:BRAIN_KITCHEN = $sk
+try {
+    Copy-Item (Cfg 'state' @(@{ name = 'state-suites'; dir = $root; glob = 'tests\Test-Good.ps1'; timeoutSeconds = 60; maxMB = 1000 })) (Join-Path $sk 'verify-all.json')
+    $o = pwsh -NoProfile -File $va -NoKitchen 2>&1 | Out-String
+    Check 'state-folder verify-all.json wins over the repo copy, and is named' ($LASTEXITCODE -eq 0 -and $o -match 'PASS\s+state-suites' -and $o -match [regex]::Escape("suites: $(Join-Path $sk 'verify-all.json')"))
+} finally { $env:BRAIN_KITCHEN = $savedK }
+
 Remove-Item -Recurse -Force $root
 Write-Host "VerifyAll tests: $pass passed, $fail failed"
 exit ([int]($fail -gt 0))
