@@ -189,6 +189,8 @@ check('chrome: text on the pixel cards reads at 4.5:1 or better, light and dark'
 
 check('chrome: dark-mode tab icons are drawn, plain and lit', P.TAB_ICONS.every((k) => chrome['tab-' + k + '-dark'] && chrome['tab-' + k + '-on-dark']));
 check('chrome: dark-mode tab icon outlines read on the dark bar (3:1 or better; the light outline there was 1.0:1)', ratio(P.TAB_DARK.a, P.PALETTE.O) >= 3 && ratio(P.TAB_DARK.a, P.TAB_DARK.p) >= 3 && ratio(P.PALETTE.a, P.PALETTE.O) < 1.5);
+const tabArt = P.framesOf('icon');
+check('chrome: the tab icons (rename S6b) are 12x12 site things, one per tab, each different', tabArt.length === P.TAB_ICONS.length && tabArt.every((f) => f.length === 12 && f.every((r) => r.length === 12)) && new Set(tabArt.map((f) => f.join(''))).size === tabArt.length && P.TAB_ICONS.every((k) => chrome['tab-' + k].width === 12));
 
 // ---- the world (plans/chef-art-2.md wave 1: the world tells the truth) ----
 const T0 = Date.parse('2026-10-22T15:07:00'), iso = (ms) => new Date(ms).toISOString(), ago = (min) => iso(T0 - min * 60000);
