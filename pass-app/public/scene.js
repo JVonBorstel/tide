@@ -134,7 +134,7 @@ export const STAGE = { w: 192, h: 112, aisle: 76, front: 108, top: 70, doorX: 9,
 export const sx = (x) => Math.round(x * 0.48);          // the 400-wide room onto the 192-pixel stage
 const TICKET_DX = 5;                                    // work-order cards hang clear of the window
 const waiterX = (i) => 146 + i * 15;                    // runners at the sign-off window stand a body apart
-const STATION_ART = { board: 'counter', stove: 'stove', taste: 'counter', sink: 'sink', plate: 'counter' };   // code names: the Survey table, Workbench ...
+const STATION_ART = { board: 'counter', stove: 'stove', taste: 'counter', sink: 'sink', plate: 'pallet' };   // code names: the Survey table, Workbench ...
 const PROP = { board: 'board', stove: 'pot', taste: 'bowl', sink: null, plate: 'plates' };
 // the largest whole-number scale that fits (crisp: every art pixel is exactly `scale` device pixels), centred on a device pixel;
 // w is the room's width in art pixels at that scale (192 to 256): the site sits in the middle, wall and floor fill the sides
@@ -274,7 +274,7 @@ export function drawStage(ctx, st, kit) {
     for (let i = 0; i < 3; i++) d(kit.get('steam', room), at(4, 260, t, i * 300), cx('stove') - 7 + i * 4, STAGE.top - 12 - Math.floor((t / 90 + i * 5) % 8));   // dust
   }
   if (L.busy.taste) d(kit.get('sparkle', room), at(4, 260, t), cx('taste'), STAGE.top - 7);   // the inspection desk lamp glints
-  if (L.busy.sink) for (let i = 0; i < 3; i++) d(kit.get('bubble', room), 0, cx('sink') - 10 + ((i + Math.floor(t / 300)) % 4) * 3, STAGE.top + 10);   // the test rig's LEDs chase
+  if (L.busy.sink) for (let i = 0; i < 3; i++) d(kit.get('bubble', room), 0, cx('sink') - 10 + ((i + Math.floor(t / 300)) % 4) * 3, STAGE.top + 10);   // the test rig's green LEDs chase along its strip
   drawFx(st, kit, d, room);   // the moments (moments.js)
   for (const s of st.sparks) { const f = Math.floor((t - s.t) / 90); for (let i = 0; i < 3; i++) d(kit.get('sparkle', room), f + i, s.x - 8 + i * 8, s.y - (i % 2) * 6 - Math.floor(f / 2)); }
   for (const a of actors) if (a.kind !== 'chef') {
