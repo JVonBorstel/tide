@@ -214,7 +214,8 @@ export function makeKit(P, mk) {
 }
 const at = (n, ms, t, off = 0) => Math.floor((t + off) / ms) % n;
 const bobOf = (P, anim, f) => (P.BOB[anim] || [0])[f % (P.BOB[anim] || [0]).length];
-// the still site, drawn once per sky: walls, window, gate, shelf, job board, sign-off window (back), or the stations and their props (front);
+// the still site, drawn once per sky: the top floor open to the sky (S7i): sky and shores, the guard rail, the slab and its front edge,
+// the hoist cage, job board, site cabin, the night work-light pool (back); or the stations, their contact shadows and props (front);
 // (the newest bake per sky, dim and width is re-used while its world key holds)
 function layer(kit, which, room, W = STAGE.w, world = {}) {
   const sky = room.sky, pre = which + sky + (room.dim ? '-dim' : '') + W, wk = which === 'bg' ? worldKey(world) : String(world.sign?.state === 'closed');
@@ -224,17 +225,15 @@ function layer(kit, which, room, W = STAGE.w, world = {}) {
   const d = (name, x, y, f = 0, extra) => { const s = kit.get(name, extra ? { ...o, ...extra } : o); ctx.drawImage(s.img, f * s.w, 0, s.w, s.h, x + ox, y, s.w, s.h); };
   const tiles = (y0, y1, pick) => { for (let y = y0; y < y1; y += 16) for (let x = (ox % 16) - 16 - ox; x < W - ox; x += 16) d(pick(y, (((x / 16 + y / 16) % 2) + 2) % 2), x, y); };
   if (which === 'bg') {
-    tiles(0, 56, (y) => (y >= 32 ? 'subway' : 'wall')); tiles(56, STAGE.h, (y, odd) => (odd ? 'floor-b' : 'floor-a'));
-    d('window', 20, 3); d('door', 0, 26);
-    if (sky === 'night') { d('moon', 28, 7); ctx.fillStyle = P.PALETTE.I; for (const [x, y] of [[42, 9], [47, 15], [26, 17], [40, 19]]) ctx.fillRect(x + ox, y, 1, 1); }
+    tiles(0, 1, () => 'wall'); tiles(40, 41, () => 'subway'); tiles(56, STAGE.h, (y, odd) => (odd ? 'floor-b' : 'floor-a')); tiles(STAGE.h - 3, STAGE.h, () => 'edge');
+    d('door', 0, 26);
+    if (sky === 'night') { d('moon', 28, 7); ctx.fillStyle = P.PALETTE.I; for (const [x, y] of [[42, 9], [47, 15], [26, 17], [40, 19], [12, 6], [57, 24], [101, 23], [129, 27], [143, 21], [188, 33]]) ctx.fillRect(x + ox, y, 1, 1); if (!world.fuse?.tripped) d('pool', 150, 57); }
     else d('sun', sky === 'day' ? 43 : 26, sky === 'day' ? 7 : 9);
-    d('shelf', 62, 26); [0, 1, 2, 0, 2].forEach((f, i) => d('jar', [66, 73, 140, 147, 154][i], 19, f));
-    for (const x of [82, 98, 114]) d('pan', x, 30);
     d('rail', 60, 3); d('pass', 152, 14); d(world.fuse?.tripped ? 'lamp-off' : 'lamp', 168, 4);
     bakeWorld(world, d);
   } else {
     for (const [st, s] of Object.entries(STATIONS)) {
-      const cx = sx(s.x); d(STATION_ART[st], cx - 14, STAGE.top);
+      const cx = sx(s.x); d('shadow', cx - 14, STAGE.top + 18); d('shadow', cx, STAGE.top + 18); d(STATION_ART[st], cx - 14, STAGE.top);   // a contact shadow under each
       if (PROP[st]) d(PROP[st], cx - 8, STAGE.top - (st === 'stove' ? 6 : 5));
     }
     if (world.sign?.state === 'closed') for (const st of ['taste', 'plate']) d('chair-up', sx(STATIONS[st].x) - 5, STAGE.top - 8);   // PAUSED: barriers across two stations
@@ -248,6 +247,7 @@ export function drawStage(ctx, st, kit) {
   const d = (s, f, x, y) => { ctx.drawImage(s.img, (f % s.n) * s.w, 0, s.w, s.h, Math.round(x) + ox, Math.round(y), s.w, s.h); n++; };
   const pal = (a) => ({ skin: a.look?.skin, cook: COOK_COLORS[a.cook || 'hand'], hair: a.hair || 0, sky, dim });
   ctx.drawImage(layer(kit, 'bg', room, W, WD), 0, 0); n++;
+  if ([...st.actors.values()].some((a) => a.kind === 'chef' && a.path.length && a.x < STAGE.doorX + 15)) d(kit.get('hoist-open', room), 0, 0, 26);   // a crew is arriving: the hoist gate stands open
   const pf = passFx(st);   // a 1 px shake after Jordan's Approve; the bell bounces when a work order needs him
   if (L.pass) { d(kit.get('pass-glow', room), 0, 156 + pf.dx, 18); for (let i = 0; i < Math.min(3, L.pass); i++) d(kit.get('cloche', room), 0, 155 + pf.dx + i * 11, 33); d(kit.get('bell', room), t % 4000 < 640 ? at(2, 160, t) : 0, 183 + pf.dx, 35 + pf.bell); }
   for (const h of WD.heat || []) d(kit.get('heat', room), h.level, PLACE.heat[0] + h.i * 11, PLACE.heat[1]);
