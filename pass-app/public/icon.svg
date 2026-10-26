@@ -1,24 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <radialGradient id="bg" cx="50%" cy="38%" r="75%">
-      <stop offset="0" stop-color="#2a2420"/>
-      <stop offset="1" stop-color="#111110"/>
-    </radialGradient>
-    <linearGradient id="dome" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity=".10"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ff8a50"/>
-      <stop offset="1" stop-color="#e0611f"/>
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <ellipse cx="256" cy="352" rx="150" ry="12" fill="#000" opacity=".28"/>
-  <path d="M146 322 A110 110 0 0 1 366 322 Z" fill="url(#dome)"/>
-  <path d="M146 322 A110 110 0 0 1 366 322" fill="none" stroke="#eeece7" stroke-width="24" stroke-linecap="round"/>
-  <path d="M184 282 A78 78 0 0 1 226 232" fill="none" stroke="#ffffff" stroke-opacity=".38" stroke-width="10" stroke-linecap="round"/>
-  <rect x="249" y="196" width="14" height="20" rx="4" fill="#eeece7"/>
-  <circle cx="256" cy="192" r="17" fill="#eeece7"/>
-  <rect x="116" y="322" width="280" height="22" rx="11" fill="url(#plate)"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" shape-rendering="crispEdges">
+  <!-- The Board's app icon (rename S6b): a safety-yellow hard hat over hazard tape on blueprint paper. Pixel art, 32x32 at 16 px a pixel,
+       sprites.js palette only. Full bleed for "maskable"; everything in the art group sits inside the 80% safe circle. -->
+  <path fill="#23406e" d="M0 0h512v16h-512zM0 16h512v16h-512zM0 32h512v16h-512zM0 48h512v16h-512zM0 64h400v16h-400zM416 64h96v16h-96zM0 80h384v16h-384zM432 80h80v16h-80zM0 96h400v16h-400zM416 96h96v16h-96zM0 112h96v16h-96zM112 112h400v16h-400zM0 128h512v16h-512zM0 144h512v16h-512zM0 160h512v16h-512zM0 176h512v16h-512zM0 192h448v16h-448zM464 192h48v16h-48zM0 208h512v16h-512zM0 224h512v16h-512zM0 240h512v16h-512zM0 256h512v16h-512zM0 272h512v16h-512zM0 288h512v16h-512zM0 304h512v16h-512zM0 320h512v16h-512zM0 336h512v16h-512z"/>
+  <path fill="#ffd36b" d="M400 64h16v16h-16zM384 80h16v16h-16zM416 80h16v16h-16zM400 96h16v16h-16zM16 368h48v16h-48zM432 368h16v16h-16zM496 368h16v16h-16zM0 384h48v16h-48zM96 384h48v16h-48zM192 384h48v16h-48zM288 384h48v16h-48zM384 384h48v16h-48zM480 384h32v16h-32zM0 400h32v16h-32zM80 400h48v16h-48zM176 400h48v16h-48zM272 400h48v16h-48zM368 400h48v16h-48zM464 400h48v16h-48zM0 416h16v16h-16zM64 416h48v16h-48zM160 416h48v16h-48zM256 416h48v16h-48zM352 416h48v16h-48zM448 416h48v16h-48z"/>
+  <path fill="#ffffff" d="M400 80h16v16h-16z"/>
+  <path fill="#9fd3f0" d="M96 112h16v16h-16zM448 192h16v16h-16z"/>
+  <path fill="#2b1d1a" d="M0 352h512v16h-512zM0 368h16v16h-16zM64 368h48v16h-48zM448 368h48v16h-48zM48 384h48v16h-48zM144 384h48v16h-48zM240 384h48v16h-48zM336 384h48v16h-48zM432 384h48v16h-48zM32 400h48v16h-48zM128 400h48v16h-48zM224 400h48v16h-48zM320 400h48v16h-48zM416 400h48v16h-48zM16 416h48v16h-48zM112 416h48v16h-48zM208 416h48v16h-48zM304 416h48v16h-48zM400 416h48v16h-48zM496 416h16v16h-16zM0 432h512v16h-512z"/>
+  <path fill="#0d0a09" d="M112 368h320v16h-320z"/>
+  <path fill="#2b211d" d="M0 448h512v16h-512zM0 464h512v16h-512zM0 480h512v16h-512zM0 496h512v16h-512z"/>
+  <path fill="#4f86c6" fill-opacity=".35" d="M64 0h2v352h-2zM0 64h512v2h-512zM128 0h2v352h-2zM0 128h512v2h-512zM192 0h2v352h-2zM0 192h512v2h-512zM256 0h2v352h-2zM0 256h512v2h-512zM320 0h2v352h-2zM0 320h512v2h-512zM384 0h2v352h-2zM0 384h512v2h-512zM448 0h2v352h-2zM0 448h512v2h-512z"/>
+  <g id="art">
+  <path fill="#8a6512" d="M272 128h16v16h-16zM272 144h16v16h-16zM272 160h16v16h-16zM272 176h16v16h-16zM272 192h16v16h-16zM336 192h16v16h-16zM272 208h16v16h-16zM336 208h16v16h-16zM272 224h16v16h-16zM336 224h16v16h-16zM272 240h16v16h-16zM336 240h32v16h-32zM272 256h16v16h-16zM336 256h32v16h-32zM272 272h16v16h-16zM336 272h32v16h-32zM272 288h16v16h-16zM336 288h32v16h-32zM272 304h16v16h-16zM336 304h32v16h-32zM352 336h64v16h-64z"/>
+  <path fill="#d6a531" d="M224 112h16v16h-16zM224 128h16v16h-16zM288 128h16v16h-16zM224 144h16v16h-16zM288 144h32v16h-32zM224 160h16v16h-16zM288 160h48v16h-48zM224 176h16v16h-16zM288 176h48v16h-48zM224 192h16v16h-16zM288 192h48v16h-48zM224 208h16v16h-16zM288 208h48v16h-48zM224 224h16v16h-16zM288 224h48v16h-48zM224 240h16v16h-16zM288 240h48v16h-48zM224 256h16v16h-16zM288 256h48v16h-48zM224 272h16v16h-16zM288 272h48v16h-48zM224 288h16v16h-16zM288 288h48v16h-48zM224 304h16v16h-16zM288 304h48v16h-48zM368 320h48v16h-48zM96 336h256v16h-256z"/>
+  <path fill="#f2d27a" d="M240 112h32v16h-32zM192 128h16v16h-16zM240 128h32v16h-32zM176 144h32v16h-32zM240 144h32v16h-32zM160 160h48v16h-48zM240 160h32v16h-32zM192 176h16v16h-16zM240 176h32v16h-32zM144 192h16v16h-16zM176 192h32v16h-32zM240 192h32v16h-32zM144 208h64v16h-64zM240 208h32v16h-32zM144 224h64v16h-64zM240 224h32v16h-32zM240 240h32v16h-32zM240 256h32v16h-32zM240 272h32v16h-32zM240 288h32v16h-32zM240 304h32v16h-32zM96 320h48v16h-48z"/>
+  <path fill="#2b1d1a" d="M224 96h48v16h-48zM192 112h32v16h-32zM272 112h32v16h-32zM176 128h16v16h-16zM304 128h16v16h-16zM160 144h16v16h-16zM320 144h16v16h-16zM144 160h16v16h-16zM336 160h16v16h-16zM144 176h16v16h-16zM336 176h16v16h-16zM128 192h16v16h-16zM352 192h16v16h-16zM128 208h16v16h-16zM352 208h16v16h-16zM128 224h16v16h-16zM352 224h16v16h-16zM112 240h16v16h-16zM368 240h16v16h-16zM112 256h16v16h-16zM368 256h16v16h-16zM112 272h16v16h-16zM368 272h16v16h-16zM112 288h16v16h-16zM368 288h16v16h-16zM96 304h32v16h-32zM368 304h48v16h-48zM80 320h16v16h-16zM416 320h16v16h-16zM80 336h16v16h-16zM416 336h16v16h-16zM96 352h320v16h-320z"/>
+  <path fill="#ffd36b" d="M208 128h16v16h-16zM208 144h16v16h-16zM208 160h16v16h-16zM208 176h16v16h-16zM208 192h16v16h-16zM208 208h16v16h-16zM208 224h16v16h-16zM128 240h96v16h-96zM128 256h96v16h-96zM128 272h96v16h-96zM128 288h96v16h-96zM128 304h96v16h-96zM144 320h224v16h-224z"/>
+  <path fill="#ffffff" d="M160 176h16v16h-16z"/>
+  <path fill="#fffaf0" d="M176 176h16v16h-16zM160 192h16v16h-16z"/>
+  </g>
 </svg>

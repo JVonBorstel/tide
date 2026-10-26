@@ -6,6 +6,9 @@
 # Same triggers and settings as the tasks Jordan set up on 2026-10-13. The difference: pwsh is the UPDATE-PROOF app alias found by
 # scripts/stable-pwsh.ps1 (%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe, resolved when this runs), never the versioned Store folder
 # that the 7.6.6 -> 7.6.7 update deleted (every tick then failed 0x80070002 and the kitchen stopped for 2+ days).
+# HEADLESS: the tick and the chores run through wscript.exe //B //NoLogo scripts\run-hidden.vbs "<pwsh>" ... (scripts/headless-task-lib.ps1),
+# so no console ever flashes (pwsh -WindowStyle Hidden alone still flashed one every minute) and Last Run Result is still pwsh's own exit code.
+# The Board stays on wscript.exe: a GUI program with no console, and start-hidden.vbs starts the server hidden, so nothing flashes.
 #
 #   install-tasks.ps1 -WhatIf               prints what it would register and changes nothing (always run this first)
 #   install-tasks.ps1                       registers all three tasks as Jordan, running only while he is signed in (as today)
@@ -44,6 +47,7 @@ $ErrorActionPreference = 'Stop'
 $Repo = [IO.Path]::GetFullPath($Repo)
 $kitchenPs = Join-Path $Repo 'kitchen\kitchen.ps1'; $vbs = Join-Path $Repo 'pass-app\start-hidden.vbs'
 foreach ($f in $kitchenPs, $vbs) { if (-not (Test-Path -LiteralPath $f)) { Write-Output "ERROR: $f is missing; refusing"; exit 2 } }
+. (Join-Path $PSScriptRoot 'headless-task-lib.ps1')
 $sp = @{}; if ($PwshCandidates) { $sp.Candidates = $PwshCandidates }
 $pwsh = & (Join-Path $PSScriptRoot 'stable-pwsh.ps1') @sp 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $pwsh) { Write-Output 'ERROR: no update-proof pwsh.exe found (only a version-pinned Store path); nothing registered'; exit 1 }
@@ -82,15 +86,15 @@ foreach ($name in $Only) {
 $plans = foreach ($name in $Only) {
     $old = Get-Task $name
     if ($roleOf[$name] -eq 'supervisor') {
-        $argLine = "-NoProfile -NonInteractive -WindowStyle Hidden -File `"$kitchenPs`" tick -Quiet"
-        [pscustomobject]@{ Name = $name; Old = $old; Execute = $pwsh; Args = $argLine; Dir = (Split-Path $kitchenPs)
+        $h = Get-HeadlessAction $pwsh "-NoProfile -NonInteractive -WindowStyle Hidden -File `"$kitchenPs`" tick -Quiet"
+        [pscustomobject]@{ Name = $name; Old = $old; Execute = $h.Execute; Args = $h.Args; Dir = (Split-Path $kitchenPs)
             Desc = "Jordan's Kitchen: one supervisor tick per minute. Off: Unregister-ScheduledTask $name"
             Triggers = { @(New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1)) }   # no duration = forever
             TriggerText = 'every minute, forever'
             Settings = { New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5) } }
     } elseif ($roleOf[$name] -eq 'chores') {
-        $argLine = "-NoProfile -NonInteractive -WindowStyle Hidden -File `"$kitchenPs`" chores -Quiet"
-        [pscustomobject]@{ Name = $name; Old = $old; Execute = $pwsh; Args = $argLine; Dir = (Split-Path $kitchenPs)
+        $h = Get-HeadlessAction $pwsh "-NoProfile -NonInteractive -WindowStyle Hidden -File `"$kitchenPs`" chores -Quiet"
+        [pscustomobject]@{ Name = $name; Old = $old; Execute = $h.Execute; Args = $h.Args; Dir = (Split-Path $kitchenPs)
             Desc = "Jordan's Kitchen: the housekeeping (board, ledger, doctor, CI looks, ideas) every 2 minutes, off the supervisor's path. Off: Unregister-ScheduledTask $name"
             Triggers = { @(New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 2)) }
             TriggerText = 'every 2 minutes, forever'
@@ -107,14 +111,15 @@ $plans = foreach ($name in $Only) {
     }
 }
 $who = if ($RunBeforeSignIn) { "$me with a stored password (runs before sign-in)" } else { "$me, only while signed in (Interactive)" }
+# build every definition first (plain objects, nothing registered), so a bad trigger or setting fails here, even under -WhatIf;
+# the printed line is the built action itself, so it shows exactly what would be registered
 foreach ($p in $plans) {
+    $a = (New-ScheduledTask -Action (New-ScheduledTaskAction -Execute $p.Execute -Argument $p.Args -WorkingDirectory $p.Dir) -Trigger (& $p.Triggers) -Settings (& $p.Settings) -Description $p.Desc).Actions[0]
     $now = if ($p.Old) { "now: $($p.Old.Actions[0].Execute) [$($p.Old.State)]" } else { 'now: not registered' }
-    Write-Output "$($p.Name): $($p.Execute) $($p.Args)"
+    Write-Output "$($p.Name): $($a.Execute) $($a.Arguments)"
     Write-Output "    start in $($p.Dir); $($p.TriggerText); as $who; $now$(if ($p.Old -and $p.Old.State -eq 'Disabled') { '; stays Disabled' })"
 }
 if (Test-Path -LiteralPath (Join-Path $kroot 'LIVE')) { Write-Output 'NOTE: the LIVE file exists: a working supervisor turns the AI cooks, autopilot and standing orders on at the next minute' }
-# build every definition first (plain objects, nothing registered), so a bad trigger or setting fails here, even under -WhatIf
-foreach ($p in $plans) { $null = New-ScheduledTask -Action (New-ScheduledTaskAction -Execute $p.Execute -Argument $p.Args -WorkingDirectory $p.Dir) -Trigger (& $p.Triggers) -Settings (& $p.Settings) -Description $p.Desc }
 if ($WhatIf) { Write-Output 'WHATIF: nothing registered (run without -WhatIf to do it; that is Jordan''s call)'; exit 0 }
 
 $cred = $null
