@@ -26,7 +26,7 @@ export const PALETTE = {
 export const EMISSIVE = 'stIKXYZW';                                 // light sources keep their colour at night (no tint)
 export const SKIES = { dawn: ['#e0805f', '#f0a77f', '#ffe2b0'], day: ['#4f86c6', '#7fb3e0', '#bfe3fb'], dusk: ['#3d2e5c', '#a8506a', '#e2805a'], night: ['#0b1022', '#141c3a', '#1f2a48'] };
 const TINT = { dawn: ['#f0a070', 0.08], day: null, dusk: ['#5a2f5c', 0.16], night: ['#141a3a', 0.32] };
-const DIM = ['#0d0a14', 0.34];
+const DIM = ['#0d0a14', 0.48];   // paused: the floor dims clearly (the sky keeps the hour: it is EMISSIVE)
 export const HAIR = [['#2a1a14', '#4a3020'], ['#5a2a14', '#8a4a24'], ['#6e5a4e', '#a8927e'], ['#1a1a24', '#34344a']];
 // frames per animation, as declared (the tests hold every sprite to these)
 export const FRAMES = { still: 1, walk: 4, idle: 2, work: 4, flame: 3, steam: 4, sparkle: 4, bell: 2, sleep: 2, lantern: 2, glyph: 10, icon: 6,
@@ -229,6 +229,8 @@ add('bell', 7, 6, 'bell', (g, f) => { blit(g, f ? ['....a..', '..aaa..', '.atta.
 add('rail', 100, 3, 'still', (g) => { hazard(g, 0, 0, 100, 3); rect(g, 0, 0, 100, 1, 'a'); });
 // the chains the Yard-wide signs (gate sign, budget meter) hang by from the gantry beam (S7j moves those signs to the City gate)
 add('chain', 1, 12, 'still', (g) => { for (let y = 0; y < 12; y++) put(g, 0, y, y % 3 === 2 ? 'a' : 'h'); });
+// paused: hazard tape strung across every station at table height (the floor's echo of PAUSED; tiled 16 px)
+add('tape', 16, 2, 'still', (g) => hazard(g, 0, 0, 16, 2));
 add('ticket', 11, 13, 'still', (g) => { box(g, 0, 1, 11, 12, DARKWOOD); rect(g, 2, 3, 7, 9, 'p'); rect(g, 1, 2, 9, 1, 'd'); rect(g, 4, 0, 3, 2, 'g'); put(g, 5, 0, 'a'); });
 addFrames('digit', DIGITS, 'glyph');
 addFrames('sun', [SUN], 'still');
@@ -319,7 +321,8 @@ add('confetti', 2, 2, 'confetti', (g, f) => rect(g, 0, 0, 2, 2, 'Bty'[f]));
 add('banner', 51, 11, 'still', (g) => { box(g, 0, 0, 51, 11, ['q', 'r', 's']); say(g, BANNER_WORDS, 4, 3, 'p'); });   // a work order handed over (the status word)
 // the legend sheet's icon per row: [sprite, frame, crew colour (optional; the Dispatcher's white hard hat)]
 export const LEGEND_ICONS = { sign: ['sign', 1], clock: ['clock', 0], sous: ['chef-sit', 0, DISPATCHER],
-  fuse: ['fuse', 1], jar: ['coin-jar', 5], aside: ['plate-aside', 0], spike: ['tag', 0], heat: ['heat', 1], letters: ['letter', 0], specials: ['chalk', 0], recipes: ['recipes', 3], hats: ['hat', 0] };
+  fuse: ['fuse', 1], jar: ['coin-jar', 5], aside: ['plate-aside', 0], spike: ['tag', 0], heat: ['heat', 1], letters: ['letter', 0], specials: ['chalk', 0], recipes: ['recipes', 3], hats: ['hat', 0],
+  crew: ['chef-idle', 0, '#d97757'], hoist: ['hoist-open', 0], cards: ['ticket', 0], signoff: ['cloche', 0], handed: ['crate', 0], idle: ['chef-sleep', 0], pool: ['lamp', 0] };
 export const SPRITES = S;
 
 // ---- decoding: name -> frames (each an array of strings, one character per pixel) ----

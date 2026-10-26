@@ -81,10 +81,11 @@ const idNo = (id) => Number(String(id || '').replace(/\D/g, '')) || 0;
 export const worldWords = (W = {}) => [W.sign && 'the Yard ' + { closed: 'paused', lit: 'open, AI crews on', open: 'open, AI crews off' }[W.sign.state], W.clock?.frozen && 'the walkrounds stopped',
   W.fuse?.tripped && 'stop-work order', W.jar && `${money(W.jar.spent)} of ${money(W.jar.budget)} spent${W.jar.locked ? ', daily cap reached' : ''}`, W.aside?.ids.length && `${W.aside.ids.length} failed or stopped`].filter(Boolean).join(', ');
 // the legend sheet: one row per world prop in the room
-export const legendRows = (L) => WORLD.filter((r) => L?.world?.[r.prop]).map((r) => ({ key: r.prop, text: r.meaning(L.world[r.prop]) }));
+// the legend sheet's lines come from the Purpose Ledger (purpose.js): one per data row the stage shows now
+export { legendRows } from './purpose.js';
 export function legendHtml(rows) {
   if (!rows?.length) return '<p class="empty-line">The Yard has not sent its state yet.</p>';
-  return `<ul class="wl-list">${rows.map((r) => `<li><span class="wl-ico" aria-hidden="true" data-css="background-image:var(--px-lg-${esc(r.key)}, none)"></span><span>${esc(r.text)}</span></li>`).join('')}</ul>`;
+  return `<ul class="wl-list">${rows.map((r) => `<li id="wl-${esc(r.key)}"><span class="wl-ico" aria-hidden="true" data-css="background-image:var(--px-lg-${esc(r.key)}, none)"></span><span>${esc(r.text)}</span></li>`).join('')}</ul>`;
 }
 // the still props' levels as one key: the cached layers bake again only when one changes (not for the clock's ms or a lamp's minutes)
 export const worldKey = (W = {}) => JSON.stringify(W, (k, v) => (['at', 'tick', 'fresh', 'heat', 'smoke', 'ids', 'name', 'status', 'spent', 'budget'].includes(k) ? undefined : v));

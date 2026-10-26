@@ -6,6 +6,7 @@ import { layoutScene, sceneHtml, stationFor, cookOf, lookOf, skyAt, hashId, acti
   stageCalm, frameStats, stepWord, writeHits, dropStage } from './public/scene.js';
 import { stageOk, stageFps, stageWalking, frameKey } from './public/frame.js';
 import { WORLD, worldOf, worldWords, worldKey, legendRows, legendHtml, PLACE, HANG, bakeWorld } from './public/world.js';
+import { PURPOSE } from './public/purpose.js';
 import zlib from 'node:zlib';
 import * as P from './public/sprites.js';
 import { MOMENTS, FX, momentsFrom, fxNew, spawn, easeOutBack, easeInOutCubic, chefPose, passFx, approveFx, tapChef, fxBusy, spread, propRects } from './public/moments.js';
@@ -500,9 +501,10 @@ check('SiteCabin: the sign-off window is the site cabin: corrugated steel, a fra
   cabin.slice(4, 26).every((r) => /^a[gh]{2}/.test(r)) && !/[DEFIt]/.test(cabin.join('')) && /N/.test(cabin.slice(5, 24).join(''))
   && (glow.match(/[ts]/g) || []).length > glow.length * 0.8 && !drawnW({ jobs: [] }).includes('pass-glow:0') && drawnW(needsOne).includes('pass-glow:0'));
 const NIGHT = new Date(2026, 9, 22, 23, 0).getTime(), drawnAt = (s, now) => { rec.length = 0; rkit.layers.clear(); const st = stageNew(); stageSync(st, layoutScene(s, [], {}, now), {}); drawStage(rkit.mk(STAGE.w, STAGE.h).getContext(), st, rkit); return [...rec]; };
-check('SiteDepth: a contact shadow under each station (2 each), a darker strip along the slab\'s front edge, and at night a warm pool under the work light (none by day, none when the light is out)',
+check('SiteDepth: a contact shadow under each station (2 each), a darker strip along the slab\'s front edge, and a warm pool under the work light only on a night shift (crews at work after dark with the light on: none idle, by day, with the light out or without its field)',
   bare.filter((r) => r === 'shadow:0').length >= 10 && bare.filter((r) => r === 'edge:0').length >= 12 && /I/.test(one1('pool').join('')) && /I/.test(P.EMISSIVE)
-  && drawnAt({ jobs: [] }, NIGHT).includes('pool:0') && !drawnAt({ jobs: [] }, T0).includes('pool:0') && !drawnAt({ jobs: [], breaker: true }, NIGHT).includes('pool:0'));
+  && drawnAt({ jobs: [job('J1')], breaker: false }, NIGHT).includes('pool:0') && !drawnAt({ jobs: [], breaker: false }, NIGHT).includes('pool:0') && !drawnAt({ jobs: [job('J1')], breaker: false }, T0).includes('pool:0')
+  && !drawnAt({ jobs: [job('J1')], breaker: true }, NIGHT).includes('pool:0') && !drawnAt({ jobs: [job('J1')] }, NIGHT).includes('pool:0'));
 // the words around the scene (rename S7g): nothing a person reads or hears from the scene is a kitchen word any more
 const KITCHEN_WORDS = /\b(toques?|cloches?|chefs?|order up|kitchen|cooks?|cooking|stove|sink|plates?|tickets?|rail|waiters?|sous|pass|coin jar|chalkboard|cork board|recipes?|fuse box|heat lamps?|hatch|window sign|closed)\b/i;
 const busyL = layoutScene(busy, [{ type: 'job.done', job: 'J39', ts: new Date(T0 - 60000).toISOString() }], {}, T0), cardHtml = sceneHtml(busy, [{ type: 'job.done', job: 'J39', ts: new Date(T0 - 60000).toISOString() }], {}, T0);
@@ -538,6 +540,63 @@ const w1 = writeHits(fakeSc, sameHtml), w2 = writeHits(fakeSc, sameHtml), w3 = w
 let disc = 0; const obs = () => ({ disconnect: () => disc++ }), oldSc = { io: obs(), ro: obs() }; dropStage(oldSc); dropStage(oldSc); dropStage(null);
 check(`HitsStable: the same links twice write the layer once (${hitWrites} writes for 3 renders, 2 different); a dropped stage disconnects both observers once (${disc})`,
   w1 && !w2 && w3 && hitWrites === 2 && disc === 2 && oldSc.io === null && /dropStage\(sc\);\s*el\.innerHTML/.test(fs.readFileSync(new URL('./public/scene.js', import.meta.url), 'utf8')));
+// ---- the Purpose Ledger (purpose.js): nothing drawn without a row, every row bound to a real field and event, every data mark a door ----
+const rowsWith = (name) => PURPOSE.filter((r) => r.sprites.includes(name));
+const drawnNames = new Set(), noteDrawn = (list) => { for (const r of list) drawnNames.add(r.split(':')[0]); return list; };
+const NIGHTJ = new Date(2026, 9, 22, 23, 30).getTime(), DAWN = new Date(2026, 9, 22, 6, 30).getTime(), DUSK = new Date(2026, 9, 22, 19, 30).getTime();
+const ledgerStates = [{ jobs: [] }, busy, fullState(), { ...fullState(), paused: true }, { ...fullState(), stalled: true, lastTick: ago(14) }, { ...fullState(), breaker: true }, { ...busy, breaker: false }];
+for (const s of ledgerStates) for (const now of [T0, NIGHTJ, DAWN, DUSK]) noteDrawn(drawnAt(s, now));
+for (const s of ledgerStates) noteDrawn(drawnW(s, fullEvents()));
+noteDrawn(hoistOf('J61'));
+// every moment, played: a stage opened on a busy floor, then fresh events of every kind arrive, then frames over 2 s
+const mSt = stageNew(); stageSync(mSt, layoutScene({ ...busy, ...fullState(), jobs: busy.jobs }, [], {}, T0)); const fresh = (o) => ({ ...o, ts: iso(T0) });
+const mEv = [fresh({ type: 'step.done', job: 'J40', step: 3 }), fresh({ type: 'step.rework', job: 'J41', step: 3 }), fresh({ type: 'job.quarantined', job: 'J74' }), fresh({ type: 'approval.requested', job: 'J71', approval: 'A7' }), fresh({ type: 'job.done', job: 'J39' }), fresh({ type: 'step.crash', job: 'J42', step: 3 })];
+stageSync(mSt, layoutScene({ ...busy, jobs: [...busy.jobs, job('J71', { status: 'waiting-approval', approval: { id: 'A7' } }), job('J74', { status: 'quarantined' })] }, mEv, {}, T0));
+for (let i = 0; i < 40; i++) { stageTick(mSt, 60); rec.length = 0; drawStage(rkit.mk(STAGE.w, STAGE.h).getContext(), mSt, rkit); noteDrawn(rec); }
+const undeclared = [...drawnNames].filter((n) => !rowsWith(n).length), groundNames = PURPOSE.filter((r) => r.kind === 'ground').flatMap((r) => r.sprites);
+check(`PurposeNoUndeclared: every sprite the stage draws (${drawnNames.size} names over 7 states x 4 skies, the hoist and every moment) has a Purpose Ledger row${undeclared.length ? '; undeclared: ' + undeclared.join(', ') : ''}; ground (no field) is capped at 19 names (${groundNames.length})`,
+  undeclared.length === 0 && drawnNames.size > 60 && groundNames.length <= 19 && PURPOSE.every((r) => r.sprites.every((n) => P.SPRITES[n])));
+const serverSrc = fs.readFileSync(new URL('./server.mjs', import.meta.url), 'utf8'), kitchenDir = new URL('../kitchen/', import.meta.url);
+const kitchenSrc = fs.readdirSync(kitchenDir).filter((f) => f.endsWith('.ps1')).map((f) => fs.readFileSync(new URL(f, kitchenDir), 'utf8')).join('\n');
+const stepKinds = (kitchenSrc.match(/'\^step\\\.\(([a-z|]+)\)\$'/) || [, ''])[1].split('|').filter(Boolean);
+const emitted = (ev) => kitchenSrc.includes(`Emit '${ev}'`) || (ev.startsWith('step.') && stepKinds.includes(ev.slice(5)) && kitchenSrc.includes('Emit "step.$kind"'));
+const unbound = PURPOSE.filter((r) => r.kind === 'data').flatMap((r) => [...r.fields.filter((f) => !new RegExp(`\\b${f}\\b`).test(serverSrc)).map((f) => r.id + '.' + f),
+  ...(r.events || []).filter((e) => !emitted(e)).map((e) => r.id + ':' + e), ...(serverSrc.includes(`'${r.endpoint}'`) ? [] : [r.id + ' ' + r.endpoint])]);
+check(`PurposeBound: every data row names state fields the server sends (server.mjs), an endpoint it serves, and events the Yard emits (kitchen/*.ps1; step kinds ${stepKinds.join('/')})${unbound.length ? '; unbound: ' + unbound.join(', ') : ''}`,
+  unbound.length === 0 && stepKinds.length >= 7 && PURPOSE.filter((r) => r.kind === 'data').every((r) => r.changes && r.absent && r.tap && (r.fields.length || r.events?.length)));
+check(`MomentsBound: every moment plays for an event the Yard really emits (${Object.keys(MOMENTS).length} event types)`, Object.keys(MOMENTS).every(emitted));
+// doors: every data row on the stage has one (its work order's link, or a button to its legend line), and every door leads somewhere real
+const doorCases = [layoutScene(fullState(), fullEvents(), {}, T0), layoutScene({ ...busy, breaker: false }, [{ type: 'job.done', job: 'J39', ts: ago(1) }], {}, NIGHTJ), layoutScene({ jobs: [], due: 1 }, [], {}, T0)];
+const dead = [];
+for (const L of doorCases) {
+  const items = hitItems(L, 0, { P }), lines = legendRows(L).map((r) => r.key), ids = new Set([...L.src.jobs.map((j) => j.id), ...L.runners.map((r) => r.id)]);
+  for (const key of lines) {
+    const r = PURPOSE.find((x) => x.id === key), byLink = { crew: 'chef', cards: 'ticket', aside: 'aside', handed: 'waiter', signoff: 'waiter' }[key];
+    if (!items.some((it) => it.row === key || (byLink && it.kind === byLink))) dead.push(key);
+    if (!r) dead.push('no ledger row ' + key);
+  }
+  for (const it of items.filter((i) => i.kind !== 'say')) if (it.id ? !ids.has(it.id) : !lines.includes(it.row)) dead.push('door to nothing ' + it.key);
+}
+const markHtml = hitItems(doorCases[0], 0, { P }).filter((i) => i.kind === 'mark').map((i) => hitHtml(i)).join('');
+check(`PurposeDoors: every data mark on the stage is a door (${hitItems(doorCases[0], 0, { P }).filter((i) => i.kind === 'mark').length} marks on a full floor: legend buttons, the cabin and each sign-off light open their work order), and every door leads to a real work order or legend line${dead.length ? '; dead: ' + dead.join(', ') : ''}`,
+  dead.length === 0 && /<button class="px-a px-mark" type="button" data-legend="sign"/.test(markHtml) && /px-mark" href="#\/job\/J72"/.test(markHtml) && /id="wl-sign"/.test(legendHtml(legendRows(doorCases[0]))));
+// flips: the picture changes when (and because) the field does
+const has = (list, n) => list.includes(n), FLIPS = [
+  ['a crew arrives: the hoist gate opens', hoistOf(null), hoistOf('J61'), ['hoist-open:0']],
+  ['a sign-off waits: the cabin window glows, a runner brings the clipboard', drawnW({ jobs: [job('J1')] }), drawnW({ jobs: [job('J1'), job('J9', { status: 'waiting-approval', approval: { id: 'A9' } })] }, [{ type: 'approval.requested', job: 'J9', approval: 'A9', ts: ago(5) }]), ['pass-glow:0', 'cloche:0', 'heat:0']],
+  ['the wait passes 1 h: the sign-off light turns amber', drawnW(needsOne, [{ type: 'approval.requested', job: 'J80', approval: 'A80', ts: ago(5) }]), drawnW(needsOne, [{ type: 'approval.requested', job: 'J80', approval: 'A80', ts: ago(70) }]), ['heat:1']],
+  ['the wait passes 4 h: the sign-off light turns red', drawnW(needsOne, [{ type: 'approval.requested', job: 'J80', approval: 'A80', ts: ago(70) }]), drawnW(needsOne, [{ type: 'approval.requested', job: 'J80', approval: 'A80', ts: ago(250) }]), ['heat:2']],
+  ['paused: the gate sign says PAUSED and tape runs across the stations', drawnW(fullState()), drawnW({ ...fullState(), paused: true }), ['sign:2', 'tape:0', 'chair-up:0']],
+  ['a stop-work order: the power board sparks and the work light goes out', drawnW(fullState()), drawnW({ ...fullState(), breaker: true }), ['fuse:1', 'lamp-off:0']],
+  ['the spend rises: the budget meter fills', drawnW(fullState()), drawnW({ ...fullState(), spent: 15 }), ['coin-jar:6']],
+  ['the walkrounds stop: the clock freezes and the Dispatcher is gone', drawnW(fullState()), drawnW({ ...fullState(), stalled: true, lastTick: ago(14) }), []],
+  ['a work order fails: a crate on the bench, dust for 2 minutes', drawnW({ jobs: [job('J1')] }), drawnW({ jobs: [job('J1'), job('J5', { status: 'quarantined' })] }, [{ type: 'job.quarantined', job: 'J5', ts: ago(1) }]), ['plate-aside:0', 'smoke:0']],
+];
+const flat = FLIPS.filter(([, a, b, want]) => a.join() === b.join() || !want.every((n) => has(b, n) && !has(a, n)));
+check(`PurposeFlips: each field change changes the picture with the sprites it should (${FLIPS.length} flips: ${FLIPS.map((f) => f[0].split(':')[0]).join('; ')})${flat.length ? '; flat: ' + flat.map((f) => f[0]).join(' | ') : ''}`,
+  flat.length === 0 && drawnW(fullState()).some((r) => /^chef-s(it|ide):/.test(r)) && !drawnW({ ...fullState(), stalled: true, lastTick: ago(14) }).some((r) => /^chef-s(it|ide):/.test(r)));
+check('PurposeLegend: the legend sheet is the ledger (every line is a data row; every data row with a line has its icon; no kitchen words)',
+  doorCases.every((L) => legendRows(L).every((r) => PURPOSE.some((x) => x.id === r.key && x.kind === 'data') && P.LEGEND_ICONS[r.key] && /^[A-Z].*\.$/.test(r.text) && !KITCHEN_WORDS.test(r.text))));
 const siteChrome = P.chromeSprites(mk);
 check('SiteChrome: loading, offline and empty are drawn as site art (32x32: 4, 2 and 2 frames) and the empty one holds no clipboard or cloche (a shovel and an empty pallet)',
   siteChrome.load.width === 128 && siteChrome.off.width === 64 && siteChrome.empty.width === 64 && !/cloche/.test(fs.readFileSync(new URL('./public/sprites.js', import.meta.url), 'utf8').match(/one\('empty'[^\n]*/)[0]));
