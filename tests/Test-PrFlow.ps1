@@ -95,6 +95,17 @@ try {
     $r = Station 'pr' 'J1'
     Check 'pr: rework is pushed again to the same PR' ($r.code -eq 0 -and @(Prs).Count -eq 1 -and (BareRef 'refs/heads/kitchen/J1') -eq $tip1 -and (Get-Content (Join-Path $kr 'results\J1.pr.json') -Raw | ConvertFrom-Json).head -eq $tip1)
 
+    # ---- 2b. a branch that shares no history with main (built before main was replaced, as in the 2026-10-26 cut-over of brain-monitor to
+    # the public tide): never pushed, so the old history cannot reach the new home. Held (exit 10) in one plain line; no PR, no record.
+    JobFile 'J70'
+    $blob = ('old history' | & git -C $repo hash-object -w --stdin); $tree = ("100644 blob $blob`told.txt" | & git -C $repo mktree)
+    $orphan = (& git -C $repo -c user.name=t -c user.email=t@localhost commit-tree $tree -m 'built on the old history'); G update-ref refs/heads/kitchen/J70 $orphan
+    $prsBefore = @(Prs).Count
+    $r = Station 'pr' 'J70'
+    $lastLine = @($r.out -split "`r?`n" | Where-Object { $_.Trim() }) | Select-Object -Last 1
+    Check 'pr: unrelated history -> held (exit 10) with the plain hold as its last line' ($r.code -eq 10 -and $lastLine -match '^pr: HOLD: kitchen/J70 and main@\w{7} share no history' -and $lastLine -match '2026-10-26 cut-over' -and $lastLine -match 'Nothing pushed, no pull request opened')
+    Check 'pr: unrelated history -> nothing pushed, no PR, no record' (-not (BareRef 'refs/heads/kitchen/J70') -and @(Prs).Count -eq $prsBefore -and -not (Test-Path (Join-Path $kr 'results\J70.pr.json')))
+
     # ---- 3. ci-wait: pending -> 11, failed -> 1, green for the current head -> 0
     $r = Station 'ci-wait' 'J1'
     Check 'ci-wait: no checks yet (a workflow exists) -> wait (11)' ($r.code -eq 11 -and $r.out -match 'has not started' -and $r.wait -eq '120')
