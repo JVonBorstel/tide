@@ -44,21 +44,20 @@ Not in this Floor: per-Site `share` weights and `maxHeavy` (TD-7 registry), coun
   loaded; the start loop still checks the holds in turn.
 - Broke the code 3 ways, each caught: no fair share (8 checks fail), fairness above priority (3), running orders ignored (2).
 
-## Amended after review #11 (2026-10-26, F3): registry only, and fairness before priority as the design says
+## Amended after review #11 (2026-10-26, F3): registry only, priority first (the Owner's choice), heavy-step load
 
 - **Only with a Sites registry.** The review showed tide's own `kitchen.repo.json` `"site": "TD"` turned fair share on with no
   registry at all (pending J10, J11, J12 of a TD Tower and J13 with no Tower started J10 J13 J11 J12 instead of J10 J11 J12 J13).
   Now `Sort-ForStart` shares only when the start loop passes the registry's weights (`Get-KitchenSiteShares`, which gives every
   registered Site one). No registry = no weights = exactly the order from before TD-6, whatever a Tower's own `site` says.
-- **Fairness before priority.** Design section 2.3 puts fairness between "under way" and priority ("`urgent` still beats
-  everything inside its Site; across Sites fairness wins"). This note's first version put it after priority, with no recorded
-  decision. The code now follows the design: inside one band of equal "under way", the next place goes to the Site with the lowest
-  load / share; inside a Site, priority then oldest; a tie goes to the Site whose next order ranks first (priority, then oldest).
-  Under way still comes first. If the Owner prefers priority over fairness across Sites, that is a one-line change back
-  (the band key in `Sort-ForStart`) plus the `FairBeforePriority` tests.
+- **Priority first: Jordan's decision, 2026-10-26.** The design draft (section 2.3) put fairness between "under way" and
+  priority ("across Sites fairness wins"); this note's first version put it after priority, with no recorded decision. The review
+  asked; Jordan chose **priority first**: urgent work always goes next, whatever its Site, and Sites take turns (fair share) only
+  among orders of equal priority. That is the order above (under way, priority, then the fair share, then oldest), now a recorded
+  decision; the design doc says so too.
 - **Load = running heavy steps.** As the design says ("running heavy steps for the Site divided by `share`"): the start loop counts
   each Site's running heavy steps with the scaler's weights (light steps left out, as admission does) and passes them as
   `-HeavyLoad`. Without `-HeavyLoad` (tests, other callers) the load is still the Site's running orders.
 - Tests (`tests/Test-StartOrder.ps1`, 53 checks): `NoRegistry_J10_J13` and `NoRegistry_Mixed` (no registry = the old order),
-  `Registry_J10_J13`, `FairBeforePriority`, `PriorityInsideSite`, `PriorityOnTie`, `Load_*`; the TD-6/TD-7 checks now pass
-  registry weights.
+  `Registry_J10_J13`, `PriorityFirst_*` (an urgent GW order goes ahead of TD's waiting turn; equal-priority orders still
+  interleave), `PriorityInsideSite`, `Load_*`; the TD-6/TD-7 checks now pass registry weights.

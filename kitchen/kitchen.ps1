@@ -56,7 +56,7 @@ $runner = Join-Path $PSScriptRoot 'kitchen-step.ps1'
 $notify = Join-Path $PSScriptRoot 'notify.ps1'
 $pwsh = (Get-Process -Id $PID).Path
 $terminal = 'done', 'failed', 'quarantined', 'killed', 'closed'
-. (Join-Path $PSScriptRoot 'start-order.ps1')   # which pending order starts first (Sort-ForStart): under way, then priority, then oldest
+. (Join-Path $PSScriptRoot 'start-order.ps1')   # which pending order starts first (Sort-ForStart): under way, then priority, then a fair share between Sites (registry only), then oldest
 . (Join-Path $PSScriptRoot 'clash.ps1')   # the clash rule: an order naming a file a started order names waits (Hold-ForClash)
 . (Join-Path $PSScriptRoot 'jobs-lib.ps1')   # the job store's live set: jobs-index.json, the archive, the only listing of jobs\
 . (Join-Path $PSScriptRoot 'site-registry.ps1')   # the one Sites registry reader (kitchen.json "sites"): admission, Stop-work and pause per Site, status, doctor

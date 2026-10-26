@@ -91,8 +91,9 @@ The independent review (`SHIP AFTER FIXES`) found F1-F10. What changed, per find
   `ci-budget.json`) unless the Sites registry has at least one Site (`Test-CiCountOn`); an unreadable registry still writes its
   problem line, with no GitHub call. The Board's `ciBudget` is `null` with no registry, so no "CI this month" banner from an old
   file. Tests: KitchenSupervisor `CiCount_*`, PassApp `CiBudget_NoRegistry`.
-- **F3 (fair share on with no registry):** fair share needs the registry's weights; none = the old order exactly. Fairness now sits
-  before priority and counts running heavy steps, as design section 2.3 says (details in `TD-6.md`). Tests: StartOrder
+- **F3 (fair share on with no registry):** fair share needs the registry's weights; none = the old order exactly. Priority comes first
+  (Jordan's decision, 2026-10-26: urgent work always goes next; Sites take turns only among orders of equal priority), and the load
+  is each Site's running heavy steps, as design section 2.3 says (details in `TD-6.md`). Tests: StartOrder
   `NoRegistry_J10_J13` and others.
 - **F4 (Unassigned Stop-work order invisible):** with a registry, an open `?` Stop-work order comes through `siteStops` as code
   `?` and shows a banner (no tap). Tests: PassApp `SiteStop_Unassigned_*`.

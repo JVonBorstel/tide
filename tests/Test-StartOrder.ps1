@@ -54,11 +54,11 @@ Check 'two Sites share the starts equally; each Site keeps oldest first' ((& $fi
 Check 'orders with no Site are one group, sharing equally with each Site' ((& $fids @((JS 'J1' $null), (JS 'J2' $null), (JS 'J3' 'GW'), (JS 'J4' 'GW'), (JS 'J5' 'TD'))) -eq 'J1 J3 J5 J2 J4')
 Check 'a Site with nothing running starts next, ahead of an older Site that has 2 running' ((& $fids @((JS 'J1' 'TD'), (JS 'J20' 'TD' 1 $null 'running'), (JS 'J21' 'TD' 1 $null 'running'), (JS 'J9' 'GW'))) -eq 'J9 J1 J20 J21')
 Check 'running orders count toward their Site: 2 running TD means GW takes the next two places' ((& $fids @((JS 'J1' 'TD'), (JS 'J2' 'TD'), (JS 'J30' 'TD' 1 $null 'running'), (JS 'J31' 'TD' 1 $null 'running'), (JS 'J8' 'GW'), (JS 'J9' 'GW'))) -eq 'J8 J9 J1 J2 J30 J31')
-# design 2.3: fairness is the key between under way and priority; "urgent still beats everything inside its Site; across Sites fairness wins"
-Check 'FairBeforePriority: a normal order from a Site with nothing running starts before an urgent one from a Site with 2 running' ((& $fids @((JS 'J1' 'TD'), (JS 'J10' 'GW' 0 'urgent'), (JS 'J40' 'GW' 1 $null 'running'), (JS 'J41' 'GW' 1 $null 'running'))) -eq 'J1 J10 J40 J41')
-Check 'FairBeforePriority: a Site''s low order still gets its fair turn (equal load: the normal head goes first)' ((& $fids @((JS 'J1' 'TD' 0 'low'), (JS 'J2' 'GW'), (JS 'J3' 'GW'))) -eq 'J2 J1 J3')
-Check 'PriorityInsideSite: urgent beats everything inside its Site' ((& $fids @((JS 'J1' 'TD'), (JS 'J2' 'TD' 0 'urgent'), (JS 'J3' 'GW'))) -eq 'J2 J3 J1')
-Check 'PriorityOnTie: equal load goes to the Site whose next order has the higher priority, before age' ((& $fids @((JS 'J1' 'TD'), (JS 'J9' 'GW' 0 'urgent'))) -eq 'J9 J1')
+# PRIORITY FIRST (the Owner's choice, 2026-10-26): urgent work always goes next, whatever its Site; Sites take turns only among orders of equal priority
+Check 'PriorityFirst_Urgent: an urgent order from a Site with 2 running starts before a normal one from a Site with nothing running' ((& $fids @((JS 'J1' 'TD'), (JS 'J10' 'GW' 0 'urgent'), (JS 'J40' 'GW' 1 $null 'running'), (JS 'J41' 'GW' 1 $null 'running'))) -eq 'J10 J1 J40 J41')
+Check 'PriorityFirst_Low: a low order waits behind every normal one, from any Site' ((& $fids @((JS 'J1' 'TD' 0 'low'), (JS 'J2' 'GW'), (JS 'J3' 'GW'))) -eq 'J2 J3 J1')
+Check 'PriorityFirst_AheadOfTurn: an urgent GW order goes ahead of TD''s waiting turn (TD has nothing running, GW has 1), then TD gets its turn' ((& $fids @((JS 'J3' 'TD'), (JS 'J9' 'GW' 0 'urgent'), (JS 'J4' 'GW'), (JS 'J40' 'GW' 1 $null 'running'))) -eq 'J9 J3 J4 J40')
+Check 'PriorityFirst_Interleave: inside one priority the Sites still take turns (urgent J9 of TD first and it counts as TD''s place, so GW takes the next two, then TD)' ((& $fids @((JS 'J1' 'GW'), (JS 'J2' 'GW'), (JS 'J3' 'TD'), (JS 'J4' 'TD'), (JS 'J9' 'TD' 0 'urgent'))) -eq 'J9 J1 J2 J3 J4' -and (& $fids @((JS 'J1' 'GW'), (JS 'J2' 'GW'), (JS 'J3' 'TD'), (JS 'J4' 'TD'), (JS 'J8' 'GW' 0 'urgent'), (JS 'J9' 'TD' 0 'urgent'))) -eq 'J8 J9 J1 J3 J2 J4')
 Check 'under way wins over fairness: both half-built orders of one Site go before the other Site''s new one' ((& $fids @((JS 'J1' 'GW'), (JS 'J5' 'TD' 2), (JS 'J6' 'TD' 3))) -eq 'J5 J6 J1')
 Check 'half-built orders count as places: the other Site leads the next band' ((& $fids @((JS 'J1' 'TD'), (JS 'J2' 'GW'), (JS 'J3' 'GW'), (JS 'J5' 'TD' 2))) -eq 'J5 J2 J1 J3')
 # -HeavyLoad (the start loop's running heavy steps per Site) replaces the count of running orders
@@ -75,8 +75,8 @@ foreach ($s in 'GW', 'TD', '') {
 }
 Check 'inside each Site the old order (under way, priority, oldest) is kept' $ok
 $bandOk = $true; $prev = $null
-foreach ($j in @($out | Where-Object { [string]$_.status -in '', 'pending' })) { $r = Get-StartRank $j; if ($null -ne $prev -and $r.started -lt $prev) { $bandOk = $false }; $prev = $r.started }
-Check 'across Sites, under way still orders the whole list' $bandOk
+foreach ($j in @($out | Where-Object { [string]$_.status -in '', 'pending' })) { $r = Get-StartRank $j; $key = $r.started * 10 + $r.priority; if ($null -ne $prev -and $key -lt $prev) { $bandOk = $false }; $prev = $key }
+Check 'across Sites, under way then priority still order the whole list' $bandOk
 $notStartable = @($three | Where-Object { [string]$_.status -notin '', 'pending' })
 Check 'orders the loop will not start (running, waiting) follow, in their old order' ((($out | Where-Object { [string]$_.status -notin '', 'pending' } | ForEach-Object id) -join ' ') -ceq ((Sort-Before $notStartable | ForEach-Object id) -join ' '))
 $hj = @(@{ id = 'J1'; cursor = 0; vars = @{ site = 'GW' } }, @{ id = 'J2'; cursor = 0; vars = @{ site = 'GW' } }, @{ id = 'J3'; cursor = 0; status = 'pending'; vars = @{ site = 'TD' } })

@@ -1,16 +1,16 @@
-# The order in which the supervisor starts pending jobs: orders already under way finish before new ones start, then (only with a Sites
-# registry) a fair share between Sites, then vars.priority (urgent, normal, low; cook.ps1 takes it), then oldest first. Dot-sourced by
-# kitchen/kitchen.ps1 (its start loop); tests/Test-StartOrder.ps1.
+# The order in which the supervisor starts pending jobs: orders already under way finish before new ones start, then vars.priority
+# (urgent, normal, low; cook.ps1 takes it), then (only with a Sites registry) a fair share between Sites, then oldest first. Dot-sourced
+# by kitchen/kitchen.ps1 (its start loop); tests/Test-StartOrder.ps1.
 # Why: 10-22 had 93 open orders and 4 slots, started strictly oldest first, so the release demo doc (J225) waited behind research orders
 # and half-built orders waited behind new ones. The rank is derived from each job, never a hand-kept list; the clash rule still decides
 # who owns a file (oldest wins), so priority never lets two orders build the same file at once.
-# Fair share (multi-site design TD-6, section 2.3, "one more sort key between under way and priority"; Owner's Q4 = A, equal share): with
-# orders from two Sites the older Site's queue used to win every slot. Now, inside one band of equal "under way", the next place goes to
-# the Site with the lowest load / share: load = the Site's running heavy steps (-HeavyLoad, counted by the start loop from the scaler's
-# weights; without -HeavyLoad, its running orders) plus places already handed out in this list. A tie goes to the Site whose next order ranks
-# first (priority, then oldest). Inside a Site: priority, then oldest, as before ("urgent still beats everything inside its Site; across
-# Sites fairness wins"). Orders with no Site are one group. Under way still comes first. Holds (notBefore, the live cap, admission, the
-# clash rule) are checked by the start loop on each order in turn, so a held order is skipped and never lends its place to fairness.
+# Fair share (multi-site design TD-6, section 2.3; Owner's Q4 = A, equal share; PRIORITY FIRST, the Owner's choice of 2026-10-26): with
+# orders from two Sites the older Site's queue used to win every slot. Now, inside one band of equal "under way" and priority, the next
+# place goes to the Site with the lowest load / share: load = the Site's running heavy steps (-HeavyLoad, counted by the start loop from
+# the scaler's weights; without -HeavyLoad, its running orders) plus places already handed out in this list. A tie goes to the Site whose
+# next order is oldest. Inside a Site: oldest first, as before. Orders with no Site are one group. Under way and priority come first, so an
+# urgent order always goes next, whatever its Site; Sites take turns only among orders of equal priority. Holds (notBefore, the live cap,
+# admission, the clash rule) are checked by the start loop on each order in turn, so a held order is skipped and never lends its place.
 # Only with a Sites registry (review #11 F3): -Shares is the registry's weights (kitchen.json "sites"; Get-KitchenSiteShares gives every
 # registered Site one, default 1). No registry = no weights = no fair share at all, exactly the old order, even when a Tower's own
 # kitchen.repo.json names a Site. With one Site, or none, the list is also exactly the old one.
@@ -57,7 +57,7 @@ function Sort-ForStart($jobs, $Shares = $null, $HeavyLoad = $null) {
     while ($i -lt $fair.Count) {
         $r0 = $rank[$fair[$i]]; $queues = [ordered]@{}   # one band: equal under way; per Site, priority then oldest (the $sorted order)
         while ($i -lt $fair.Count) {
-            $k = $fair[$i]; if ($rank[$k].started -ne $r0.started) { break }
+            $k = $fair[$i]; if ($rank[$k].started -ne $r0.started -or $rank[$k].priority -ne $r0.priority) { break }
             if (-not $queues.Contains($site[$k])) { $queues[$site[$k]] = [Collections.Generic.Queue[int]]::new() }
             $queues[$site[$k]].Enqueue($k); $i++
         }
