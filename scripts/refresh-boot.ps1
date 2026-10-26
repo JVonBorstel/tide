@@ -2,12 +2,19 @@
 # Must never block compaction: always exits 0, prints at most a short line. Bounded by the kitchen/standup timeouts in handoff.ps1.
 param(
     [string]$BrainPath = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'gemini-brain'),
-    [string]$Repos = ((@('gemini-brain', 'demo-project', 'source\repos\my-apps', 'source\repos\brain-monitor', 'source\repos\agent-standup') | ForEach-Object { Join-Path ([Environment]::GetFolderPath('UserProfile')) $_ }) -join ';'),
+    [string]$Repos = '',
     [string]$KitchenScript = '',
     [int]$KitchenTimeoutSeconds = 30,
     [string]$StandupDir = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'source\repos\agent-standup')
 )
 $ErrorActionPreference = 'Continue'
+if (-not $Repos) {
+    # The repos on this PC: the state-folder kitchen.json "bootRepos" (folders under the profile, or absolute) wins; else the standard list
+    $prof = [Environment]::GetFolderPath('UserProfile'); $list = @('gemini-brain', 'source\repos\my-apps', 'source\repos\brain-monitor', 'source\repos\agent-standup')
+    $sk = Join-Path $(if ($env:BRAIN_KITCHEN) { $env:BRAIN_KITCHEN } else { Join-Path $env:LOCALAPPDATA 'brain-kitchen' }) 'kitchen.json'
+    try { $br = @((Get-Content -LiteralPath $sk -Raw -ErrorAction Stop | ConvertFrom-Json).bootRepos | Where-Object { $_ -is [string] -and $_.Trim() }); if ($br) { $list = $br } } catch { }
+    $Repos = ($list | ForEach-Object { if ([IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $prof $_ } }) -join ';'
+}
 try {
     try { [void]([Console]::In.ReadToEnd()) } catch { }
     $a = @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'handoff.ps1'), '-BrainPath', $BrainPath, '-Repos', $Repos, '-KitchenTimeoutSeconds', $KitchenTimeoutSeconds, '-StandupDir', $StandupDir)

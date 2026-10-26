@@ -1,7 +1,13 @@
 # One-screen verification: run every configured test suite (bounded) across the repos, then the kitchen check.
 # Config (JSON): { "suites": [ { "name", "dir", "glob" (relative to dir), "timeoutSeconds", "maxMB", "prependPath" (optional), "skip" (optional file names), "minSuites" (optional) } ] }
 # A glob that matches nothing (or fewer than minSuites files: a dropped, renamed or skipped suite), or a missing dir, is a FAILURE (never silently green). Exit: 0 all pass, 1 any FAIL/TIMEOUT/MEMORY, 2 bad config.
-param([string]$ConfigPath = (Join-Path $PSScriptRoot 'verify-all.json'), [switch]$NoKitchen, [string]$KitchenCheck = (Join-Path $PSScriptRoot 'kitchen-check.ps1'))
+param([string]$ConfigPath = '', [switch]$NoKitchen, [string]$KitchenCheck = (Join-Path $PSScriptRoot 'kitchen-check.ps1'))
+# The suite list is this PC's layout (which repos sit where), so a state-folder verify-all.json (BRAIN_KITCHEN, else
+# %LOCALAPPDATA%\brain-kitchen) wins over this repo's copy, the same way the state-folder kitchen.json does; the repo copy is the default.
+if (-not $ConfigPath) {
+    $sv = Join-Path $(if ($env:BRAIN_KITCHEN) { $env:BRAIN_KITCHEN } else { Join-Path $env:LOCALAPPDATA 'brain-kitchen' }) 'verify-all.json'
+    if (Test-Path -LiteralPath $sv) { $ConfigPath = $sv; Write-Output "suites: $sv (this PC's list)" } else { $ConfigPath = Join-Path $PSScriptRoot 'verify-all.json' }
+}
 $ErrorActionPreference = 'Stop'
 try { $cfg = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json; if (-not $cfg.suites) { throw 'no suites' } } catch { Write-Output "ERROR: bad config ($($_.Exception.Message))"; exit 2 }
 $bounded = Join-Path $PSScriptRoot 'run-bounded.ps1'
