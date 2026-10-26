@@ -237,7 +237,7 @@ function layer(kit, which, room, W = STAGE.w, world = {}) {
       const cx = sx(s.x); d(STATION_ART[st], cx - 14, STAGE.top);
       if (PROP[st]) d(PROP[st], cx - 8, STAGE.top - (st === 'stove' ? 6 : 5));
     }
-    if (world.sign?.state === 'closed') for (const st of ['taste', 'plate']) d('chair-up', sx(STATIONS[st].x) - 5, STAGE.top - 8);   // CLOSED: stools up on the counters
+    if (world.sign?.state === 'closed') for (const st of ['taste', 'plate']) d('chair-up', sx(STATIONS[st].x) - 5, STAGE.top - 8);   // PAUSED: barriers across two stations
   }
   kit.layers.set(pre, { key: wk, c }); return c;
 }
@@ -285,7 +285,8 @@ export function drawStage(ctx, st, kit) {
       d(kit.get('zz', room), 0, x + 14 + at(3, 900, t), y - 12 - at(3, 900, t) * 2); continue;
     }
     if (a.kind === 'sous') {
-      if (walking) d(kit.get('chef-side', o, a.flip), at(4, 140, t), x, y); else d(kit.get('chef-sit', o), at(2, 450, t), x, y - 3);
+      const w = { ...o, cook: P.DISPATCHER };   // the Dispatcher: a white hard hat and a clipboard (Jordan, 10-26)
+      if (walking) { d(kit.get('chef-side', w, a.flip), at(4, 140, t), x, y); d(kit.get('cloche', room), 0, a.flip ? x - 4 : x + 10, y + 7 + bobOf(P, 'walk', at(4, 140, t))); } else d(kit.get('chef-sit', w), at(2, 450, t), x, y - 3);
       continue;
     }
     const f = walking ? at(4, 140, t) : at(2, 450, t, a.look.delay * 1000);
@@ -383,8 +384,8 @@ function installChrome(P) {
   const tabs = () => { for (const k of Object.keys(url)) if (k.startsWith('tab-') && !k.endsWith('-dark')) root.style.setProperty('--px-' + k, dark?.matches ? url[k + '-dark'] : url[k]); };
   tabs(); dark?.addEventListener?.('change', tabs);
   // legend icons (--px-lg-<key>)
-  for (const [k, [name, f]] of Object.entries(P.LEGEND_ICONS)) {
-    const s = P.stripOf(mkCanvas, name, P.PALETTE), c = mkCanvas(s.w, s.h);
+  for (const [k, [name, f, cook]] of Object.entries(P.LEGEND_ICONS)) {
+    const s = P.stripOf(mkCanvas, name, cook ? P.paletteFor({ cook }) : P.PALETTE), c = mkCanvas(s.w, s.h);
     c.getContext('2d').drawImage(s.img, f * s.w, 0, s.w, s.h, 0, 0, s.w, s.h); root.style.setProperty('--px-lg-' + k, `url("${c.toDataURL()}")`);
   }
   root.classList.add('px');
