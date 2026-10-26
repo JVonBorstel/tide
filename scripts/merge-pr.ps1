@@ -12,7 +12,8 @@
 # latest run of each check). Refuses, with a plain reason and exit 1, unless: the PR is open and not a draft; at least one check
 # exists; every check is completed with success, skipped or neutral; the repo's kitchen.repo.json on the PR's base branch (read from
 # GitHub) has no merge freeze window covering now (kitchen/freeze-lib.ps1); and the PR's head is still that commit just before the
-# merge. Then `gh pr merge --merge --match-head-commit <sha>` (GitHub itself refuses if anything was pushed since), with a subject and
+# merge. Then the merge commit is made here, not by GitHub (step 5 says why), as the account's noreply address from exactly that
+# commit, and pushed as a fast-forward of the base (refused if the base moved), with a subject and
 # body that say a Claude session merged it, and one line {pr, repo, sha, actor:'claude-session', why, at, ok[, error]} is appended to
 # merges.jsonl in the kitchen state folder (BRAIN_KITCHEN, else %LOCALAPPDATA%\brain-kitchen); a failed merge is logged with its error.
 # -DryRun prints the decision only (exit 0 would merge, 1 refused): nothing merged, nothing logged.
@@ -93,10 +94,39 @@ if ([string]$p2.state -ne 'open') { Refuse "the pull request is no longer open (
 $green = "all $($runs.Count) check(s) on $short green"
 if ($DryRun) { Write-Output "merge-pr: DRY RUN $Repo#${Pr}: would merge at $short ($green)$fixNote; nothing merged"; exit 0 }
 
-# 5. merge, pinned to the checked commit, labelled as a session merge, and logged either way
+# 5. merge HERE, not on GitHub, pinned to the checked commit, labelled as a session merge, and logged either way.
+# GitHub stamps a merge it makes with the account's primary email (2026-10-26: Jordan's work address landed on the public tide main),
+# and refuses the noreply address as --author-email while "Keep my email addresses private" is off ("Invalid email address"). So the
+# merge commit is made in a throwaway repo as the account's noreply address (github-lib.ps1 Get-MergeAuthorEmail), from exactly the
+# checked commit, and pushed as a fast-forward of the base branch: a base that moved meanwhile is refused by the push, never
+# overwritten. GitHub then marks the pull request merged by itself (its head commit is in the base).
 $body = "Merged by a Claude session (scripts/merge-pr.ps1), not by Jordan's tap, after $green$fixNote.$(if ($Why) { " Why: $Why" })"
-$m = Invoke-Gh @('pr', 'merge', "$Pr", '-R', $Repo, '--merge', '--match-head-commit', $sha, '--subject', "Merge pull request #$Pr from $($p.head.ref) (Claude session)", '--body', $body)
-if (-not $m.ok) { $e = Get-GhWhy $m; Log-Merge $sha $false $e; Write-Output "merge-pr: FAILED $Repo#${Pr}: GitHub did not merge it ($e); logged"; exit 1 }
+$subject = "Merge pull request #$Pr from $($p.head.ref) (Claude session)"
+$who = Get-MergeAuthorEmail
+if (-not $who) { Refuse "gh could not say which account is signed in, so the merge commit's author email is unknown (it must be the noreply address)" }
+$name = if ($who -match '^\d+\+([^@]+)@users\.noreply\.github\.com$') { $Matches[1] } else { 'Claude session' }
+$remote = Get-GithubRemote $Repo
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ('merge-pr-' + [guid]::NewGuid().ToString('N'))
+function Git-Here([string[]]$GitArgs) { $o = & git -C $tmp -c "user.name=$name" -c "user.email=$who" @GitArgs 2>&1; [pscustomobject]@{ ok = ($LASTEXITCODE -eq 0); out = (($o | ForEach-Object { "$_" }) -join ' ').Trim() } }
+$err = ''
+try {
+    & git init -q $tmp 2>&1 | Out-Null
+    $f = Git-Here @('fetch', '-q', '--no-tags', $remote, "+refs/heads/${base}:refs/remotes/base", "+refs/pull/$Pr/head:refs/remotes/pr")
+    $prHead = if ($f.ok) { (Git-Here @('rev-parse', 'refs/remotes/pr')).out } else { '' }
+    if (-not $f.ok) { $err = "could not fetch $base and the pull request ($($f.out))" }
+    elseif ($prHead -ne $sha) { $err = "the pull request on GitHub is no longer at $short" }
+    else {
+        $null = Git-Here @('checkout', '-q', '--detach', 'refs/remotes/base')
+        $mg = Git-Here @('merge', '--no-ff', '-q', '-m', $subject, '-m', $body, $sha)
+        if (-not $mg.ok) { $err = "$short does not merge cleanly into $base (conflicts); freshen the branch first" }
+        else {
+            $ps = Git-Here @('push', '-q', $remote, "HEAD:refs/heads/$base")
+            if (-not $ps.ok) { $err = "the push to $base was refused, so nothing changed (did $base move meanwhile?): $($ps.out)" }
+        }
+    }
+    $mc = if (-not $err) { "$(& git -C $tmp rev-parse --short HEAD 2>$null)".Trim() } else { '' }
+} finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+if ($err) { if ($err.Length -gt 300) { $err = $err.Substring(0, 300) + '...' }; Log-Merge $sha $false $err; Write-Output "merge-pr: FAILED $Repo#${Pr}: $err; logged"; exit 1 }
 Log-Merge $sha $true ''
-Write-Output "merge-pr: MERGED $Repo#$Pr at $short ($green)$fixNote; logged as claude-session$(if ($FixesRed) { ', fixesRed' })"
+Write-Output "merge-pr: MERGED $Repo#$Pr at $short ($green)$fixNote as merge commit $mc by $who; logged as claude-session$(if ($FixesRed) { ', fixesRed' })"
 exit 0

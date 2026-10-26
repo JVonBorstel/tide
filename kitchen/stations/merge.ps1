@@ -109,7 +109,10 @@ try {
         Set-TrainClaim $kroot $Repo $job   # (written whole: a reader never sees half of it)
         if ($state -eq 'OPEN') {
             # pinned to the tested commit: if anything was pushed to the PR since, GitHub refuses instead of merging what nobody checked
-            $m = Invoke-Gh @('pr', 'merge', "$n", '-R', $slug, '--merge', '--match-head-commit', $tip, '--subject', "Merge $branch (kitchen $job, $who)", '--body', "Pull request #$n, merged by Jordan's Kitchen.")
+            # the merge commit's author: the account's noreply address, never its primary email (github-lib.ps1 Get-MergeAuthorEmail)
+            $mail = Get-MergeAuthorEmail
+            if (-not $mail) { Release-Claim; Rail 60; Write-Output "merge: gh could not say which account is signed in, so the merge commit's author email is unknown (it must be the noreply address); nothing merged"; exit 11 }
+            $m = Invoke-Gh @('pr', 'merge', "$n", '-R', $slug, '--merge', '--match-head-commit', $tip, '--author-email', $mail, '--subject', "Merge $branch (kitchen $job, $who)", '--body', "Pull request #$n, merged by Jordan's Kitchen.")
             if (-not $m.ok) {
                 $again = Invoke-GhJson @('pr', 'view', "$n", '-R', $slug, '--json', 'state')   # an error after GitHub merged (a dropped answer) is still a merge
                 if (-not ($again.ok -and [string]$again.json.state -eq 'MERGED')) { Release-Claim; Write-Output "merge: GitHub did not merge PR #$n ($(Get-GhWhy $m)); nothing changed"; exit 1 }
