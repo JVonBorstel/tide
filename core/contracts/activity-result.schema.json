@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tide.example/contracts/activity-result.schema.json",
+  "title": "Activity result: what one step hands back to the engine",
+  "description": "ok is true only for exit 0. Exit 124 = the time limit and 125 = the memory cap (scripts/run-bounded.ps1); other non-zero codes keep the station's own meaning (for example ci-wait's 'come back later'). out is the tail of the step's output, capped.",
+  "type": "object",
+  "properties": {
+    "ok": { "type": "boolean" },
+    "exit": { "type": "integer" },
+    "out": { "type": "string", "maxLength": 65536 },
+    "proof": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 500 }, { "type": "null" }] }
+  },
+  "required": ["ok", "exit", "out", "proof"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "ok": { "const": true } } },
+      "then": { "properties": { "exit": { "const": 0 } } },
+      "else": { "properties": { "exit": { "not": { "const": 0 } } } }
+    }
+  ]
+}

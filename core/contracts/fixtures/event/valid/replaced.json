@@ -1,0 +1,12 @@
+{
+  "seq": 17,
+  "at": "2030-01-07T09:17:00Z",
+  "actor": "engine",
+  "kind": "replaced",
+  "wo": "WO-2001",
+  "data": {
+    "by": "WO-2002",
+    "reason": "Rebuilt from the brief on the new main (re-cook from intent)."
+  },
+  "proof": null
+}

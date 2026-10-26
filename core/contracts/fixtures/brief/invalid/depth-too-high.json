@@ -1,0 +1,16 @@
+{
+  "why": "crews start at most 3 levels of helpers",
+  "expect": "/depth: maximum",
+  "doc": {
+    "wo": "WO-2001",
+    "stream": "DEMO",
+    "plan": "plans/example-plan.md#slice-2",
+    "decision": "D-8",
+    "repo": "example-owner/example-repo",
+    "branch": "wo/2001-sunrise",
+    "base": "main",
+    "worktree": "wt/wo-2001-sunrise",
+    "budget": "40 turns",
+    "depth": 4
+  }
+}

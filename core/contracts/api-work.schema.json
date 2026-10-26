@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tide.example/contracts/api-work.schema.json",
+  "title": "GET /api/work: the Work tab in one answer",
+  "description": "The top line, Jordan's Needs-you queue (oldest first; the phone shows at most 7), the streams with their WIP, then the rows (build-way 3.2, 3.8). Same key auth as today's Board. Cross-field rule (validate.mjs): the queue is sorted oldest first.",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "ok": { "const": true },
+        "at": { "$ref": "common.schema.json#/$defs/time" },
+        "top": { "description": "One line: what landed, what waits on Jordan, what is stuck.", "$ref": "common.schema.json#/$defs/text" },
+        "queue": { "type": "array", "items": { "$ref": "#/$defs/card" } },
+        "queueTotal": { "type": "integer", "minimum": 0 },
+        "streams": { "type": "array", "items": { "$ref": "#/$defs/stream" }, "maxItems": 50 },
+        "rows": { "type": "array", "items": { "$ref": "row.schema.json" } },
+        "flags": { "type": "array", "items": { "$ref": "#/$defs/flag" } }
+      },
+      "required": ["ok", "at", "top", "queue", "queueTotal", "streams", "rows", "flags"],
+      "additionalProperties": false
+    },
+    { "$ref": "common.schema.json#/$defs/apiError" }
+  ],
+  "$defs": {
+    "card": {
+      "description": "One open decision for Jordan, with what the phone needs to show it.",
+      "type": "object",
+      "properties": {
+        "decision": { "$ref": "decision.schema.json" },
+        "goal": { "$ref": "common.schema.json#/$defs/text" },
+        "stream": { "anyOf": [{ "$ref": "common.schema.json#/$defs/stream" }, { "type": "null" }] },
+        "ageH": { "type": "number", "minimum": 0 }
+      },
+      "required": ["decision", "goal", "stream", "ageH"],
+      "additionalProperties": false
+    },
+    "stream": {
+      "type": "object",
+      "properties": {
+        "stream": { "$ref": "common.schema.json#/$defs/stream" },
+        "open": { "type": "integer", "minimum": 0 },
+        "stage": { "description": "The stage of the stream's oldest open order.", "anyOf": [{ "$ref": "common.schema.json#/$defs/stage" }, { "type": "null" }] },
+        "oldestH": { "type": "number", "minimum": 0 },
+        "blockedOn": { "anyOf": [{ "$ref": "common.schema.json#/$defs/text" }, { "type": "null" }] },
+        "cards": { "description": "Cards waiting on Jordan in this stream (at 3 the stream starts no new slices).", "type": "integer", "minimum": 0 },
+        "overLimit": { "description": "true when a WIP limit is passed (build-way 3.3).", "type": "boolean" }
+      },
+      "required": ["stream", "open", "stage", "oldestH", "blockedOn", "cards", "overLimit"],
+      "additionalProperties": false
+    },
+    "flag": {
+      "description": "A row that needs attention: stale, lost, or over a WIP limit.",
+      "type": "object",
+      "properties": {
+        "wo": { "anyOf": [{ "$ref": "common.schema.json#/$defs/woId" }, { "type": "null" }] },
+        "flag": { "enum": ["stale", "lost", "over-wip", "stack-too-deep", "no-plan", "no-decision"] },
+        "detail": { "$ref": "common.schema.json#/$defs/text" }
+      },
+      "required": ["wo", "flag", "detail"],
+      "additionalProperties": false
+    }
+  }
+}

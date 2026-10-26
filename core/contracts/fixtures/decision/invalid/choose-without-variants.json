@@ -1,0 +1,22 @@
+{
+  "why": "a choose card shows its mock-ups",
+  "expect": "/variants: required",
+  "doc": {
+    "id": "D-8",
+    "wo": "WO-2001",
+    "kind": "choose",
+    "ask": "Which sunrise look?",
+    "options": [
+      "A",
+      "B",
+      "C"
+    ],
+    "recommended": "A",
+    "why": "The tests and the review are green.",
+    "answer": null,
+    "note": null,
+    "at": "2030-01-07T10:00:00Z",
+    "answeredAt": null,
+    "via": null
+  }
+}

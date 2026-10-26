@@ -1,0 +1,15 @@
+{
+  "why": "every brief names exactly one owning plan",
+  "expect": "/plan: required",
+  "doc": {
+    "wo": "WO-2001",
+    "stream": "DEMO",
+    "decision": "D-8",
+    "repo": "example-owner/example-repo",
+    "branch": "wo/2001-sunrise",
+    "base": "main",
+    "worktree": "wt/wo-2001-sunrise",
+    "budget": "40 turns",
+    "depth": 1
+  }
+}

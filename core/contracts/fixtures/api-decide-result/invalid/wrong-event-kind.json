@@ -1,0 +1,36 @@
+{
+  "why": "a decide answer returns the decision.answered event",
+  "expect": "/event/kind: const",
+  "doc": {
+    "ok": true,
+    "event": {
+      "seq": 10,
+      "at": "2030-01-07T09:10:00Z",
+      "actor": "engine",
+      "kind": "decision.asked",
+      "wo": "WO-2001",
+      "data": {
+        "decision": {
+          "id": "D-1",
+          "wo": "WO-2001",
+          "kind": "merge",
+          "ask": "Merge example#41 (sunrise colour)?",
+          "options": [
+            "Yes",
+            "Hold",
+            "No"
+          ],
+          "recommended": "Yes",
+          "why": "The tests and the review are green.",
+          "answer": null,
+          "note": null,
+          "at": "2030-01-07T10:00:00Z",
+          "answeredAt": null,
+          "via": null
+        }
+      },
+      "proof": null
+    },
+    "duplicate": false
+  }
+}

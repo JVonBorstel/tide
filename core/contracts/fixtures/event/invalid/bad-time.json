@@ -1,0 +1,18 @@
+{
+  "why": "at is an RFC 3339 time",
+  "expect": "/at: format",
+  "doc": {
+    "seq": 4,
+    "at": "2030-02-30T09:00:00Z",
+    "actor": "engine",
+    "kind": "step.done",
+    "wo": "WO-2001",
+    "data": {
+      "step": "freshen",
+      "attempt": 1,
+      "exit": 0,
+      "sec": 41.5
+    },
+    "proof": "merge commit 0f1e2d3 on the PR branch"
+  }
+}

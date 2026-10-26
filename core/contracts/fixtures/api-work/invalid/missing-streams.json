@@ -1,0 +1,173 @@
+{
+  "why": "the answer always has streams (maybe empty)",
+  "expect": "/streams: required",
+  "doc": {
+    "ok": true,
+    "at": "2030-01-07T12:00:00Z",
+    "top": "2 landed overnight; 3 cards wait on you; 1 stuck.",
+    "queue": [
+      {
+        "decision": {
+          "id": "D-1",
+          "wo": "WO-2001",
+          "kind": "merge",
+          "ask": "Merge example#41 (sunrise colour)?",
+          "options": [
+            "Yes",
+            "Hold",
+            "No"
+          ],
+          "recommended": "Yes",
+          "why": "The tests and the review are green.",
+          "answer": null,
+          "note": null,
+          "at": "2030-01-07T10:00:00Z",
+          "answeredAt": null,
+          "via": null
+        },
+        "goal": "Example: show a sunrise colour in the sky of the demo scene",
+        "stream": "DEMO",
+        "ageH": 30.5
+      },
+      {
+        "decision": {
+          "id": "D-8",
+          "wo": "WO-2001",
+          "kind": "choose",
+          "ask": "Which sunrise look?",
+          "options": [
+            "A",
+            "B",
+            "C"
+          ],
+          "recommended": "A",
+          "why": "The tests and the review are green.",
+          "answer": null,
+          "note": null,
+          "at": "2030-01-07T10:00:00Z",
+          "answeredAt": null,
+          "via": null,
+          "variants": [
+            {
+              "option": "A",
+              "title": "Warm orange band",
+              "preview": "mockups/WO-2001/a.png"
+            },
+            {
+              "option": "B",
+              "title": "Soft pink fade",
+              "preview": "mockups/WO-2001/b.png"
+            },
+            {
+              "option": "C",
+              "title": "Gold rim on the towers",
+              "preview": "mockups/WO-2001/c.png"
+            }
+          ]
+        },
+        "goal": "Example: show a sunrise colour in the sky of the demo scene",
+        "stream": "DEMO",
+        "ageH": 4
+      },
+      {
+        "decision": {
+          "id": "D-7",
+          "wo": null,
+          "kind": "question",
+          "ask": "Should old cards expire after 7 days?",
+          "options": [
+            "7 days",
+            "14 days",
+            "Never"
+          ],
+          "recommended": "7 days",
+          "why": "The tests and the review are green.",
+          "answer": null,
+          "note": null,
+          "at": "2030-01-07T10:00:00Z",
+          "answeredAt": null,
+          "via": null
+        },
+        "goal": "Example: show a sunrise colour in the sky of the demo scene",
+        "stream": "DEMO",
+        "ageH": 1
+      }
+    ],
+    "queueTotal": 3,
+    "rows": [
+      {
+        "id": "WO-2001",
+        "alias": null,
+        "goal": "Example: show a sunrise colour in the sky of the demo scene",
+        "stream": "DEMO",
+        "owner": "jordan",
+        "plan": "plans/example-plan.md#slice-2",
+        "decision": "D-8",
+        "repo": "example-owner/example-repo",
+        "branch": "wo/2001-sunrise",
+        "base": "main",
+        "pr": "example#41",
+        "stackParent": null,
+        "stage": "jordan",
+        "state": "waiting-on-jordan",
+        "blockedOn": "Jordan: merge yes (D-1)",
+        "next": null,
+        "ageH": 26.1,
+        "stageAgeH": 14.5,
+        "attempts": 1,
+        "dod": {
+          "change-note": "no",
+          "tests": "yes",
+          "names": "yes",
+          "glossary": "n/a",
+          "docs": "no",
+          "map": "no"
+        },
+        "brief": "work/WO-2001/BRIEF.md",
+        "report": null,
+        "proof": null,
+        "lastSeq": 9
+      },
+      {
+        "id": "WO-2001",
+        "alias": null,
+        "goal": "Example: show a sunrise colour in the sky of the demo scene",
+        "stream": "DEMO",
+        "owner": "crew",
+        "plan": "plans/example-plan.md#slice-2",
+        "decision": "D-8",
+        "repo": "example-owner/example-repo",
+        "branch": "wo/2001-sunrise",
+        "base": "main",
+        "pr": "example#41",
+        "stackParent": null,
+        "stage": "review",
+        "state": "moving",
+        "blockedOn": null,
+        "next": "Verifier review of head a1b2c3d.",
+        "ageH": 26.1,
+        "stageAgeH": 3,
+        "attempts": 1,
+        "dod": {
+          "change-note": "no",
+          "tests": "yes",
+          "names": "yes",
+          "glossary": "n/a",
+          "docs": "no",
+          "map": "no"
+        },
+        "brief": "work/WO-2001/BRIEF.md",
+        "report": null,
+        "proof": null,
+        "lastSeq": 9
+      }
+    ],
+    "flags": [
+      {
+        "wo": "WO-2003",
+        "flag": "stale",
+        "detail": "Conflict with main for 26 h."
+      }
+    ]
+  }
+}

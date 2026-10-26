@@ -1,0 +1,15 @@
+{
+  "why": "a rerun must be safe",
+  "expect": "/idempotencyKey: required",
+  "doc": {
+    "wo": "WO-2001",
+    "name": "freshen",
+    "args": {
+      "pr": "example#41",
+      "base": "main",
+      "dryRun": false
+    },
+    "timeoutSec": 600,
+    "maxMB": 1500
+  }
+}

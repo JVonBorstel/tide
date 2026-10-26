@@ -1,0 +1,22 @@
+{
+  "why": "kinds are the 8 of build-way 4.2",
+  "expect": "/kind: enum",
+  "doc": {
+    "id": "D-1",
+    "wo": "WO-2001",
+    "kind": "deploy",
+    "ask": "Merge example#41 (sunrise colour)?",
+    "options": [
+      "Yes",
+      "Hold",
+      "No"
+    ],
+    "recommended": "Yes",
+    "why": "The tests and the review are green.",
+    "answer": null,
+    "note": null,
+    "at": "2030-01-07T10:00:00Z",
+    "answeredAt": null,
+    "via": null
+  }
+}

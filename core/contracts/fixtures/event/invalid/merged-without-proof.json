@@ -1,0 +1,17 @@
+{
+  "why": "merged needs proof",
+  "expect": "/proof: type",
+  "doc": {
+    "seq": 13,
+    "at": "2030-01-07T09:13:00Z",
+    "actor": "engine",
+    "kind": "merged",
+    "wo": "WO-2001",
+    "data": {
+      "pr": "example#41",
+      "sha": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+      "decision": "D-7"
+    },
+    "proof": null
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "why": "a stage change belongs to one work order",
+  "expect": "/wo: type",
+  "doc": {
+    "seq": 2,
+    "at": "2030-01-07T09:02:00Z",
+    "actor": "engine",
+    "kind": "stage.entered",
+    "wo": null,
+    "data": {
+      "stage": "review",
+      "from": "build"
+    },
+    "proof": null
+  }
+}

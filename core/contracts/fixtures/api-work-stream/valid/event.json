@@ -1,0 +1,20 @@
+{
+  "type": "event",
+  "at": "2030-01-07T12:22:00Z",
+  "seq": 22,
+  "data": {
+    "seq": 8,
+    "at": "2030-01-07T09:08:00Z",
+    "actor": "github",
+    "kind": "ci.result",
+    "wo": "WO-2001",
+    "data": {
+      "pr": "example#41",
+      "head": "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
+      "conclusion": "success",
+      "checks": 3,
+      "failed": 0
+    },
+    "proof": "https://github.com/example-owner/example-repo/actions/runs/1001"
+  }
+}

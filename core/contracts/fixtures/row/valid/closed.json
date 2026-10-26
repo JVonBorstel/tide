@@ -1,0 +1,33 @@
+{
+  "id": "WO-2001",
+  "alias": null,
+  "goal": "Example: show a sunrise colour in the sky of the demo scene",
+  "stream": "DEMO",
+  "owner": "nobody",
+  "plan": "plans/example-plan.md#slice-2",
+  "decision": "D-8",
+  "repo": "example-owner/example-repo",
+  "branch": "wo/2001-sunrise",
+  "base": "main",
+  "pr": "example#41",
+  "stackParent": null,
+  "stage": "closed",
+  "state": "shipped",
+  "blockedOn": null,
+  "next": null,
+  "ageH": 26.1,
+  "stageAgeH": 3,
+  "attempts": 1,
+  "dod": {
+    "change-note": "yes",
+    "tests": "yes",
+    "names": "yes",
+    "glossary": "n/a",
+    "docs": "yes",
+    "map": "yes"
+  },
+  "brief": "work/WO-2001/BRIEF.md",
+  "report": "work/WO-2001/REPORT.md",
+  "proof": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+  "lastSeq": 9
+}

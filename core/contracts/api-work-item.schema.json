@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tide.example/contracts/api-work-item.schema.json",
+  "title": "GET /api/work/:id: one work order",
+  "description": "The row, its events oldest first, its decisions, the BRIEF path and the last REPORT's front matter. An unknown id answers not-found.",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "ok": { "const": true },
+        "row": { "$ref": "row.schema.json" },
+        "events": { "type": "array", "items": { "$ref": "event.schema.json" } },
+        "decisions": { "type": "array", "items": { "$ref": "decision.schema.json" } },
+        "brief": { "anyOf": [{ "$ref": "common.schema.json#/$defs/relPath" }, { "type": "null" }] },
+        "report": { "anyOf": [{ "$ref": "report.schema.json" }, { "type": "null" }] }
+      },
+      "required": ["ok", "row", "events", "decisions", "brief", "report"],
+      "additionalProperties": false
+    },
+    { "$ref": "common.schema.json#/$defs/apiError" }
+  ]
+}

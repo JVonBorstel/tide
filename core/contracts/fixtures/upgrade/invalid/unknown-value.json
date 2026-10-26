@@ -1,0 +1,23 @@
+{
+  "why": "switches are old, shadow or new",
+  "expect": "/ledger: enum",
+  "doc": {
+    "_about": "Example block.",
+    "ledger": "on",
+    "engine": {
+      "adopted": "old",
+      "improve": "old"
+    },
+    "crews": "old",
+    "ship": {
+      "gates": "old",
+      "queue": "old"
+    },
+    "board": {
+      "work": "old"
+    },
+    "continuity": {
+      "boot": "old"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "why": "the recommended answer is one of the options",
+  "expect": "/recommended: rule",
+  "doc": {
+    "id": "D-1",
+    "wo": "WO-2001",
+    "kind": "merge",
+    "ask": "Merge example#41 (sunrise colour)?",
+    "options": [
+      "Yes",
+      "Hold",
+      "No"
+    ],
+    "recommended": "Maybe",
+    "why": "The tests and the review are green.",
+    "answer": null,
+    "note": null,
+    "at": "2030-01-07T10:00:00Z",
+    "answeredAt": null,
+    "via": null
+  }
+}

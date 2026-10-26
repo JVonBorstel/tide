@@ -1,0 +1,142 @@
+{
+  "ok": true,
+  "row": {
+    "id": "WO-2001",
+    "alias": null,
+    "goal": "Example: show a sunrise colour in the sky of the demo scene",
+    "stream": "DEMO",
+    "owner": "jordan",
+    "plan": "plans/example-plan.md#slice-2",
+    "decision": "D-8",
+    "repo": "example-owner/example-repo",
+    "branch": "wo/2001-sunrise",
+    "base": "main",
+    "pr": "example#41",
+    "stackParent": null,
+    "stage": "jordan",
+    "state": "waiting-on-jordan",
+    "blockedOn": "Jordan: merge yes (D-1)",
+    "next": null,
+    "ageH": 26.1,
+    "stageAgeH": 14.5,
+    "attempts": 1,
+    "dod": {
+      "change-note": "no",
+      "tests": "yes",
+      "names": "yes",
+      "glossary": "n/a",
+      "docs": "no",
+      "map": "no"
+    },
+    "brief": "work/WO-2001/BRIEF.md",
+    "report": null,
+    "proof": null,
+    "lastSeq": 9
+  },
+  "events": [
+    {
+      "seq": 1,
+      "at": "2030-01-07T09:01:00Z",
+      "actor": "crew:lead-1",
+      "kind": "wo.created",
+      "wo": "WO-2001",
+      "data": {
+        "goal": "Example: show a sunrise colour in the sky of the demo scene",
+        "stream": "DEMO",
+        "plan": "plans/example-plan.md#slice-2",
+        "repo": "example-owner/example-repo",
+        "private": false
+      },
+      "proof": null
+    },
+    {
+      "seq": 2,
+      "at": "2030-01-07T09:02:00Z",
+      "actor": "engine",
+      "kind": "stage.entered",
+      "wo": "WO-2001",
+      "data": {
+        "stage": "review",
+        "from": "build"
+      },
+      "proof": null
+    },
+    {
+      "seq": 10,
+      "at": "2030-01-07T09:10:00Z",
+      "actor": "engine",
+      "kind": "decision.asked",
+      "wo": "WO-2001",
+      "data": {
+        "decision": {
+          "id": "D-1",
+          "wo": "WO-2001",
+          "kind": "merge",
+          "ask": "Merge example#41 (sunrise colour)?",
+          "options": [
+            "Yes",
+            "Hold",
+            "No"
+          ],
+          "recommended": "Yes",
+          "why": "The tests and the review are green.",
+          "answer": null,
+          "note": null,
+          "at": "2030-01-07T10:00:00Z",
+          "answeredAt": null,
+          "via": null
+        }
+      },
+      "proof": null
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D-1",
+      "wo": "WO-2001",
+      "kind": "merge",
+      "ask": "Merge example#41 (sunrise colour)?",
+      "options": [
+        "Yes",
+        "Hold",
+        "No"
+      ],
+      "recommended": "Yes",
+      "why": "The tests and the review are green.",
+      "answer": null,
+      "note": null,
+      "at": "2030-01-07T10:00:00Z",
+      "answeredAt": null,
+      "via": null
+    }
+  ],
+  "brief": "work/WO-2001/BRIEF.md",
+  "report": {
+    "wo": "WO-2001",
+    "status": "pushed",
+    "branch": "wo/2001-sunrise",
+    "pr": "example#41",
+    "head": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+    "tests": [
+      {
+        "suite": "Demo",
+        "passed": 52,
+        "failed": 0
+      },
+      {
+        "suite": "DemoScene",
+        "passed": 12,
+        "failed": 0
+      }
+    ],
+    "dod": {
+      "change-note": "yes",
+      "tests": "yes",
+      "names": "yes",
+      "glossary": "n/a",
+      "docs": "n/a"
+    },
+    "asks": "none",
+    "next": "adopt"
+  }
+}

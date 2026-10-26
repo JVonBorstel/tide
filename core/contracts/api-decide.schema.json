@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tide.example/contracts/api-decide.schema.json",
+  "title": "POST /api/decide: the body of one tap",
+  "description": "Sent by the Board (same key auth as today, in a header, never in the body or URL) or by /decide. requestId makes a retry safe: the same requestId never writes a second decision.answered event.",
+  "type": "object",
+  "properties": {
+    "decision": { "$ref": "common.schema.json#/$defs/decisionId" },
+    "answer": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "note": { "anyOf": [{ "type": "string", "maxLength": 2000 }, { "type": "null" }] },
+    "via": { "enum": ["board", "/decide"] },
+    "requestId": { "type": "string", "pattern": "^[A-Za-z0-9-]{8,64}$" }
+  },
+  "required": ["decision", "answer", "via", "requestId"],
+  "additionalProperties": false
+}

@@ -1,0 +1,13 @@
+{
+  "wo": "WO-2001",
+  "status": "blocked",
+  "branch": "wo/2001-sunrise",
+  "pr": "none",
+  "head": "none",
+  "tests": [],
+  "dod": {
+    "tests": "no"
+  },
+  "asks": "Allow the example CLI install? Recommended: yes, it is free and open source.",
+  "next": "Wait for the card D-6."
+}

@@ -1,0 +1,12 @@
+{
+  "why": "a step runs at most a day",
+  "expect": "/timeoutSec: maximum",
+  "doc": {
+    "wo": "WO-2001",
+    "name": "freshen",
+    "args": {},
+    "idempotencyKey": "WO-2001:freshen:1",
+    "timeoutSec": 100000,
+    "maxMB": 1500
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "ok": false,
+  "exit": 124,
+  "out": "TIMEOUT after 600 s; process tree stopped",
+  "proof": null
+}

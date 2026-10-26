@@ -1,0 +1,16 @@
+{
+  "why": "args are flat: strings, numbers, booleans or lists of strings",
+  "expect": "/args/opts: anyOf",
+  "doc": {
+    "wo": "WO-2001",
+    "name": "freshen",
+    "args": {
+      "opts": {
+        "deep": true
+      }
+    },
+    "idempotencyKey": "WO-2001:freshen:1",
+    "timeoutSec": 600,
+    "maxMB": 1500
+  }
+}
