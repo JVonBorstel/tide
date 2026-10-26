@@ -138,6 +138,14 @@ Write-Output $b
     }
     $o = & pwsh -NoProfile -File $batch -Repo $live -Name '..' -Prs 11 2>&1 | Out-String
     Check 'refused: a -Name that is not plain' ($LASTEXITCODE -eq 2 -and $o -match 'is not a plain name') $o
+    # no -RemoteUrl: the remote is the repo's own kitchen.repo.json "github" (the repo's home moved to tide on 2026-10-26); none there = refused
+    $noHome = Join-Path $root 'no-home'; New-Item -ItemType Directory -Force $noHome | Out-Null; & git init -q $noHome 2>&1 | Out-Null
+    $o = & pwsh -NoProfile -File $batch -Repo $noHome -Name 'no-home' -Prs 11 2>&1 | Out-String
+    Check 'refused: no -RemoteUrl and no github in the repo''s kitchen.repo.json' ($LASTEXITCODE -eq 2 -and $o -match 'kitchen\.repo\.json names no github owner/name') $o
+    '{"github":"o/home"}' | Set-Content (Join-Path $noHome 'kitchen.repo.json')
+    $echoGh = Join-Path $root 'echo-gh.cmd'; Set-Content $echoGh '@echo gh asked: %* 1>&2 & exit /b 1' -Encoding ascii   # (offline: says what it was asked, then fails)
+    $o = & pwsh -NoProfile -File $batch -Repo $noHome -Name 'no-home' -Prs 11 -Gh $echoGh -Worktree (Join-Path $root 'wt\no-home') -OutDir (Join-Path $root 'out\no-home') 2>&1 | Out-String
+    Check 'no -RemoteUrl: the slug and remote come from kitchen.repo.json github (gh is asked about o/home)' ($o -match 'gh asked: .*o/home' -and $o -notmatch 'brain-monitor') $o
     $o = & pwsh -NoProfile -File $batch -Repo $live -RemoteUrl $gh -Name 'live-as-wt' -Prs 11 -Branches br-b -Worktree $live -OutDir (Join-Path $root 'out\live-as-wt') 2>&1 | Out-String
     Check 'refused: the live checkout as the integration worktree' ($LASTEXITCODE -eq 2 -and $o -match 'cannot be the live checkout') $o
 

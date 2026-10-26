@@ -2,9 +2,10 @@
 # Refuses when the real checkout has uncommitted changes; a merge conflict is aborted cleanly (nothing half-merged) and exits 11 "needs freshen".
 # On success the job's worktree and branch are removed; a removal that fails is said in one line (TD-EH-21). Every merge also says how far
 # main is from its last verified tree (TD-EH-25: "main is N commits past its last verified tree (<sha>, <when>)", a merge.verified-gap event).
-# An order with a pull request (the pr station's record, <kitchen>\results\<job>.pr.json) merges on GitHub instead: `gh pr merge --merge`
-# pinned to the exact commit that was tested (--match-head-commit), or, when Jordan already pressed Merge there, nothing to merge; then
-# GitHub's main is fetched and the real checkout's main fast-forwards to it. A checkout with uncommitted changes, or a main that has
+# An order with a pull request (the pr station's record, <kitchen>\results\<job>.pr.json) merges into GitHub's main instead: the exact
+# commit that was tested is merged here as the account's noreply address and pushed as a fast-forward of GitHub's main (GitHub then
+# marks the PR merged; why not GitHub's own merge: see the OPEN branch below), or, when Jordan already pressed Merge there, nothing to
+# merge; then GitHub's main is fetched and the real checkout's main fast-forwards to it. A checkout with uncommitted changes, or a main that has
 # commits GitHub's main does not (so no fast-forward), is held for Jordan (exit 10), nothing changed. Orders without a PR record (a
 # private order, a repo with no GitHub home, orders from before the PR flow) merge locally exactly as before.
 # Inside a merge freeze window of the repo's kitchen.repo.json ("freeze") nothing merges: exit 11 with the reason, the order waits.
@@ -108,16 +109,23 @@ try {
         if ($state -eq 'OPEN') { Wait-IfMainRed }
         Set-TrainClaim $kroot $Repo $job   # (written whole: a reader never sees half of it)
         if ($state -eq 'OPEN') {
-            # pinned to the tested commit: if anything was pushed to the PR since, GitHub refuses instead of merging what nobody checked
-            # the merge commit's author: the account's noreply address, never its primary email (github-lib.ps1 Get-MergeAuthorEmail)
+            # Merged HERE and pushed, not merged by GitHub: GitHub stamps a merge it makes with the account's primary email (2026-10-26,
+            # Jordan's work address on the public tide main) and refuses the noreply address while "Keep my email addresses private" is
+            # off. So main first comes up to GitHub's (a fast-forward, checked above), the tested commit is merged as the account's noreply
+            # address (github-lib.ps1 Get-MergeAuthorEmail), and the result is pushed as a fast-forward of GitHub's main: GitHub marks the
+            # PR merged by itself. A push that is refused (main moved on GitHub meanwhile) puts the checkout back where it was: nothing changed.
             $mail = Get-MergeAuthorEmail
             if (-not $mail) { Release-Claim; Rail 60; Write-Output "merge: gh could not say which account is signed in, so the merge commit's author email is unknown (it must be the noreply address); nothing merged"; exit 11 }
-            $m = Invoke-Gh @('pr', 'merge', "$n", '-R', $slug, '--merge', '--match-head-commit', $tip, '--author-email', $mail, '--subject', "Merge $branch (kitchen $job, $who)", '--body', "Pull request #$n, merged by Jordan's Kitchen.")
-            if (-not $m.ok) {
-                $again = Invoke-GhJson @('pr', 'view', "$n", '-R', $slug, '--json', 'state')   # an error after GitHub merged (a dropped answer) is still a merge
-                if (-not ($again.ok -and [string]$again.json.state -eq 'MERGED')) { Release-Claim; Write-Output "merge: GitHub did not merge PR #$n ($(Get-GhWhy $m)); nothing changed"; exit 1 }
+            $mname = if ($mail -match '^\d+\+([^@]+)@users\.noreply\.github\.com$') { $Matches[1] } else { "Jordan's Kitchen" }
+            if ($before -ne $ghMain) { & git -C $Repo merge --ff-only --quiet $ghMain 2>&1 | Out-Null; if ($LASTEXITCODE) { Release-Claim; Write-Output "merge: the real checkout's main could not come up to GitHub's main first; nothing merged"; exit 10 } }
+            & git -C $Repo -c "user.name=$mname" -c "user.email=$mail" merge --no-ff --no-edit -m "Merge $branch (kitchen $job, $who)" -m "Pull request #$n, merged by Jordan's Kitchen." $tip 2>&1 | ForEach-Object { "git: $_" }
+            if ($LASTEXITCODE) { & git -C $Repo merge --abort 2>&1 | Out-Null; Release-Claim; Rail 60; Write-Output "merge: needs freshen: conflict merging $branch into main (main moved on GitHub since it was freshened); aborted, nothing merged"; exit 11 }
+            $push = Invoke-GitRemote $Repo @('push', '--quiet', (Get-GithubRemote $slug), 'HEAD:refs/heads/main')
+            if (-not $push.ok) {
+                & git -C $Repo reset --keep --quiet $ghMain 2>&1 | Out-Null   # (only the merge made just above goes; main stays at GitHub's main)
+                Release-Claim; Rail 60; Write-Output "merge: the push of the merge to GitHub was refused, so nothing merged; main is back at GitHub's main ($(($push.text -split "`n")[-1]))"; exit 11
             }
-            Write-Output "merge: GitHub merged PR #$n"
+            Write-Output "merge: merged PR #$n here as $mail and pushed it to GitHub"
         } else { Write-Output "merge: PR #$n was already merged on GitHub" }
         $ghMain = ''; for ($i = 0; $i -lt 3 -and -not ($ghMain -and (Test-Ancestor $Repo $tip $ghMain)); $i++) { if ($i) { Start-Sleep -Seconds 3 }; $ghMain = Get-GithubMain $Repo $slug }
         # merged on GitHub before this ran, GitHub's main readable, and the tested commit still not in it: a Squash or Rebase merge (new
