@@ -227,45 +227,59 @@ add('work-type', 16, 4, 'work', (g, f) => { blit(g, HAND, 1, [0, 1, 0, 0][f]); b
 add('desk-wall', 48, 32, 'still', (g) => { rect(g, 0, 0, 48, 32, 'E'); for (let y = 0; y < 32; y++) for (let x = 0; x < 48; x++) if ((x * 7 + y * 13) % 23 === 0) put(g, x, y, (x + y) % 2 ? 'F' : 'D'); rect(g, 0, 19, 48, 1, 'D'); blit(g, ['.aaa.', 'aIIIa', 'aItIa', 'aIIIa', '.aaa.'], 40, 3); });
 // the 9-slice panel for the interface: 2px of outline, then a highlight, then the card colour (stretched by CSS border-image)
 add('panel', 9, 9, 'still', (g) => { rect(g, 0, 0, 9, 9, 'p'); for (let i = 0; i < 9; i++) { put(g, i, 0, 'a'); put(g, i, 8, 'a'); put(g, 0, i, 'a'); put(g, 8, i, 'a'); put(g, i, 7, 'o'); put(g, 7, i, 'o'); put(g, i, 1, 'W'); put(g, 1, i, 'W'); } put(g, 0, 0, '.'); put(g, 8, 0, '.'); put(g, 0, 8, '.'); put(g, 8, 8, '.'); put(g, 1, 1, 'a'); put(g, 7, 1, 'a'); put(g, 1, 7, 'a'); put(g, 7, 7, 'a'); });
-// ---- the world props: what each one means is in scene.js WORLD ----
+// ---- the world props: what each one means is in world.js WORLD (rename S7e: the site versions; the code names stay) ----
 export const GLYPHS = { O: ['aaa', 'a.a', 'a.a', 'a.a', 'aaa'], P: ['aaa', 'a.a', 'aaa', 'a..', 'a..'], E: ['aaa', 'a..', 'aa.', 'a..', 'aaa'], N: ['aa.', 'a.a', 'a.a', 'a.a', 'a.a'],
-  C: ['.aa', 'a..', 'a..', 'a..', '.aa'], L: ['a..', 'a..', 'a..', 'a..', 'aaa'], S: ['.aa', 'a..', '.a.', '..a', 'aa.'], D: ['aa.', 'a.a', 'a.a', 'a.a', 'aa.'], R: ['aa.', 'a.a', 'aa.', 'a.a', 'a.a'], U: ['a.a', 'a.a', 'a.a', 'a.a', 'aaa'], '!': ['.a.', '.a.', '.a.', '...', '.a.'], ' ': ['...'], '+': ['...', '.a.', 'aaa', '.a.', '...'] };
+  C: ['.aa', 'a..', 'a..', 'a..', '.aa'], L: ['a..', 'a..', 'a..', 'a..', 'aaa'], S: ['.aa', 'a..', '.a.', '..a', 'aa.'], D: ['aa.', 'a.a', 'a.a', 'a.a', 'aa.'], R: ['aa.', 'a.a', 'aa.', 'a.a', 'a.a'], U: ['a.a', 'a.a', 'a.a', 'a.a', 'aaa'],
+  A: ['.a.', 'a.a', 'aaa', 'a.a', 'a.a'], H: ['a.a', 'a.a', 'aaa', 'a.a', 'a.a'], V: ['a.a', 'a.a', 'a.a', 'a.a', '.a.'], '!': ['.a.', '.a.', '.a.', '...', '.a.'], ' ': ['...'], '+': ['...', '.a.', 'aaa', '.a.', '...'] };
 const say = (g, word, x, y, c) => [...word].forEach((ch, i) => blit(g, GLYPHS[ch].map((r) => r.replace(/a/g, c)), x + i * 4, y));
+// the gate sign on two chains: OPEN, OPEN lit (AI crews on), PAUSED in hazard yellow. Never CLOSED: "Site closed" is the merge freeze
+export const SIGN_WORDS = ['OPEN', 'OPEN', 'PAUSED'];
 add('sign', 25, 12, 'sign', (g, f) => {
-  put(g, 12, 0, 'a'); for (let i = 1; i < 3; i++) { put(g, 12 - i * 4, i, 'k'); put(g, 12 + i * 4, i, 'k'); }
-  if (f === 2) { box(g, 0, 3, 25, 9, DARKWOOD); rect(g, 1, 4, 23, 7, 'c'); say(g, 'CLOSED', 1, 5, 'o'); return; }
-  box(g, 0, 3, 25, 9, f ? ['q', 'q', 'A'] : PAPER); say(g, 'OPEN', 5, 5, f ? 't' : 'k');
+  put(g, 12, 0, 'a'); for (let i = 1; i < 3; i++) { put(g, 12 - i * 4, i, 'h'); put(g, 12 + i * 4, i, 'h'); }
+  if (f === 2) { box(g, 0, 3, 25, 9, ['J', 'H', 'G']); say(g, SIGN_WORDS[2], 1, 5, 'a'); return; }
+  box(g, 0, 3, 25, 9, f ? ['q', 'q', 'A'] : PAPER); say(g, SIGN_WORDS[f], 5, 5, f ? 't' : 'k');
 });
 const ring = (g, cx, cy, r0, r1, c) => { for (let y = 0; y < g.length; y++) for (let x = 0; x < g[0].length; x++) { const d = Math.hypot(x - cx, y - cy); if (d >= r0 && d < r1) put(g, x, y, c); } };
 const hand = (g, f, len, c) => { const a = (f * Math.PI) / 6; for (let i = 1; i <= len; i++) put(g, Math.round(6 + Math.sin(a) * i), Math.round(6 - Math.cos(a) * i), c); };
-add('clock', 13, 13, 'still', (g) => { ring(g, 6, 6, 0, 6.6, 'p'); ring(g, 6, 6, 5.2, 6.6, 'c'); ring(g, 6, 6, 6, 6.6, 'a'); for (const [x, y] of [[6, 2], [10, 6], [6, 10], [2, 6]]) put(g, x, y, 'k'); });
+add('clock', 13, 13, 'still', (g) => { ring(g, 6, 6, 0, 6.6, 'p'); ring(g, 6, 6, 5.2, 6.6, 'g'); ring(g, 6, 6, 6, 6.6, 'a'); for (const [x, y] of [[6, 2], [10, 6], [6, 10], [2, 6]]) put(g, x, y, 'k'); });
 add('clock-min', 13, 13, 'hand', (g, f) => hand(g, f, 4, 'a'));
 add('clock-hour', 13, 13, 'hand', (g, f) => { hand(g, f, 2, 'r'); put(g, 6, 6, 'a'); });
-add('coin-jar', 9, 10, 'jar', (g, f) => {
-  rect(g, 1, 0, 7, 1, 'a'); put(g, 1, 1, 'a'); put(g, 7, 1, 'a'); for (let y = 2; y < 9; y++) { put(g, 0, y, 'a'); put(g, 8, y, 'a'); } rect(g, 1, 9, 7, 1, 'a');
-  for (let k = 0; k < f; k++) { const y = 8 - k; for (let x = 1; x < 8; x++) if (y > 1 || (x > 1 && x < 7)) put(g, x, y, (x + y) % 3 ? 't' : 'd'); }
-  for (let y = 2; y < 8 - f + 1; y++) put(g, 2, y, 'z');
+// the budget meter on the cabin wall (code name 'coin-jar'): 8 segments that fill bottom-up, green, then amber, then red
+add('coin-jar', 9, 10, 'jar', (g, f) => { box(g, 0, 0, 9, 10, IRON); for (let k = 0; k < 8; k++) { rect(g, 2, 8 - k, 5, 1, k < f ? (k < 4 ? 'v' : k < 6 ? 's' : 'B') : 'j'); put(g, 7, 8 - k, k % 2 ? 'h' : 'g'); } });
+// the cap stopped new work today: a chain across the meter and a red padlock (code name 'jar-lock')
+add('jar-lock', 9, 8, 'still', (g) => { for (let x = 0; x < 9; x++) { put(g, x, 1 + (x % 2), 'h'); put(g, x, 2 - (x % 2), 'a'); } put(g, 3, 3, 'a'); put(g, 5, 3, 'a'); box(g, 2, 4, 5, 4, ['q', 'A', 'B']); put(g, 4, 5, 'a'); put(g, 4, 6, 'a'); });
+const STOOL = (g) => { box(g, 0, 0, 10, 3, STEEL); for (let y = 3; y < 8; y++) { put(g, Math.round(1 + ((y - 3) * 7) / 4), y, 'a'); put(g, Math.round(8 - ((y - 3) * 7) / 4), y, 'g'); } };
+add('stool', 10, 8, 'still', STOOL);   // the Dispatcher's folding stool by the gate
+// paused: a striped barrier with a beacon stands across two stations (code name 'chair-up')
+add('chair-up', 10, 8, 'still', (g) => { rect(g, 0, 1, 10, 3, 'a'); for (let x = 1; x < 9; x++) put(g, x, 2, x % 4 < 2 ? 'B' : 'p'); put(g, 4, 0, 's'); put(g, 5, 0, 's'); for (let y = 4; y < 8; y++) { put(g, y < 6 ? 2 : 1, y, 'g'); put(g, y < 6 ? 7 : 8, y, 'g'); } });
+// the Dispatcher seated, a clipboard on the knee (scene.js gives the hard hat the Dispatcher's white: DISPATCHER)
+export const DISPATCHER = PALETTE.p;
+add('chef-sit', 16, 24, 'idle', (g, f) => { body(g, HEAD.down, TORSO.down, LEGS.sit[0], BOB.idle[f]); blit(g, ['aaaa', 'appa', 'akka', 'appa', 'aaaa'], 10, 14 + BOB.idle[f]); });
+// the power board (code name 'fuse'): shut, a green light and a warning triangle; tripped: the door open, sparks, a red STOP tag
+add('fuse', 10, 12, 'fuse', (g, f) => {
+  box(g, 0, 0, 10, 12, IRON);
+  if (!f) { box(g, 2, 2, 6, 8, STEEL); put(g, 6, 3, 'v'); put(g, 4, 6, 'H'); rect(g, 3, 7, 3, 1, 'H'); put(g, 4, 7, 'a'); return; }
+  box(g, 2, 2, 6, 8, ['a', 'f', 'g']); rect(g, 4, 3, 1, 3, 'h'); rect(g, 4, 6, 4, 3, 'B'); put(g, 5, 7, 'p'); put(g, 6, 7, 'p'); put(g, 7, 1, 't'); put(g, 1, 10, 't'); put(g, 8, 10, 's');
 });
-add('jar-lock', 9, 8, 'still', (g) => { rect(g, 0, 0, 9, 2, 'a'); rect(g, 1, 0, 7, 1, 'h'); put(g, 3, 2, 'a'); put(g, 5, 2, 'a'); put(g, 3, 3, 'a'); put(g, 5, 3, 'a'); box(g, 2, 4, 5, 4, STEEL); put(g, 4, 5, 'a'); put(g, 4, 6, 'a'); });
-const STOOL = (g) => { box(g, 0, 0, 10, 3, WOOD); for (let y = 3; y < 8; y++) { put(g, 1, y, 'a'); put(g, 2, y, 'c'); put(g, 7, y, 'c'); put(g, 8, y, 'a'); } rect(g, 2, 5, 6, 1, 'c'); };
-add('stool', 10, 8, 'still', STOOL);
-add('chair-up', 10, 8, 'still', (g) => { const t = grid(10, 8); STOOL(t); t.reverse().forEach((r, y) => r.forEach((c, x) => put(g, x, y, c))); });
-add('chef-sit', 16, 24, 'idle', (g, f) => body(g, HEAD.down, TORSO.down, LEGS.sit[0], BOB.idle[f]));
-add('fuse', 10, 12, 'fuse', (g, f) => { box(g, 0, 0, 10, 12, IRON); if (!f) { box(g, 2, 2, 6, 8, STEEL); put(g, 6, 4, 'v'); return; } box(g, 2, 2, 6, 8, ['a', 'f', 'g']); rect(g, 4, 6, 1, 3, 'h'); put(g, 4, 9, 'B'); put(g, 6, 3, 'B'); put(g, 7, 1, 'a'); put(g, 1, 10, 'a'); });
 add('lamp-off', 9, 8, 'still', workLight('g'));
-add('heat', 8, 6, 'heat', (g, f) => { rect(g, 3, 0, 2, 2, 'a'); box(g, 1, 2, 6, 3, IRON, true); rect(g, 2, 4, 4, 1, ['t', 's', 'B'][f]); for (const x of [2, 5]) put(g, x, 5, ['I', 'K', 'B'][f]); });
-add('cork', 18, 12, 'still', (g) => { box(g, 0, 0, 18, 12, WOOD); rect(g, 1, 1, 16, 10, 'd'); for (const [x, y] of [[3, 3], [9, 2], [14, 5], [5, 8], [12, 9], [16, 2]]) put(g, x, y, 'c'); });
+// a sign-off light over each waiting work order (code name 'heat'): a beacon, warm, amber from 1 h, red from 4 h
+add('heat', 8, 6, 'heat', (g, f) => { rect(g, 2, 0, 4, 1, 'a'); rect(g, 1, 1, 6, 3, 'a'); rect(g, 2, 1, 4, 3, ['t', 's', 'B'][f]); put(g, 3, 1, ['W', 'I', 'C'][f]); rect(g, 0, 4, 8, 1, 'g'); rect(g, 0, 5, 8, 1, 'a'); });
+add('cork', 18, 12, 'still', (g) => { box(g, 0, 0, 18, 12, STEEL); rect(g, 1, 1, 16, 10, 'd'); for (const [x, y] of [[3, 3], [9, 2], [14, 5], [5, 8], [12, 9], [16, 2]]) put(g, x, y, 'c'); });   // the notice board
 add('letter', 5, 4, 'still', (g) => { box(g, 0, 0, 5, 4, PAPER); put(g, 1, 1, 'a'); put(g, 2, 2, 'a'); put(g, 3, 1, 'a'); put(g, 2, 0, 'B'); });
 add('hooks', 22, 3, 'still', (g) => { box(g, 0, 0, 22, 3, DARKWOOD); for (let i = 0; i < 4; i++) put(g, 3 + i * 5, 2, 'h'); });
 add('hat', 6, 7, 'still', (g) => blit(g, ['......', '.aaaa.', 'a6654a', 'a6554a', 'a5554a', 'a4444a', 'aaaaaa']));   // a hard hat on its hook, in the crew's colour
-add('chalk', 19, 13, 'still', (g) => { box(g, 0, 0, 19, 13, WOOD); rect(g, 1, 1, 17, 11, 'f'); });
-add('tally', 17, 5, 'tally', (g, f) => { for (let i = 0; i < f; i++) { const grp = Math.floor(i / 5), k = i % 5, x0 = 1 + grp * 8; if (k < 4) rect(g, x0 + k * 2, 0, 1, 5, 'o'); else for (let j = 0; j < 7; j++) put(g, x0 - 1 + j, 4 - Math.round(j * 4 / 6), 'o'); } });
-addFrames('chalk-digit', DIGITS.map((d) => d.map((r) => r.replace(/a/g, 'o'))), 'glyph');
-add('recipes', 9, 8, 'cards', (g, f) => { for (let i = 0; i < f; i++) box(g, 1 + i * 2, 1 + (i % 2), 3, 5, PAPER); box(g, 0, 4, 9, 4, DARKWOOD); });
+// the whiteboard (code name 'chalk') with a blue marker tally ('tally', 'chalk-digit')
+add('chalk', 19, 13, 'still', (g) => { box(g, 0, 0, 19, 13, STEEL); rect(g, 1, 1, 17, 11, 'p'); rect(g, 13, 11, 4, 1, 'y'); });
+add('tally', 17, 5, 'tally', (g, f) => { for (let i = 0; i < f; i++) { const grp = Math.floor(i / 5), k = i % 5, x0 = 1 + grp * 8; if (k < 4) rect(g, x0 + k * 2, 0, 1, 5, 'x'); else for (let j = 0; j < 7; j++) put(g, x0 - 1 + j, 4 - Math.round(j * 4 / 6), 'x'); } });
+addFrames('chalk-digit', DIGITS.map((d) => d.map((r) => r.replace(/a/g, 'x'))), 'glyph');
+// the idea box (code name 'recipes'): a red suggestion box with 0-4 slips standing in its slot
+add('recipes', 9, 8, 'cards', (g, f) => { for (let i = 0; i < f; i++) box(g, 1 + i * 2, 1 + (i % 2), 3, 5, PAPER); box(g, 0, 4, 9, 4, ['q', 'A', 'B']); rect(g, 2, 4, 5, 1, 'a'); });
+// the bench (code name 'aside-shelf') and a parked crate on it for each failed or stopped work order ('plate-aside')
 add('aside-shelf', 27, 4, 'still', (g) => { box(g, 0, 0, 27, 3, DARKWOOD); put(g, 2, 3, 'a'); put(g, 24, 3, 'a'); });
-add('plate-aside', 5, 3, 'still', (g) => blit(g, ['.abb.', 'aoooa', '.aaa.']));
+add('plate-aside', 5, 3, 'still', (g) => blit(g, ['aaaaa', 'adeda', 'aaaaa']));
 addFrames('smoke', PARTICLE.steam.map((fr) => fr.map((r) => r.replace(/l/g, 'k').replace(/m/g, 'l'))), 'steam');   // the dust, a shade darker
-add('tag', 15, 9, 'still', (g) => { box(g, 0, 1, 15, 8, PAPER); rect(g, 6, 0, 3, 2, 'g'); put(g, 7, 0, 'a'); });
+// the job board's +N tag (hi-vis, so it reads as "more waiting")
+add('tag', 15, 9, 'still', (g) => { box(g, 0, 1, 15, 8, ['J', 'H', 'G']); rect(g, 6, 0, 3, 2, 'g'); put(g, 7, 0, 'a'); });
 add('plus', 3, 5, 'still', (g) => blit(g, GLYPHS['+']));
 // ---- moments (plans/chef-art-2.md wave 2; public/moments.js plays them): the anticipation crouch, the landing squash, the pan
 // flip, a grey puff, dark smoke, a check, confetti in 3 colours and the "ORDER UP!" banner (a bevelled box, words baked in) ----
@@ -278,8 +292,8 @@ add('smoke-dark', 9, 12, 'smoke6', (g, f) => { for (let i = 0; i < 3; i++) ring(
 add('check', 7, 6, 'still', (g) => blit(g, ['.....av', '....avu', 'a..avu.', 'avavu..', '.avu...', '..a....']));
 add('confetti', 2, 2, 'confetti', (g, f) => rect(g, 0, 0, 2, 2, 'Bty'[f]));
 add('banner', 41, 11, 'still', (g) => { box(g, 0, 0, 41, 11, ['q', 'r', 's']); say(g, 'ORDER UP!', 3, 3, 'p'); });
-// the legend sheet's icon per row: [sprite, frame]
-export const LEGEND_ICONS = { sign: ['sign', 1], clock: ['clock', 0], sous: ['chef-sit', 0],
+// the legend sheet's icon per row: [sprite, frame, crew colour (optional; the Dispatcher's white hard hat)]
+export const LEGEND_ICONS = { sign: ['sign', 1], clock: ['clock', 0], sous: ['chef-sit', 0, DISPATCHER],
   fuse: ['fuse', 1], jar: ['coin-jar', 5], aside: ['plate-aside', 0], spike: ['tag', 0], heat: ['heat', 1], letters: ['letter', 0], specials: ['chalk', 0], recipes: ['recipes', 3], hats: ['hat', 0] };
 export const SPRITES = S;
 

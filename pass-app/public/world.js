@@ -1,4 +1,4 @@
-// The world of the kitchen (plans/chef-art-2.md wave 1): every prop in the pixel room is one real state field, mapped in WORLD.
+// The world of the site (plans/chef-art-2.md wave 1; site props since rename S7e): every prop on the pixel stage is one real state field, mapped in WORLD.
 // Pure and tested in node (pass-app/test-scene.mjs); scene.js draws it, app.js shows the legend sheet. No network, no storage.
 import { COOK_COLORS, esc, ticket } from './scene.js';
 
@@ -13,18 +13,18 @@ const waitWords = (m) => m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${
 const clockWords = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 export const RESTING = ['resting', 'capped', 'off', 'signed-out'];
 export const WORLD = [
-  { prop: 'sign', from: 'paused, live', absent: 'either', meaning: (w) => ({ closed: 'Window sign CLOSED: you paused the Yard.', lit: 'Window sign OPEN, lit: AI crews on.', open: "Window sign OPEN, not lit: AI crews off (AI steps only show what they'd do)." })[w.state] },
-  { prop: 'clock', from: 'lastTick, stalled', absent: 'either', meaning: (w) => w.frozen ? `Clock stopped at ${clockWords(w.at)}: no walkround for 10+ min.` : 'Clock: real time; it stops if the walkrounds stop.' },
-  { prop: 'sous', from: 'lastTick, stalled', absent: 'either', meaning: (w) => w.here ? 'Dispatcher on the stool: one lap of the line per walkround.' : 'Empty stool: the walkrounds stopped.' },
-  { prop: 'fuse', from: 'breaker', absent: 'breaker', meaning: (w) => w.tripped ? 'Fuse box sparking: stop-work order (too many steps failed), new work waits; hatch lamp out.' : 'Fuse box shut: no stop-work order.' },
-  { prop: 'jar', from: 'spent, budget, budget.stop', absent: 'spent or budget', meaning: (w) => `Coin jar: ${money(w.spent)} of today's ${money(w.budget)} cap (pay-per-use estimate), ${w.level} of 8.${w.locked ? ' Padlock: the cap stopped new work today.' : ''}` },
-  { prop: 'aside', from: 'jobs, job.quarantined', absent: 'jobs', meaning: (w) => w.ids.length ? `The bench: ${plural(w.ids.length, 'work order')} failed or stopped (${w.shelf.map(ticket).join(', ')}${w.more ? ` +${w.more}` : ''})${w.smoke.length ? ', smoke = in the last 2 min' : ''}.` : 'The bench: empty, nothing failed or stopped.' },
-  { prop: 'spike', from: 'jobs', absent: 'jobs (or 8 tickets or fewer)', meaning: (w) => `Rail tag: ${w.n} more queued.` },
-  { prop: 'heat', from: 'jobs, approval.requested', absent: 'its event', meaning: (w) => 'Heat lamps: ' + w.map((h) => `${ticket(h.id)} ${waitWords(h.mins)}${['', ' (ember, 1 h+)', ' (red, 4 h+)'][h.level]}`).join(', ') + ' waiting for sign-off.' },
-  { prop: 'letters', from: 'due', absent: 'due', meaning: (w) => `Cork board: ${plural(w.n, 'job-hunt follow-up')} due.` },
-  { prop: 'specials', from: 'leads', absent: 'leads', meaning: (w) => `Chalkboard: ${plural(w.n, 'new client lead')}.` },
+  { prop: 'sign', from: 'paused, live', absent: 'either', meaning: (w) => ({ closed: 'Gate sign PAUSED: you paused the Yard.', lit: 'Gate sign OPEN, lit: AI crews on.', open: "Gate sign OPEN, not lit: AI crews off (AI steps only show what they'd do)." })[w.state] },
+  { prop: 'clock', from: 'lastTick, stalled', absent: 'either', meaning: (w) => w.frozen ? `Site clock stopped at ${clockWords(w.at)}: no walkround for 10+ min.` : 'Site clock: real time; it stops if the walkrounds stop.' },
+  { prop: 'sous', from: 'lastTick, stalled', absent: 'either', meaning: (w) => w.here ? 'Dispatcher by the gate: one lap of the site per walkround.' : 'Empty stool: the walkrounds stopped.' },
+  { prop: 'fuse', from: 'breaker', absent: 'breaker', meaning: (w) => w.tripped ? 'Power board sparking, STOP tag on: stop-work order (too many steps failed), new work waits; work light out.' : 'Power board shut: no stop-work order.' },
+  { prop: 'jar', from: 'spent, budget, budget.stop', absent: 'spent or budget', meaning: (w) => `Budget meter: ${money(w.spent)} of today's ${money(w.budget)} cap (pay-per-use estimate), ${w.level} of 8.${w.locked ? ' Chain and padlock: the cap stopped new work today.' : ''}` },
+  { prop: 'aside', from: 'jobs, job.quarantined', absent: 'jobs', meaning: (w) => w.ids.length ? `The bench: ${plural(w.ids.length, 'work order')} failed or stopped (${w.shelf.map(ticket).join(', ')}${w.more ? ` +${w.more}` : ''})${w.smoke.length ? ', dust = in the last 2 min' : ''}.` : 'The bench: empty, nothing failed or stopped.' },
+  { prop: 'spike', from: 'jobs', absent: 'jobs (or 8 tickets or fewer)', meaning: (w) => `Job board tag: ${w.n} more queued.` },
+  { prop: 'heat', from: 'jobs, approval.requested', absent: 'its event', meaning: (w) => 'Sign-off lights: ' + w.map((h) => `${ticket(h.id)} ${waitWords(h.mins)}${['', ' (amber, 1 h+)', ' (red, 4 h+)'][h.level]}`).join(', ') + ' waiting for sign-off.' },
+  { prop: 'letters', from: 'due', absent: 'due', meaning: (w) => `Notice board: ${plural(w.n, 'job-hunt follow-up')} due.` },
+  { prop: 'specials', from: 'leads', absent: 'leads', meaning: (w) => `Whiteboard: ${plural(w.n, 'new client lead')}.` },
   { prop: 'recipes', from: 'ideas', absent: 'ideas', meaning: (w) => `Idea box: ${plural(w.n, 'new idea')}.` },
-  { prop: 'hats', from: 'cooks', absent: 'cooks', meaning: (w) => w.length ? 'Hats on hooks: ' + w.map((h) => h.name + ' ' + h.status.replace('-', ' ')).join(', ') + '.' : 'Hooks empty: no crew resting.' },
+  { prop: 'hats', from: 'cooks', absent: 'cooks', meaning: (w) => w.length ? 'Hard hats on hooks: ' + w.map((h) => h.name + ' ' + h.status.replace('-', ' ')).join(', ') + '.' : 'Hooks empty: no crew resting.' },
 ];
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
 const bool = (v) => typeof v === 'boolean';
