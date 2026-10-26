@@ -16,12 +16,12 @@ const job = (id, o = {}) => ({ id, name: `improve: secret plan ${id}`, status: '
 const at = (L, id) => L.chefs.find((c) => c.id === id);
 
 // stations follow the step
-check('station: plan at the cutting board', stationFor(job('J1', { role: 'plan' })) === 'board');
-check('station: code at the stove', stationFor(job('J1', { role: 'do' })) === 'stove' && stationFor(job('J1', { station: 'repair', role: '' })) === 'stove');
-check('station: review at the tasting counter', stationFor(job('J1', { role: 'check' })) === 'taste');
-check('station: tests, lint and mutation at the sink', ['tests', 'lint', 'mutate'].every((s) => stationFor(job('J1', { station: s, role: '' })) === 'sink'));
-check('station: commit, freshen and merge at the plating counter', ['commit', 'freshen', 'merge'].every((s) => stationFor(job('J1', { station: s, role: '' })) === 'plate'));
-check('station: anything unknown cooks at the stove', stationFor(job('J1', { station: 'something-new', role: '' })) === 'stove');
+check('station: plan at the Survey table', stationFor(job('J1', { role: 'plan' })) === 'board');
+check('station: code at the Workbench', stationFor(job('J1', { role: 'do' })) === 'stove' && stationFor(job('J1', { station: 'repair', role: '' })) === 'stove');
+check('station: review at the Inspection desk', stationFor(job('J1', { role: 'check' })) === 'taste');
+check('station: tests, lint and mutation at the Test rig', ['tests', 'lint', 'mutate'].every((s) => stationFor(job('J1', { station: s, role: '' })) === 'sink'));
+check('station: commit, freshen and merge at the Handover bay', ['commit', 'freshen', 'merge'].every((s) => stationFor(job('J1', { station: s, role: '' })) === 'plate'));
+check('station: anything unknown is built at the Workbench', stationFor(job('J1', { station: 'something-new', role: '' })) === 'stove');
 check('cook: colour by the cook that took it; non-AI steps are the kitchen hand', cookOf(job('J1')) === 'claude' && cookOf(job('J1', { station: 'tests', cook: '' })) === 'hand' && cookOf(job('J1', { cook: '' })) === 'sous');
 
 // placement
@@ -147,6 +147,14 @@ check(`budget: a busy floor is at most ${STAGE.maxDraws} sprite draws a frame ($
 const srcBytes = fs.statSync(new URL('./public/sprites.js', import.meta.url)).size;
 check(`budget: the atlas source is under 200 KB (${Math.round(srcBytes / 1024)} KB)`, srcBytes < 200 * 1024);
 check('budget: 60 fps cap in the stage settings', STAGE.fps === 60);
+// the stations (rename S7c): site art, and a busy station costs exactly the draws it did as a kitchen
+const KITCHEN_FOOD = /[wuxKCs]/;   // leaf, water, soup glow, blush, carrot: none of it on a station any more
+check('SiteStations: the station art and props carry no kitchen food or water (Survey table, Workbench, Inspection desk, Test rig, Handover bay)',
+  ['counter', 'stove', 'sink', 'board', 'pot', 'bowl', 'plates'].every((n) => P.framesOf(n).every((f) => !KITCHEN_FOOD.test(f.join('')))) && STATIONS.board.label === 'Survey table' && STATIONS.plate.label === 'Handover bay');
+const stationDraws = (role, busyOn) => { const st = stageNew(); st.W = 224; stageSync(st, layoutScene({ jobs: [job('J1', { ...role, ...(busyOn ? {} : { status: 'pending', step: 4 }) })] }, [], {}, Date.parse('2026-10-22T12:00:00'))); return drawStage(mk(224, STAGE.h).getContext(), st, kit); };
+const extra = Object.fromEntries([['board', { role: 'plan' }], ['stove', { role: 'do' }], ['taste', { role: 'check' }], ['sink', { station: 'tests', role: '' }], ['plate', { station: 'merge', role: '' }]].map(([k, r]) => [k, stationDraws(r, true) - stationDraws(r, false)]));
+check(`SiteStations: a busy station costs what it did (work loop + effects: Workbench 6, Inspection desk 2, Test rig 4, Survey table 1, Handover bay 1; ${JSON.stringify(extra)})`,
+  extra.stove === 6 && extra.taste === 2 && extra.sink === 4 && extra.board === 1 && extra.plate === 1);
 
 // motion: chefs walk in from the door, between stations and out to the pass
 const s1 = stageNew(); stageSync(s1, layoutScene({ jobs: [] }));
