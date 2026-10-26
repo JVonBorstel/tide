@@ -281,17 +281,20 @@ addFrames('smoke', PARTICLE.steam.map((fr) => fr.map((r) => r.replace(/l/g, 'k')
 // the job board's +N tag (hi-vis, so it reads as "more waiting")
 add('tag', 15, 9, 'still', (g) => { box(g, 0, 1, 15, 8, ['J', 'H', 'G']); rect(g, 6, 0, 3, 2, 'g'); put(g, 7, 0, 'a'); });
 add('plus', 3, 5, 'still', (g) => blit(g, GLYPHS['+']));
-// ---- moments (plans/chef-art-2.md wave 2; public/moments.js plays them): the anticipation crouch, the landing squash, the pan
-// flip, a grey puff, dark smoke, a check, confetti in 3 colours and the "ORDER UP!" banner (a bevelled box, words baked in) ----
+// ---- moments (plans/chef-art-2.md wave 2; public/moments.js plays them; site versions since rename S7f): the anticipation crouch,
+// the landing squash, a brick laid, a dust puff, dark smoke, a check, confetti in 3 colours and the "HANDED OVER" banner ----
+export const BANNER_WORDS = 'HANDED OVER';
 add('chef-crouch', 16, 24, 'still', (g) => body(g, HEAD.down, TORSO.down, LEGS.down[0], 2));
 add('chef-squash', 16, 24, 'still', (g) => { blit(g, LEGS.down[0], 0, 17); blit(g, TORSO.down, 0, 13); blit(g, HEAD.down, 0, 2); });
-add('mitt', 5, 4, 'still', (g) => blit(g, HAND));
-add('pan-flip', 12, 12, 'flip', (g, f) => { box(g, 1, 9, 8, 3, IRON, true); rect(g, 9, 10, 3, 1, 'a'); const y = [6, 2, 0, 3][f]; rect(g, 3 + (f % 2), y, 3, 2, 'B'); put(g, 4 + (f % 2), y, 'C'); });
+add('mitt', 5, 4, 'still', (g) => blit(g, ['.aaa.', 'aeeea', 'aedda', '.aaa.']));   // a leather work glove (the head scratch, the wave)
+// a step done: a brick goes up and lands on a small stack (code name 'pan-flip', 4 frames)
+const brick = (g, x, y) => { rect(g, x, y, 5, 2, 'B'); rect(g, x, y + 1, 5, 1, 'A'); put(g, x, y, 'C'); };
+add('pan-flip', 12, 12, 'flip', (g, f) => { brick(g, 0, 10); brick(g, 6, 10); brick(g, 3, 8); brick(g, ...[[0, 4], [2, 1], [4, 0], [3, 6]][f]); });
 add('puff', 9, 9, 'puff', (g, f) => { ring(g, 4, 4, 0, 1.5 + f, f > 2 ? 'k' : 'l'); ring(g, 4, 4, 0.6 + f, 1.5 + f, 'm'); });
 add('smoke-dark', 9, 12, 'smoke6', (g, f) => { for (let i = 0; i < 3; i++) ring(g, 2 + i * 2.5, 9 - ((f + i * 2) % 6) * 1.5, 0, 1.5 + ((f + i) % 3) * 0.6, i % 2 ? 'j' : 'D'); });
 add('check', 7, 6, 'still', (g) => blit(g, ['.....av', '....avu', 'a..avu.', 'avavu..', '.avu...', '..a....']));
 add('confetti', 2, 2, 'confetti', (g, f) => rect(g, 0, 0, 2, 2, 'Bty'[f]));
-add('banner', 41, 11, 'still', (g) => { box(g, 0, 0, 41, 11, ['q', 'r', 's']); say(g, 'ORDER UP!', 3, 3, 'p'); });
+add('banner', 51, 11, 'still', (g) => { box(g, 0, 0, 51, 11, ['q', 'r', 's']); say(g, BANNER_WORDS, 4, 3, 'p'); });   // a work order handed over (the status word)
 // the legend sheet's icon per row: [sprite, frame, crew colour (optional; the Dispatcher's white hard hat)]
 export const LEGEND_ICONS = { sign: ['sign', 1], clock: ['clock', 0], sous: ['chef-sit', 0, DISPATCHER],
   fuse: ['fuse', 1], jar: ['coin-jar', 5], aside: ['plate-aside', 0], spike: ['tag', 0], heat: ['heat', 1], letters: ['letter', 0], specials: ['chalk', 0], recipes: ['recipes', 3], hats: ['hat', 0] };
