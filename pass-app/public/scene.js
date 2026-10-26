@@ -1,15 +1,12 @@
-// The kitchen, animated (pass-app/SCENE.md): a small diorama on the Pass and Live tabs: a chef per order on the line at the station
-// its step needs, tickets on the rail, waiters carrying plates to the pass, a window sky that follows the hour, a sleepy chef when idle.
-// Budget: at most 60 animated elements and about 25 KB of SVG markup (checked by pass-app/test-scene.mjs).
-// SVG: mountScene keeps one element per actor, keyed by job id, so no animation restarts; an actor's place lives on its outer <a> (a
-// CSS transition = walking), its motion on inner groups. Only transform and opacity animate; paused while hidden; still under reduced
-// motion. The pixel stage (SCENE.md): once sprites.js loads, layoutScene drives a canvas; frame.js runs its loop, moments.js its
-// moments. Private orders show no words anywhere.
+// The Board's scene (pass-app/SCENE.md): the Yard as a small building site on the Board and Live tabs: a crew member per work order at the
+// station its step needs, work-order cards on the job board, runners at the sign-off window, a window sky that follows the hour.
+// Fallback: a still card (no animation, at most 25 KB of markup; checked by pass-app/test-scene.mjs) until sprites.js loads, or for good
+// if it cannot. The pixel stage (SCENE.md): once sprites.js loads, layoutScene drives a canvas; frame.js runs its loop, moments.js its
+// moments. Private work orders show no words anywhere.
 import { WORLD, worldOf, worldWords, legendRows, legendHtml, PLACE, worldKey, bakeWorld, plural } from './world.js';
 import { stageOk, stageFps, frameKey, makeLoop } from './frame.js';
 import { fxSync, fxTick, fxBusy, drawFx, chefPose, passFx, chefSpots, propRects, placeSays, approveFx, tapChef, FX } from './moments.js';
 export { makeLoop };
-const NS = 'http://www.w3.org/2000/svg';
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const ticket = (id) => 'WO-' + String(id || '').replace(/^J/, '').padStart(4, '0');
 const r1 = (n) => Math.round(n * 10) / 10;
@@ -25,23 +22,21 @@ export function applyCss(root) {
   }
 }
 
-// ---- where things are (viewBox 400 x 210) ----
+// ---- where things are (a 400-wide room; sx() puts it on the 192-pixel stage). Code names stay (board, stove ...); labels are site words ----
 export const STATIONS = {
-  board: { x: 44, label: 'cutting board', word: 'prep' },
-  stove: { x: 104, label: 'stove', word: 'stove' },
-  taste: { x: 164, label: 'tasting counter', word: 'taste' },
-  sink: { x: 224, label: 'sink', word: 'wash' },
-  plate: { x: 284, label: 'plating counter', word: 'plate' },
+  board: { x: 44, label: 'Survey table' },
+  stove: { x: 104, label: 'Workbench' },
+  taste: { x: 164, label: 'Inspection desk' },
+  sink: { x: 224, label: 'Test rig' },
+  plate: { x: 284, label: 'Handover bay' },
 };
-const CHEF_Y = 174, WAITER_Y = 204, DOOR_X = -26, PASS_X = 334, RAIL_X = 104, RAIL_W = 196;
+const CHEF_Y = 174, WAITER_Y = 204, PASS_X = 334, RAIL_X = 104, RAIL_W = 196;
 const STEP_AT = {
   plan: 'board', map: 'board', research: 'board', worktree: 'board', diagnose: 'board', slice: 'board', talk: 'board', ask: 'board', scout: 'board',
   do: 'stove', build: 'stove', repair: 'stove', check: 'taste', review: 'taste', tests: 'sink', lint: 'sink', mutate: 'sink', verify: 'sink',
   commit: 'plate', freshen: 'plate', merge: 'plate', ideas: 'plate', 'pack-render': 'plate', inventory: 'plate',
 };
 export const COOK_COLORS = { claude: '#d97757', gemini: '#4f8cf7', antigravity: '#a46cf0', local: '#3fa66b', sous: '#d6a531', hand: '#8b939e' };
-// the classes app.css animates; the budget test counts them
-export const ANIMATED = ['bob', 'eyes', 'arm-r', 'flame', 'puff', 'bub', 'star', 'bell', 'zz'];
 
 const stepKey = (j) => String((j?.station === 'agent' ? j.role : j?.station) || '').toLowerCase();
 export function stationFor(j) { return STEP_AT[typeof j === 'string' ? j.toLowerCase() : stepKey(j)] || 'stove'; }
@@ -105,235 +100,40 @@ export function layoutScene(s, events = [], opts = {}, now = Date.now()) {
     queue: line.length + queued.length, summary: `${chefs.length} building, ${waiting.length} waiting for your sign-off${ww ? '; ' + ww : ''}` };
 }
 
-// ---- the actors (feet at 0,0; the outer <a> carries the place, inner groups carry the motion) ----
-const TOOL = {
-  board: '<path class="steel" d="M9 -13 l7 -1.6 l.6 1.4 l-7.4 1.4z"/><rect class="wood" x="7.6" y="-13.8" width="2.6" height="1.8" rx=".6"/>',
-  stove: '<rect class="wood" x="9.2" y="-21" width="1.3" height="10" rx=".6"/><circle class="steel" cx="9.9" cy="-11" r="2.1"/>',
-  taste: '<rect class="steel" x="9.3" y="-19" width="1" height="7" rx=".5"/><ellipse class="steel" cx="9.8" cy="-19.6" rx="1.6" ry="1.1"/>',
-  sink: '<rect class="sponge" x="7.6" y="-14" width="5" height="3.2" rx="1"/>',
-  plate: '<ellipse class="sc-dish" cx="12" cy="-12.4" rx="5" ry="1.4"/>',
-};
-function chefBody(c) {
-  const L = c.look, hand = c.cook === 'hand', top = -38.5 - L.hat;
-  const hat = hand
-    ? '<path class="ck" d="M-6.6 -35 a6.6 6 0 0 1 13.2 0z"/><rect class="ck" x="3" y="-36" width="8" height="2" rx="1"/>'
-    : `<rect class="hat" x="-6" y="${r1(top + 2)}" width="12" height="${r1(L.hat + 1)}" rx="2"/><circle class="hat" cx="-3.6" cy="${r1(top + 1)}" r="3.6"/><circle class="hat" cx="3.6" cy="${r1(top + 1)}" r="3.6"/><circle class="hat" cx="0" cy="${r1(top - 0.6)}" r="4.3"/><rect class="ck" x="-6.2" y="-38.6" width="12.4" height="3" rx="1"/>`;
-  return `<g class="bob"><rect class="leg l" x="-5" y="-11" width="3.6" height="11" rx="1.5"/><rect class="leg r" x="1.4" y="-11" width="3.6" height="11" rx="1.5"/>`
-    + `<rect class="arm" x="-11" y="-24" width="4" height="11" rx="2"/><rect class="coat" x="-8" y="-25.5" width="16" height="16" rx="4.5"/><rect class="apron" x="-5.5" y="-19" width="11" height="10" rx="1.5"/>`
-    + `<path class="ck" d="M-5.2 -25.5 h10.4 l-2.4 4 h-5.6z"/><g class="arm-r"><rect class="arm" x="7" y="-24" width="4" height="11" rx="2"/>${TOOL[c.st] || ''}</g>`
-    + `<circle class="skin" cx="0" cy="-31" r="6.3"/><circle class="blush" cx="-3.7" cy="-29.1" r="1.1"/><circle class="blush" cx="3.7" cy="-29.1" r="1.1"/>`
-    + `<g class="eyes"><circle cx="-2.2" cy="-31.6" r=".85"/><circle cx="2.2" cy="-31.6" r=".85"/></g>`
-    + (L.stache ? '<path class="stache" d="M-3.2 -29.2 q1.6 -1.2 3.2 0 q1.6 -1.2 3.2 0 q-1.6 1.5 -3.2 .4 q-1.6 1.1 -3.2 -.4z"/>' : '<path class="mouth" d="M-1.6 -28.3 q1.6 1.3 3.2 0"/>')
-    + `${hat}</g>`;
+// ---- the still card: shown until sprites.js loads, or for good if it cannot (no canvas, offline before the first visit) ----
+// No people and no motion: the same links as the pixel stage (crew, work-order cards on the job board, runners at the sign-off window)
+// and the same words, so a screen reader and a phone without the art still get the whole picture.
+const link = (cls, id, key, label, inner, css = '') => `<a class="${cls}" href="#/job/${esc(id)}" data-key="${esc(key)}" aria-label="${esc(label)}"${css ? ` data-css="${css}"` : ''}>${inner}</a>`;
+const woNo = (id) => `<b>${esc(ticket(id).slice(3))}</b>`;
+function cardHtml(L) {
+  const row = (cls, title, items) => (items.length ? `<div class="sc-row ${cls}"><span class="sc-h">${title}</span>${items.join('')}</div>` : '');
+  const crew = L.chefs.map((c) => link(`sc-crew cook-${c.cook}`, c.id, c.key, c.label + (c.priv || c.cook === 'hand' || c.cook === 'sous' ? '' : ', crew ' + c.cook),
+    `${woNo(c.id)} ${STATIONS[c.st].label}${c.word ? ` <i>${esc(c.word)}</i>` : ''}`, `--cook:${COOK_COLORS[c.cook]}`));
+  const cards = L.tickets.map((t) => link(`sc-card${t.queued ? ' queued' : ''}`, t.id, t.key, `${ticket(t.id)}, open it`, `${woNo(t.id)} <i>${t.queued ? 'next up' : `${Number(t.step)}/${Number(t.steps)}`}</i>`));
+  const wait = L.waiters.map((w) => link('sc-wait', w.id, w.key, w.label, `${woNo(w.id)} <i>sign off</i>`));
+  const done = L.runners.map((r) => link('sc-done', r.id, r.key, `${ticket(r.id)} handed over, open it`, `${woNo(r.id)} <i>handed over</i>`));
+  return `<div class="scene-stage scene-card${L.compact ? ' compact' : ''}" role="group" aria-label="${esc(L.summary)}"><p class="sc-sum" aria-hidden="true">${esc(L.summary)}</p>`
+    + (L.idle ? '<p class="sc-idle" data-key="idle">Nothing building.</p>' : row('sc-crews', 'Crew', crew))
+    + row('sc-board', 'Job board', cards) + row('sc-signoff', 'Sign-off window', wait.concat(L.pass > 3 ? [`<span class="sc-more">+${L.pass - 3}</span>`] : [])) + row('sc-out', 'Handed over', done) + '</div>';
 }
-const sayTop = (hat, slot) => -44 - hat - (slot || 0) * 12;   // chefs sharing a station stack their bubbles
-// a speech bubble over the chef at x; it slides sideways to stay inside the room, its tip still points at the chef
-function sayHtml(word, hatTop, x = 200) {
-  if (!word) return '';
-  if (word.length > 13) word = word.slice(0, 12) + '…';   // 13 characters at most: bubbles at neighbouring stations never touch
-  const w = r1(8 + word.length * 3.9);
-  const dx = r1(Math.max(3 - (x - w / 2), Math.min(0, 397 - (x + w / 2))));
-  return `<g class="sc-say" transform="translate(0 ${r1(hatTop - 8)})"><rect x="${r1(dx - w / 2)}" y="-9" width="${w}" height="11" rx="4"/><path d="M-2.2 1.8 h4.4 l-2.2 3z"/><text x="${dx}" y="-1.4">${esc(word)}</text></g>`;
-}
-function chefHtml(c) {
-  const style = `--skin:${c.look.skin};--cook:${COOK_COLORS[c.cook]};--d:${c.look.delay}s;transform:translate(${c.x}px,${c.y}px)`;
-  return `<a class="actor chef st-${c.st} cook-${c.cook}${c.busy ? '' : ' rest'}" href="#/job/${esc(c.id)}" data-key="${esc(c.key)}" data-x="${c.x}" data-st="${c.st}" data-cook="${c.cook}" data-hat="${c.look.hat}" aria-label="${esc(c.label)}" data-css="${style}">`
-    + `<g class="flip">${chefBody(c)}</g>${sayHtml(c.word, sayTop(c.look.hat, c.slot), c.x)}${c.cook === 'hand' || c.cook === 'sous' ? '' : `<text class="sc-tag" y="${9 + ((c.slot || 0) % 2) * 7}">${c.cook}</text>`}</a>`;
-}
-function waiterBody(cloche) {
-  return `<g class="bob"><rect class="leg l" x="-4.6" y="-12" width="3.4" height="12" rx="1.4"/><rect class="leg r" x="1.2" y="-12" width="3.4" height="12" rx="1.4"/>`
-    + `<rect class="shirt" x="-7" y="-27" width="14" height="16" rx="4"/><path class="vest" d="M-7 -22 h3 l4 6 l4 -6 h3 v10 h-14z"/><path class="tie" d="M-2.6 -26.6 l2.6 1.4 l2.6 -1.4 v2.8 l-2.6 -1.4 l-2.6 1.4z"/>`
-    + `<rect class="shirt" x="-10.4" y="-25" width="3.6" height="10" rx="1.8"/><rect class="shirt" x="6.6" y="-33" width="3.6" height="10" rx="1.8"/>`
-    + `<circle class="skin" cx="0" cy="-32.5" r="5.8"/><path class="sc-hair" d="M-5.8 -33.5 a5.8 5.8 0 0 1 11.6 0 q-3 -2.2 -6 -1.6 q-3 -.6 -5.6 1.6z"/>`
-    + `<g class="eyes"><circle cx="-2" cy="-32.6" r=".8"/><circle cx="2" cy="-32.6" r=".8"/></g><path class="mouth" d="M-1.4 -30 q1.4 1.1 2.8 0"/>`
-    + `<rect class="tray" x="2.4" y="-35.2" width="16" height="1.6" rx=".8"/>${cloche ? '<path class="cloche" d="M4.4 -35.2 a6 5.4 0 0 1 12 0z"/><circle class="cloche" cx="10.4" cy="-41" r=".9"/>' : '<ellipse class="sc-dish" cx="10.4" cy="-36.2" rx="5.4" ry="1.3"/><circle class="food" cx="10.4" cy="-37.6" r="2.2"/>'}</g>`;
-}
-function waiterHtml(w, x) {
-  const look = lookOf(w.id + 'w');
-  return `<a class="actor waiter" href="#/job/${esc(w.id)}" data-key="${esc(w.key)}" data-x="${x}" aria-label="${esc(w.label)}" data-css="--skin:${look.skin};--d:${look.delay}s;transform:translate(${x}px,${WAITER_Y}px)"><g class="flip"><g class="big" transform="scale(1.15)">${waiterBody(true)}</g></g></a>`;
-}
-function runnerHtml(r) {
-  const look = lookOf(r.id + 'r');
-  return `<g class="actor waiter runner" data-key="${esc(r.key)}" data-x="${PASS_X}" aria-hidden="true" data-css="--skin:${look.skin};--d:0s;transform:translate(${PASS_X}px,${WAITER_Y}px)"><g class="flip"><g class="big" transform="scale(1.15)">${waiterBody(false)}</g></g></g>`;
-}
-function ticketInner(t) { return `<g class="paper"><rect class="clip" x="-2.5" y="-2" width="5" height="4" rx="1"/><rect class="sc-sheet" x="-11" y="1" width="22" height="19" rx="1.5"/><text class="tno" y="9">${esc(ticket(t.id).slice(3))}</text><text class="tstep" y="16">${t.queued ? 'next up' : `${t.step}/${t.steps}`}</text></g>`; }
-function ticketHtml(t) { return `<a class="sc-ticket${t.queued ? ' queued' : ''}" href="#/job/${esc(t.id)}" data-key="${esc(t.key)}" data-step="${t.step}" data-q="${t.queued}" aria-label="${esc(`${ticket(t.id)}, open it`)}" data-css="transform:translate(${t.x}px,16px)">${ticketInner(t)}</a>`; }
-const IDLE = `<g class="actor idle" data-key="idle" aria-hidden="true" data-css="--skin:${SKIN[1]};--cook:${COOK_COLORS.sous};--d:0s;transform:translate(30px,${CHEF_Y}px)">`
-  + `<rect class="crate" x="-9" y="-12" width="18" height="12" rx="1"/><g class="flip sleep">${chefBody({ look: { ...lookOf('idle'), stache: true }, cook: 'sous', st: 'rest' })}</g>`
-  + `<text class="zz" x="7" y="-46">z</text><text class="zz" x="11" y="-52">z</text><text class="zz" x="15" y="-58">Z</text></g>`;
-
-// ---- the room (static; mountScene only flips classes on it) ----
-function fixture(st, inner, label) {
-  return `<g class="fx fx-${st}" transform="translate(${STATIONS[st].x - 26} 120)"><rect class="body" x="0" y="8" width="52" height="30" rx="2"/><rect class="sc-top" x="-1" y="5" width="54" height="4" rx="1"/>${inner}<text class="engr" x="26" y="31">${label}</text></g>`;
-}
-function roomHtml(L, actors) {
-  const defs = '<defs><linearGradient id="sc-dawn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f08a6a"/><stop offset="1" stop-color="#ffe2b0"/></linearGradient>'
-    + '<linearGradient id="sc-day" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5aa9e6"/><stop offset="1" stop-color="#bfe3fb"/></linearGradient>'
-    + '<linearGradient id="sc-dusk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3d2e5c"/><stop offset="1" stop-color="#e2805a"/></linearGradient>'
-    + '<linearGradient id="sc-night" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1022"/><stop offset="1" stop-color="#1f2a48"/></linearGradient>'
-    + '<pattern id="sc-floor" width="16" height="16" patternUnits="userSpaceOnUse"><rect width="16" height="16" class="fl-a"/><rect width="8" height="8" class="fl-b"/><rect x="8" y="8" width="8" height="8" class="fl-b"/></pattern>'
-    + '<pattern id="sc-tile" width="10" height="7" patternUnits="userSpaceOnUse"><rect width="10" height="7" class="tile"/><path d="M0 .3 H10 M.3 0 V7" class="grout"/></pattern></defs>';
-  const win = `<g class="win ${L.sky}"><rect class="sky" x="14" y="12" width="58" height="40" rx="3"/><circle class="sun" cx="58" cy="24" r="5"/><path class="moon" d="M30 17 a6 6 0 1 0 6 9 a5 5 0 1 1 -6 -9z"/>`
-    + '<g class="stars"><circle class="star" cx="44" cy="20" r=".8"/><circle class="star" cx="55" cy="30" r=".7"/><circle class="star" cx="65" cy="17" r=".8"/><circle class="star" cx="22" cy="40" r=".6"/><circle class="star" cx="48" cy="44" r=".6"/></g>'
-    + '<path class="frame" d="M14 12 h58 v40 h-58z M43 12 v40 M14 32 h58"/><rect class="sill" x="10" y="51" width="66" height="4" rx="1"/></g>';
-  const shelf = '<rect class="wood" x="84" y="58" width="222" height="3.5" rx="1"/><rect class="jar" x="92" y="47" width="7" height="11" rx="2"/><rect class="jar b" x="102" y="50" width="6" height="8" rx="2"/>'
-    + '<rect class="jar c" x="276" y="46" width="8" height="12" rx="2"/><rect class="jar" x="287" y="49" width="6" height="9" rx="2"/><rect class="jar b" x="296" y="47" width="6" height="11" rx="2"/>'
-    + [74, 134, 194, 254].map((x, i) => `<path class="hook" d="M${x} 61.5 v7"/><circle class="${i % 2 ? 'pan' : 'pan copper'}" cx="${x}" cy="76" r="${i % 2 ? 6 : 7}"/><rect class="hook" x="${x - 1}" y="66" width="2" height="5"/>`).join('');
-  const rail = `<rect class="rail" x="${RAIL_X}" y="12" width="${RAIL_W + 4}" height="3" rx="1.5"/>`;
-  const fx = fixture('board', '<rect class="wood" x="12" y="1" width="26" height="4.5" rx="1"/><circle class="veg g" cx="18" cy="0" r="2.2"/><circle class="veg r" cx="23" cy=".4" r="1.8"/><circle class="veg o" cx="32" cy="0" r="2"/>', 'prep')
-    + fixture('stove', '<rect class="steel" x="14" y="-6" width="24" height="11" rx="2"/><path class="hook" d="M12 -3 h2 M38 -3 h2"/>'
-      + '<path class="flame" d="M17 6 q2 -5 3 0z"/><path class="flame" d="M24.5 6 q2 -6 3 0z"/><path class="flame" d="M32 6 q2 -5 3 0z"/>'
-      + '<circle class="puff" cx="20" cy="-8" r="2"/><circle class="puff" cx="26" cy="-9" r="2.4"/><circle class="puff" cx="32" cy="-8" r="1.9"/><rect class="door" x="9" y="14" width="34" height="11" rx="1.5"/>', 'stove')
-    + fixture('taste', '<ellipse class="sc-dish" cx="15" cy="4" rx="7" ry="2"/><ellipse class="soup" cx="15" cy="3.6" rx="5" ry="1.2"/><rect class="jar b" x="31" y="-3" width="5" height="8" rx="1"/><rect class="jar" x="38" y="-1" width="5" height="6" rx="1"/>', 'taste')
-    + fixture('sink', '<rect class="basin" x="8" y="5" width="36" height="5" rx="1.5"/><path class="faucet" d="M30 5 v-7 q0 -2.5 3 -2.5 q3 0 3 2.5 v1.5"/>'
-      + '<circle class="bub" cx="16" cy="3" r="1.6"/><circle class="bub" cx="22" cy="2" r="2"/><circle class="bub" cx="27" cy="3" r="1.4"/>', 'wash')
-    + fixture('plate', '<ellipse class="sc-dish" cx="14" cy="4.4" rx="7" ry="1.6"/><ellipse class="sc-dish" cx="14" cy="3" rx="7" ry="1.6"/><path class="cloche" d="M28 5 a8 7 0 0 1 16 0z"/><circle class="cloche" cx="36" cy="-2.6" r="1"/>', 'plate');
-  const pass = `<g class="pass${L.pass ? ` on n${Math.min(3, L.pass)}` : ''}"><text class="sign" x="355" y="26">PASS</text><rect class="hatch" x="318" y="32" width="74" height="62" rx="3"/><rect class="glow" x="322" y="36" width="66" height="54" rx="2"/>`
-    + `<rect class="steel" x="312" y="94" width="86" height="5" rx="1.5"/><g class="bell"><path d="M376 93 a6 6 0 0 1 12 0z"/><circle cx="382" cy="86" r="1.2"/></g>`
-    + `<g class="pl1"><path class="cloche" d="M322 94 a7 6 0 0 1 14 0z"/></g><g class="pl2"><path class="cloche" d="M340 94 a7 6 0 0 1 14 0z"/></g><g class="pl3"><path class="cloche" d="M358 94 a7 6 0 0 1 14 0z"/></g>`
-    + `<text class="pass-n" x="355" y="114">${L.pass ?`${L.pass} to sign off` : 'all clear'}</text></g>`;
-  return `<svg class="scene-stage${L.compact ? ' compact' : ''}" viewBox="0 0 400 210" role="group" aria-label="${esc(L.summary)}">${defs}`
-    + `<rect class="wall" width="400" height="152"/><rect x="0" y="92" width="312" height="30" fill="url(#sc-tile)"/>${win}${shelf}${rail}`
-    + `<rect class="sc-floor" y="150" width="400" height="60" fill="url(#sc-floor)"/><rect class="base" y="149" width="400" height="3"/>${fx}${pass}`
-    + `<g class="layer tickets">${actors.tickets}</g><g class="layer chefs">${actors.chefs}</g><g class="layer waiters">${actors.waiters}</g></svg>`;
-}
-
 // the whole scene as markup (first paint, tests and old callers)
-export function sceneHtml(s, events, opts = {}) {
-  if (!s) return '';
-  const L = layoutScene(s, events, opts);
-  return roomHtml(L, {
-    tickets: L.tickets.map(ticketHtml).join(''),
-    chefs: (L.idle ? IDLE : '') + L.chefs.map(chefHtml).join(''),
-    waiters: L.waiters.map((w) => waiterHtml(w, w.x)).join('') + L.runners.map(runnerHtml).join(''),
-  });
-}
-
-// ---- keep it alive in the page: one element per actor, moved, never rebuilt ----
-const SPEED = 70;                      // viewBox units per second: a calm walk
-const played = new Set();              // finished plates already run out (memory only)
-function node(html) { const g = document.createElementNS(NS, 'g'); g.innerHTML = html; applyCss(g.firstElementChild); return g.firstElementChild; }
-function walkTo(el, x, y, after) {
-  const from = parseFloat(el.getAttribute('data-x'));
-  const dist = Math.abs(x - from);
-  clearTimeout(el._walk);
-  if (dist < 0.5) { el.style.transform = `translate(${x}px,${y}px)`; if (after) after(); return; }
-  const sec = Math.max(0.4, dist / SPEED);
-  el.style.transition = `transform ${sec}s linear, opacity .5s`;
-  el.classList.toggle('left', x < from);
-  el.classList.add('walking');
-  el.setAttribute('data-x', x);
-  el.style.transform = `translate(${x}px,${y}px)`;
-  el._walk = setTimeout(() => { el.classList.remove('walking', 'left'); if (after) after(); }, sec * 1000);
-}
-function sync(layer, items, make, update, leave) {
-  const have = new Map();
-  for (const el of [...layer.children]) if (!el.classList.contains('gone')) have.set(el.getAttribute('data-key'), el);
-  for (const it of items) {
-    const el = have.get(it.key);
-    if (el) { have.delete(it.key); update(el, it); } else { const n = make(it); if (n) layer.appendChild(n); }
-  }
-  for (const el of have.values()) leave(el);
-}
-// after the new element has painted once (so its walk is a transition); a timer backs up animation frames, which a hidden tab never gets
-const later = (fn) => { let done = false; const go = () => { if (!done) { done = true; fn(); } }; if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(go)); setTimeout(go, 80); };
-// the bubble is rebuilt only when its words, its stack slot or the chef's spot change (it is not animated, so nothing restarts)
-function setSay(el, word, slot, x) {
-  const key = `${slot}@${x}|${word}`;
-  if (el.getAttribute('data-say') === key) return;
-  el.setAttribute('data-say', key);
-  el.querySelector('.sc-say')?.remove();
-  const tag = el.querySelector('.sc-tag'); if (tag) tag.setAttribute('y', 9 + (slot % 2) * 7);
-  if (word) { const s = node(sayHtml(word, sayTop(parseFloat(el.getAttribute('data-hat') || '8'), slot), x)); if (s) el.appendChild(s); }
-}
-
+export function sceneHtml(s, events, opts = {}, now = Date.now()) { return s ? cardHtml(layoutScene(s, events, opts, now)) : ''; }
+// the pixel stage once sprites.js has loaded; the still card until then (rebuilt only when its words change: nothing in it moves)
 export function mountScene(el, s, events, opts = {}) {
   if (!el) return;
-  if (!s) { el.innerHTML = ''; el._scene = null; el._px = null; return; }
+  if (!s) { el.innerHTML = ''; el._card = null; el._px = null; return; }
   const L = layoutScene(s, events, opts);
   el._args = [s, events, opts]; mounted.add(el);
-  if (PX && canvasOk()) { el._scene = null; mountPixel(el, L); return; }
-  el._px = null;
-  let sc = el._scene;
-  if (!sc || sc.compact !== L.compact || !el.contains(sc.svg)) {
-    el.innerHTML = roomHtml(L, { tickets: '', chefs: '', waiters: '' }); applyCss(el);
-    const svg = el.querySelector('svg');
-    sc = el._scene = { svg, compact: L.compact, tickets: svg.querySelector('.tickets'), chefs: svg.querySelector('.chefs'), waiters: svg.querySelector('.waiters'),
-      win: svg.querySelector('.win'), pass: svg.querySelector('.pass'), passN: svg.querySelector('.pass-n'), fx: {}, lastPass: L.pass, first: true };
-    for (const st of Object.keys(STATIONS)) sc.fx[st] = svg.querySelector('.fx-' + st);
-    svg.classList.toggle('paused', typeof document !== 'undefined' && document.hidden);
-  }
-  const first = sc.first; sc.first = false;
-  sc.svg.setAttribute('aria-label', L.summary);
-  sc.win.setAttribute('class', `win ${L.sky}`);
-  for (const st of Object.keys(STATIONS)) sc.fx[st]?.classList.toggle('on', !!L.busy[st]);
-  sc.pass.classList.toggle('on', L.pass > 0); for (const k of [1, 2, 3]) sc.pass.classList.toggle('n' + k, Math.min(3, L.pass) === k);
-  sc.passN.textContent = L.pass ? `${L.pass} to sign off` : 'all clear';
-  if (L.pass > sc.lastPass) { sc.pass.classList.remove('ring'); void sc.pass.getBoundingClientRect(); sc.pass.classList.add('ring'); setTimeout(() => sc.pass.classList.remove('ring'), 1400); }
-  sc.lastPass = L.pass;
-
-  // chefs walk in from the door on their first appearance (straight to their spot on the first paint), and between stations
-  sync(sc.chefs, [...(L.idle ? [{ key: 'idle' }] : []), ...L.chefs], (c) => {
-    if (c.key === 'idle') return node(IDLE);
-    const n = node(chefHtml({ ...c, x: first ? c.x : DOOR_X }));
-    if (!first) later(() => walkTo(n, c.x, c.y));
-    return n;
-  }, (n, c) => {
-    if (c.key === 'idle') return;
-    if (n.getAttribute('data-st') !== c.st || n.getAttribute('data-cook') !== c.cook) {   // new station or cook: new tool and colours, same chef
-      n.querySelector('.flip').innerHTML = chefBody(c); applyCss(n.querySelector('.flip'));
-      n.setAttribute('class', `actor chef st-${c.st} cook-${c.cook}${c.busy ? '' : ' rest'}${n.classList.contains('walking') ? ' walking' : ''}`);
-      n.setAttribute('data-st', c.st); n.setAttribute('data-cook', c.cook); n.style.setProperty('--cook', COOK_COLORS[c.cook]);
-      n.querySelector('.sc-tag')?.remove();   // the hand and the not-yet-picked cook wear no name
-      if (c.cook !== 'hand' && c.cook !== 'sous') n.appendChild(node(`<text class="sc-tag" y="${9 + ((c.slot || 0) % 2) * 7}">${c.cook}</text>`));
-    }
-    n.classList.toggle('rest', !c.busy);
-    n.setAttribute('aria-label', c.label);
-    setSay(n, c.word, c.slot || 0, c.x);
-    walkTo(n, c.x, c.y);
-  }, (n) => {
-    n.classList.add('gone');
-    if (n.getAttribute('data-key') === 'idle') { setTimeout(() => n.remove(), 600); return; }
-    walkTo(n, 330, CHEF_Y, () => n.remove());   // off to the pass with the plate
-    setTimeout(() => n.remove(), 6000);
-  });
-
-  sync(sc.tickets, L.tickets, (t) => {
-    const n = node(ticketHtml(t)); n.classList.add('flutter'); setTimeout(() => n.classList.remove('flutter'), 900); return n;
-  }, (n, t) => {
-    n.style.transform = `translate(${t.x}px,16px)`;
-    n.classList.toggle('queued', t.queued);
-    if (n.getAttribute('data-step') !== String(t.step) || n.getAttribute('data-q') !== String(t.queued)) {
-      n.setAttribute('data-step', t.step); n.setAttribute('data-q', t.queued);
-      n.innerHTML = ticketInner(t); applyCss(n);
-      n.classList.remove('flutter'); void n.getBoundingClientRect(); n.classList.add('flutter'); setTimeout(() => n.classList.remove('flutter'), 900);
-    }
-  }, (n) => { n.classList.add('gone'); setTimeout(() => n.remove(), 600); });
-
-  // waiters bring each plate to the pass; finished plates are run out once each
-  const fresh = L.runners.filter((r) => !played.has(r.key));
-  sync(sc.waiters, [...L.waiters, ...fresh], (w) => {
-    if (w.key.startsWith('o')) {
-      played.add(w.key);
-      if (first) return null;   // a page opened later does not replay old news
-      const n = node(runnerHtml(w)); later(() => walkTo(n, DOOR_X, WAITER_Y, () => n.remove())); setTimeout(() => n.remove(), 8000); return n;
-    }
-    const n = node(waiterHtml(w, first ? w.x : DOOR_X));
-    if (!first) later(() => walkTo(n, w.x, w.y));
-    return n;
-  }, (n, w) => { if (!n.classList.contains('runner')) walkTo(n, w.x, w.y); }, (n) => {
-    if (n.classList.contains('runner')) return;   // it leaves by itself
-    n.classList.add('gone'); walkTo(n, 420, WAITER_Y, () => n.remove()); setTimeout(() => n.remove(), 6000);
-  });
+  if (PX && canvasOk()) { el._card = null; mountPixel(el, L); return; }
+  const html = cardHtml(L); el._px = null;
+  if (el._card !== html || !el.firstElementChild) { el._card = html; el.innerHTML = html; applyCss(el); }
 }
 
-if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { for (const svg of document.querySelectorAll('.scene-stage')) svg.classList.toggle('paused', document.hidden); });
-
-// ---- the pixel stage: layoutScene drives a canvas of sprites.js art (the SVG above is the fallback) ----
+// ---- the pixel stage: layoutScene drives a canvas of sprites.js art (the still card above is the fallback) ----
 export const STAGE = { w: 192, h: 112, aisle: 76, front: 108, top: 70, doorX: 9, doorY: 56, exitX: 150, speed: 30, fps: 60, maxDraws: 120 };
-export const sx = (x) => Math.round(x * 0.48);
+export const sx = (x) => Math.round(x * 0.48);          // the 400-wide room onto the 192-pixel stage
 const TICKET_DX = 5;                                    // tickets hang clear of the window
-const waiterX = (i) => 146 + i * 15;                    // waiters at the pass stand a body apart                 // the SVG's 400-wide room onto the 192-pixel stage
+const waiterX = (i) => 146 + i * 15;                    // waiters at the pass stand a body apart
 const STATION_ART = { board: 'counter', stove: 'stove', taste: 'counter', sink: 'sink', plate: 'counter' };
 const PROP = { board: 'board', stove: 'pot', taste: 'bowl', sink: null, plate: 'plates' };
 // the largest whole-number scale that fits (crisp: every art pixel is exactly `scale` device pixels), centred on a device pixel;
@@ -344,7 +144,7 @@ export function pixelScale(cssW, dpr = 1, maxCssH = Infinity, w = STAGE.w, h = S
   const room = Math.max(w, Math.min(maxW, Math.floor(dev / s)));   // the room widens to fill the phone (more wall and floor), never the art
   return { scale: s, w: room, cssW: (room * s) / dpr, cssH: (h * s) / dpr, left: Math.max(0, Math.floor((dev - room * s) / 2)) / dpr };
 }
-// the stage model (pure: tested in node): one actor per chef, waiter and runner, keyed like the SVG, walking along axis paths
+// the stage model (pure: tested in node): one actor per chef, waiter and runner, keyed like the card's links, walking along axis paths
 export function stageNew() { return { W: STAGE.w, actors: new Map(), t: 0, syncT: 0, first: true, L: null, played: new Set(), sparks: [], ticks: new Set(), rounds: 0, sousNext: false }; }
 const sousRound = (st, a) => { a.path = [[PLACE.round, STAGE.front], [PLACE.sous, STAGE.front]]; st.rounds++; };
 export function stageSync(st, L, { still = false } = {}) {
@@ -593,6 +393,6 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   import('./sprites.js').then((P) => {
     PX = P; KIT = makeKit(P, mkCanvas); installChrome(P);
     for (const el of mounted) if (el.isConnected && el._args) mountScene(el, ...el._args);
-  }).catch(() => { /* no sprites (offline before the first load): the SVG scene stays */ });
+  }).catch(() => { /* no sprites (offline before the first load): the still card stays */ });
   document.addEventListener('visibilitychange', () => { for (const el of mounted) if (!el.isConnected) mounted.delete(el); else el._px?.loop.start(); });
 }

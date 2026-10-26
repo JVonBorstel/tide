@@ -1079,11 +1079,11 @@ console.log(JSON.stringify(checks));
     Check 'listen: speak tests exit 0 and report at least 15 checks' ($speakExit -eq 0 -and $null -ne $speakRes -and @($speakRes).Count -ge 15)
     foreach ($t in @($speakRes)) { if ($null -ne $t) { Check "listen: $($t.name)" ($t.pass -eq $true) } }
 
-    Check 'scene: budget header comment in scene.js' ($sceneJs -match '(?m)^// Budget: at most 60 animated elements and about 25 KB of SVG markup')
+    Check 'scene: the header comment in scene.js names the still fallback card and its budget' ($sceneJs -match '(?m)^// Fallback: a still card \(no animation, at most 25 KB of markup')
     Check 'scene: exports mountScene, sceneHtml, and activityWord' ($sceneJs -match 'export function mountScene\b' -and $sceneJs -match 'export function sceneHtml\b' -and $sceneJs -match 'export function activityWord\b')
     Check 'scene: renderScene in app.js calls mountScene' ($appJs -match 'mountScene\(el, s')
-    Check 'scene: app.css defines prefers-reduced-motion' ($appCss -match '@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)[\s\S]*?\.scene-stage')
-    Check 'scene: app.css defines paused state for document.hidden' ($appCss -match '\.scene-stage\.paused')
+    Check 'scene: the still card in app.css never moves (no animation, transition or keyframes; rename S7a)' ($appCss -match '/\* ---- the scene before the pixel stage loads' -and ([regex]::Match($appCss, '/\* ---- the scene before the pixel stage loads[\s\S]*?(?=/\* ----)').Value -notmatch 'animation|transition|@keyframes'))
+    Check 'scene: the kitchen SVG and its styles are gone (no .scene-stage.paused, no sc- keyframes)' ($appCss -notmatch '\.scene-stage\.paused' -and $appCss -notmatch '@keyframes sc-' -and $sceneJs -notmatch '<svg')
 
     # when Claude is away: lead.json notes, the mode from the plan reading, Jordan's manual "out", the boot pack line
     # clients: income leads (the station writes leads.json; Chef shows them and keeps Jordan's marks, under the same lock)
@@ -1596,7 +1596,7 @@ $pxScene = Get-Content (Join-Path $repo 'pass-app\public\scene.js') -Raw
 $pxSprites = Get-Content (Join-Path $repo 'pass-app\public\sprites.js') -Raw
 $pxCss = Get-Content (Join-Path $repo 'pass-app\public\app.css') -Raw
 $pxSkin = $pxCss.Substring([Math]::Max(0, $pxCss.IndexOf('Chef pixel skin')))
-Check 'pixel: scene.js loads sprites.js lazily and keeps the SVG scene if it cannot' ($pxScene -match "import\('\./sprites\.js'\)\.then" -and $pxScene -match '\.catch\(\(\) => \{ /\* no sprites' -and $pxScene -match 'if \(PX && canvasOk\(\)\) \{ el\._scene = null; mountPixel\(el, L\); return; \}')
+Check 'pixel: scene.js loads sprites.js lazily and keeps the still card if it cannot' ($pxScene -match "import\('\./sprites\.js'\)\.then" -and $pxScene -match '\.catch\(\(\) => \{ /\* no sprites' -and $pxScene -match 'if \(PX && canvasOk\(\)\) \{ el\._card = null; mountPixel\(el, L\); return; \}')
 Check 'pixel: sprites.js is art as code: the two-line header, no fetch, no image files, no network' (($pxSprites -split "`n")[0] -match '^// ' -and ($pxSprites -split "`n")[1] -match '^// ' -and $pxSprites -notmatch '\bfetch\(|new Image\(|https?://|\.png\b')
 Check 'pixel: the canvas is drawn crisp (pixelated, whole-number scale)' ($pxSkin -match '\.px-canvas\{[^}]*image-rendering:pixelated' -and $pxScene -match 'export function pixelScale' -and $pxScene -match 'imageSmoothingEnabled = false')
 Check 'pixel: the stage stops while hidden, scrolled off screen (IntersectionObserver) or under reduced motion' ($pxScene -match "ok: \(\) => stageOk\(sc, document, reduced\(\)\)" -and (Get-Content (Join-Path $repo 'pass-app\public\frame.js') -Raw) -match "sc\.visible !== false" -and $pxScene -match "new IntersectionObserver\(" -and $pxScene -match "addEventListener\('visibilitychange'")

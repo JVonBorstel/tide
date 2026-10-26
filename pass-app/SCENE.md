@@ -5,16 +5,16 @@ The kitchen art is kept until S6, when it is redrawn as a building site (Jordan'
 It should feel like a tiny living game, not a status widget. Built in three parts, in order.
 
 ## Rules for every part
-- Pure SVG and CSS, no libraries, no new dependencies. Animate only `transform` and `opacity`.
+- No libraries, no new dependencies. The art is the pixel stage below; before it loads the scene is a still card (rename S7a).
 - Pause all animation when `document.hidden`. Keep `prefers-reduced-motion`: static scene, no movement.
 - Private work orders show no words anywhere in the scene.
 - Keep the exports `sceneHtml` and `activityWord` working for existing callers and tests.
 - Tests for every new function (tests/Test-PassApp.ps1, or a node test file it runs).
-- Budget: at most 60 animated elements and about 25 KB of SVG markup. Document it at the top of scene.js and test it.
+- Budget: the still card has no animation and at most 25 KB of markup; the pixel stage has its own budgets below. Documented at the top of scene.js and tested.
 - Must stay smooth on a mid-range Android phone.
 
 ## Part 1: living stage
-- `mountScene(el, state, events, opts)` keeps one DOM element per job, keyed by job id across updates. It creates new ones, updates changed ones and animates out removed ones. It never replaces innerHTML wholesale, so animations never restart on refresh. `renderScene` in app.js calls it.
+- `mountScene(el, state, events, opts)` (`renderScene` in app.js calls it) draws the pixel stage once sprites.js has loaded. Until then it shows the **still card** (`cardHtml` in scene.js, rename S7a): the same links as the stage, one per crew member (its station and what it does), work-order card on the job board, runner at the sign-off window and work order handed over in the last 3 minutes, each opening its work order; no people and no motion, rebuilt only when its words change. Parts 1-3 below describe the first SVG diorama, retired in S7a; its layout rules (`layoutScene`) still drive the pixel stage.
 - The diorama:
   - back wall with shelves and hanging pans;
   - a ticket rail with one paper ticket per running work order, clipped on, fluttering when it changes;
@@ -64,7 +64,7 @@ Once `public/sprites.js` loads, the same `layoutScene` drives a canvas of origin
 - **Frame rate (Chef 2.8.0, TD Pour 4, then called W4)**: 60 frames a second only while a chef walks, 30 while only sprites animate, 10 when nothing moves; at most 120 sprite draws a frame (`STAGE` in scene.js, `stageFps` in frame.js). Each frame first records the draw calls it would make (`frameKey`, about 0.1 ms); the same key as the last drawn frame is the same picture, so the canvas is left alone. Drawn crisp: whole-number scale, image smoothing off, `image-rendering: pixelated`.
 - **Hidden pause**: the loop stops while the page is hidden or the stage is scrolled out of view (an IntersectionObserver; `offsetParent` alone kept a scrolled-away stage drawing 210 frames in 10 s), and starts again on `visibilitychange` or when the stage scrolls back in.
 - **Reduced motion**: under `prefers-reduced-motion` the stage draws one still frame and the chrome sprites hold still.
-- **SVG fallback**: scene.js imports sprites.js lazily; if it cannot load (offline before the first visit) or the browser has no canvas, the SVG scene above stays. The service worker keeps `/sprites.js` in its offline shell, so a phone that has opened the Board once keeps the pixel stage offline.
+- **Still fallback**: scene.js imports sprites.js lazily; if it cannot load (offline before the first visit) or the browser has no canvas, the still card stays (it replaced the animated SVG kitchen in rename S7a, which also flashed for a moment on a cold open). The service worker keeps `/sprites.js` in its offline shell, so a phone that has opened the Board once keeps the pixel stage offline.
 - **Tapping**: a layer of plain links over the canvas, one per chef, waiter and ticket, each opens its work order; private work orders show no words.
 - **Interface skin**: sprites.js also draws the tab icons, the loading, offline and empty chefs and the 9-slice panel; scene.js turns them into CSS variables (`--px-*`) and adds `<html class="px">`. Dark mode swaps in the dark panel and tab icons with a cream outline (the near-black one vanished on the dark bar), switched live when the phone changes theme.
 
@@ -115,4 +115,4 @@ Real Yard events play short moments on the pixel stage (`public/moments.js`, pur
 - **Cost**: a moment adds at most 20 draws a frame; the stage stays at 30 fps while one plays and stops while hidden or off screen as before.
 - **Crews apart**: chefs stand one body (16 px) apart, never sharing a pixel column; a crowd at one station centres on it (`spread`).
 - **Speech bubbles** are their own spans over the stage, placed (`placeSays`) over the head, higher, sideways or at the feet: the first spot that covers no WORLD prop (rectangles from the same bake that draws them) and no other bubble.
-- **Budget** (test-scene.mjs): the stage files (scene, sprites, world, frame, moments) at most 34.6 KB brotli; measured 34.6 KB (+13.0 KB): wave 1 + TD Pour 4 +7.5 KB (after a 0.3 KB trim), wave 2 +5.5 KB, so about 2 KB over the plan's +6 and +5 KB together.
+- **Budget** (test-scene.mjs): the stage files (scene, sprites, world, frame, moments) at most 34,615 bytes brotli; measured 34.6 KB (+13.0 KB): wave 1 + TD Pour 4 +7.5 KB (after a 0.3 KB trim), wave 2 +5.5 KB, so about 2 KB over the plan's +6 and +5 KB together. Rename S7a retired the SVG kitchen: 29,937 bytes (-4,640), the room the building-site redraw (S7b-S7g) spends; the ceiling did not move.
