@@ -1,0 +1,31 @@
+{
+  "$comment": "Feature flags of Tide (switches, not stacks). Every flag is declared here, off by default. Turning one on is Jordan's yes: a decision.answered event, then a flag.set event; the ledger keeps the current value. Checked by: node core/ship/flags.mjs check. Schema: core/ship/flags.schema.json.",
+  "version": 1,
+  "flags": {
+    "board.work": {
+      "default": false,
+      "what": "The Work tab on the Board: the Needs-you queue, streams and rows, next to today's Ledger tab.",
+      "lane": "L5"
+    },
+    "ship.merge-queue": {
+      "default": false,
+      "what": "The Handover queue lands a pull request: it tests the PR merged onto the latest main, then moves main forward to that commit. Off: scripts/merge-pr.ps1 stays the only merge path.",
+      "lane": "L4"
+    },
+    "ship.review-check": {
+      "default": false,
+      "what": "The Handover queue also needs the agent-review status (posted only by the verifier crew) on the PR's head before it lands.",
+      "lane": "L4"
+    },
+    "ship.resurvey": {
+      "default": false,
+      "what": "Resurvey (freshen-pr) runs by itself when main moves: it merges main into a held PR and pushes normally, never forced.",
+      "lane": "L4"
+    },
+    "ship.docs-step": {
+      "default": false,
+      "what": "The docs step runs after each merge: change note, glossary and names checks, and MAP.md rebuilt on main.",
+      "lane": "L4"
+    }
+  }
+}
