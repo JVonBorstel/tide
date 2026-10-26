@@ -54,6 +54,14 @@ both stage summaries, every tap label, the still card, the sign and banner words
 - `node pass-app/test-live.mjs`: 63 checks, 0 failed.
 - `tests/Test-PassApp.ps1` (bounded, 1200 s): 1038 passed, 0 failed.
 
+## Follow-up: the two leftover kitchen words (board concept 2026-10-26, section 5 item 14)
+- `pass-app/public/app.js` (`celebrate`): the hand-over toast said "Order up! WO-0207 is handed over." It now says
+  **"Handed over: WO-0207."** (the status word from `STATUS_LABEL`). Its comment says "handed over" too.
+- `pass-app/public/app.js` (`clearAside`): the confirm title said "Clear 3 old tickets?". It now says **"Clear 3 old work orders?"**
+  ("work order" for one).
+- `pass-app/test-scene.mjs`: the SiteWords check now also holds both new strings, and checks that app.js says neither "Order up" nor
+  "old tickets". Still 148 checks (one check grew), 0 failed; test-live 63/0.
+
 ## Seen in a browser
 A look-only harness (made-up work orders, never the live Board) at a true 375 px phone width, light and dark, with the chrome sprites
 shown at 2x. The shots are in the private notes and wait for Jordan's yes. After merge, the brief's final proof is Jordan's own phone:
