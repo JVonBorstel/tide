@@ -139,13 +139,14 @@ const ICONS = strip([
   'aaaaaaaaaaaa ..a5a5a54a.. ............ aaaaaaaaaaaa .a6pppa654a. .apppppppoa.',
   '.a4a....a4a. ..a444444a.. a.a.a.a.a.a. ............ .aaaaaa554a. .aonnnnnnna.',
   '.aaa....aaa. ..aaaaaaaa.. ............ ............ .......aaa.. .aaaaaaaaaa.'], 6);
-// steam: dust rising off the workbench; sparkle: a glint (also the desk lamp); flame: weld sparks; bubble: a test rig LED
+// steam: dust rising off the workbench; sparkle: a glint (also the desk lamp); flame: weld sparks, white and yellow only (no orange:
+// orange over a bench read as a hob); bubble: a green test rig LED (S7h: the orange ones read as an oven display)
 const PARTICLE = {
   steam: strip(['..... ..... .l... l.l..', '..... .ml.. mlm.. ...l.', '..m.. .mml. .mlm. l..l.', '.mml. ..m.. ..l.. .....', '..... ..... ..... .....'], 4),
   sparkle: strip(['..... ..t.. ..W.. .....', '..... ..t.. .tWt. ..t..', '..W.. ttWtt WWWWW .tWt.', '..... ..t.. .tWt. ..t..', '..... ..t.. ..W.. .....'], 4),
-  flame: strip(['t..s.. .t...s s...t.', '.t.t.. ..ts.. .t.t..', '..tWs. .sWt.. ..Wts.', '...s.. ...t.. .s....'], 3),
+  flame: strip(['t..W.. .t...W W...t.', '.t.t.. ..tW.. .t.t..', '..tWt. .tWt.. ..WtW.', '...W.. ...t.. .W....'], 3),
   zz: [['aaaa', '..a.', '.a..', 'aaaa'].map((r) => r.replace(/a/g, 'p'))],
-  bubble: [['.s.', 'sts', '.s.']],
+  bubble: [['.v.', 'vwv', '.v.']],
 };
 
 // ---- every sprite: { w, h, anim, draw(grid, frame) } or { w, h, anim, frames } ----
@@ -168,11 +169,11 @@ add('work-stove', 16, 8, 'work', W((g, f) => { const y = [-1, 0, 2, 1][f]; blit(
 add('work-taste', 16, 8, 'work', W((g, f) => { const up = [3, 1, -1, 1][f]; blit(g, HAND, 1, 4); blit(g, LENS, 10, up - 2); blit(g, HAND, 9, up + 2); }));
 add('work-sink', 16, 8, 'work', W((g, f, k) => { blit(g, HAND, 1, 4); blit(g, PROBE, 8 + k, 5); blit(g, HAND, 9 + k, 3); }));
 add('work-plate', 16, 8, 'work', W((g, f) => { blit(g, HAND, 1, 4); blit(g, LABEL, 10, [0, 1, 3, 4][f]); blit(g, HAND, 9, [0, 0, 1, 2][f]); }));
-// the room: blockwork above, plywood hoarding below (code name 'subway'), a concrete slab with saw-cut joints underfoot (both floor
-// tiles share one colour: specks and a hairline crack, no checker)
-const slab = (specks, crack) => (g) => { rect(g, 0, 0, 16, 16, 'm'); rect(g, 15, 0, 1, 16, 'l'); rect(g, 0, 15, 16, 1, 'l'); for (const [x, y] of specks) put(g, x, y, 'l'); put(g, 1, 1, 'n'); if (crack) for (const [x, y] of [[6, 7], [7, 8], [8, 8], [9, 9]]) put(g, x, y, 'k'); };
-add('floor-a', 16, 16, 'still', slab([[3, 4], [10, 9], [6, 12], [12, 3]]));
-add('floor-b', 16, 16, 'still', slab([[4, 10], [11, 5], [2, 13]], true));
+// the room: blockwork above, plywood hoarding below (code name 'subway'); underfoot a poured slab (S7h): one colour, specks and a
+// hairline crack, no seams (a seam on every 16 px tile read as a kitchen's tiled floor)
+const slab = (specks, crack) => (g) => { rect(g, 0, 0, 16, 16, 'n'); for (const [x, y] of specks) put(g, x, y, 'l'); if (crack) for (const [x, y] of [[6, 7], [7, 8], [8, 8], [9, 9]]) put(g, x, y, 'k'); };
+add('floor-a', 16, 16, 'still', slab([[3, 4], [10, 9], [6, 12], [12, 3], [1, 14]]));
+add('floor-b', 16, 16, 'still', slab([[4, 10], [11, 5], [2, 13], [14, 1]], true));
 add('wall', 16, 16, 'still', (g) => { rect(g, 0, 0, 16, 16, 'E'); for (let y = 0; y < 16; y += 4) { rect(g, 0, y, 16, 1, 'D'); for (const j of [0, 8].map((v) => v + ((y / 4) % 2) * 4)) { rect(g, j, y + 1, 1, 3, 'D'); rect(g, j + 1, y + 1, 6, 1, 'F'); } } });
 add('subway', 16, 16, 'still', (g) => { rect(g, 0, 0, 16, 16, 'e'); rect(g, 15, 0, 1, 16, 'c'); rect(g, 0, 0, 15, 1, 'd'); for (const [x, y, w] of [[1, 5, 5], [8, 8, 5], [2, 11, 4], [9, 3, 3]]) rect(g, x, y, w, 1, 'd'); for (const [x, y] of [[2, 2], [12, 2], [2, 13], [12, 13]]) put(g, x, y, 'c'); });
 add('window', 34, 26, 'still', (g) => {
@@ -181,13 +182,21 @@ add('window', 34, 26, 'still', (g) => {
   rect(g, 16, 3, 2, 19, 'c'); rect(g, 3, 12, 28, 1, 'c'); rect(g, 16, 3, 1, 19, 'd'); box(g, -1, 22, 36, 4, DARKWOOD);
 });
 add('door', 18, 30, 'still', (g) => { box(g, 0, 0, 18, 30, DARKWOOD); box(g, 3, 3, 12, 11, WOOD); box(g, 3, 16, 12, 12, WOOD); put(g, 13, 16, 't'); put(g, 13, 17, 's'); });
-// the stations (code names stay): 'counter' = a plywood top on a steel drawer cabinet (Survey table, Inspection desk, Handover bay),
-// 'stove' = the Workbench (a heavy top, a red toolbox on its shelf), 'sink' = the Test rig (a gauge and an LED strip on its panel)
-add('counter', 28, 20, 'still', (g) => { box(g, 0, 4, 28, 16, STEEL); for (const x of [3, 15]) { box(g, x, 7, 10, 5, IRON); box(g, x, 12, 10, 6, IRON); rect(g, x + 4, 9, 2, 1, 'i'); rect(g, x + 4, 14, 2, 1, 'i'); } box(g, 0, 0, 28, 5, WOOD); });
-add('stove', 28, 20, 'still', (g) => { box(g, 0, 4, 28, 16, IRON); box(g, 3, 8, 22, 10, ['a', 'j', 'f']); box(g, 5, 12, 12, 6, ['q', 'A', 'B']); rect(g, 9, 11, 4, 1, 'a'); rect(g, 6, 14, 10, 1, 'q'); box(g, 0, 0, 28, 5, DARKWOOD); });
+// the stations (code names stay), open frames with air under them (S7h: closed fronts read as kitchen cabinets and an oven):
+// 'counter' = a trestle table, a plank top on two A-frame trestles (Survey table, Inspection desk); 'stove' = the Workbench, a heavy
+// top on steel legs with a yellow toolbox (handle, latch) on its lower shelf; 'sink' = the Test rig, an open rack with a scope trace,
+// an LED strip (the busy LEDs chase along it) and a cable coil; 'pallet' = the Handover bay, a crate on a pallet on the slab
+add('counter', 28, 20, 'still', (g) => { box(g, 0, 0, 28, 5, WOOD); for (const x of [3, 21]) for (let y = 5; y < 20; y++) { const k = Math.floor((y - 5) / 5); put(g, x + 2 - k, y, 'b'); put(g, x + 2 + k, y, 'c'); } rect(g, 5, 13, 18, 1, 'b'); });
+add('stove', 28, 20, 'still', (g) => { box(g, 0, 0, 28, 5, DARKWOOD); for (const x of [2, 24]) { rect(g, x, 5, 2, 15, 'f'); rect(g, x, 5, 1, 15, 'g'); } rect(g, 2, 15, 24, 2, 'g'); rect(g, 2, 17, 24, 1, 'f'); box(g, 8, 10, 12, 5, ['J', 'H', 'G']); rect(g, 11, 8, 6, 1, 'a'); put(g, 11, 9, 'a'); put(g, 16, 9, 'a'); rect(g, 13, 12, 2, 1, 'f'); });
+add('pallet', 28, 20, 'still', (g) => { box(g, 4, 1, 20, 15, WOOD); rect(g, 5, 6, 18, 1, 'c'); rect(g, 5, 11, 18, 1, 'c'); rect(g, 15, 7, 6, 3, 'p'); rect(g, 16, 8, 4, 1, 'k'); rect(g, 0, 16, 28, 1, 'a'); rect(g, 0, 17, 28, 1, 'd'); for (const x of [1, 12, 23]) { rect(g, x, 18, 4, 1, 'c'); rect(g, x, 19, 4, 1, 'a'); } });
 // busy at the workbench: the weld flash at the vice (a white core in a blue-white halo; 3 sizes)
 add('oven-glow', 18, 7, 'flame', (g, f) => { const r = [1.6, 2.6, 2.1][f]; for (let y = 0; y < 7; y++) for (let x = 0; x < 18; x++) { const d = Math.hypot(x - 9, (y - 4) * 1.4); if (d < 1) put(g, x, y, 'W'); else if (d < r) put(g, x, y, 'I'); else if (d < r + 1.6 && (x + y + f) % 2) put(g, x, y, 'z'); } });
-add('sink', 28, 20, 'still', (g) => { box(g, 0, 4, 28, 16, STEEL); box(g, 3, 7, 22, 11, IRON); rect(g, 4, 9, 13, 5, 'j'); ring(g, 21, 12, 0, 3.2, 'p'); ring(g, 21, 12, 2.6, 3.2, 'a'); put(g, 21, 12, 'a'); put(g, 22, 11, 'B'); put(g, 23, 10, 'B'); box(g, 0, 0, 28, 5, STEEL); rect(g, 5, 1, 3, 2, 'B'); rect(g, 9, 1, 3, 2, 'v'); });
+add('sink', 28, 20, 'still', (g) => {
+  for (const x of [1, 25]) { rect(g, x, 0, 2, 20, 'f'); put(g, x, 0, 'g'); } box(g, 2, 0, 24, 14, IRON); box(g, 4, 2, 12, 7, ['N', 'V', 'O']);
+  for (const [x, y] of [[5, 6], [6, 5], [7, 5], [8, 4], [9, 6], [10, 6], [11, 3], [12, 5], [13, 5], [14, 4]]) put(g, x, y, 'w');
+  rect(g, 4, 10, 16, 3, 'N'); for (const x of [5, 8, 11, 14]) put(g, x, 11, 'u'); put(g, 19, 4, 'v'); put(g, 22, 4, 'v'); put(g, 19, 7, 'i'); put(g, 22, 7, 'i');
+  rect(g, 3, 17, 22, 2, 'g'); rect(g, 6, 14, 7, 1, 'a'); put(g, 5, 15, 'a'); put(g, 13, 15, 'a'); rect(g, 6, 16, 7, 1, 'a'); rect(g, 7, 15, 5, 1, 'k'); rect(g, 17, 14, 1, 3, 'a');
+});
 // the station props: a drawing with a ruler and a roll (Survey table), a vice holding a block (Workbench), a clipboard and a desk lamp
 // (Inspection desk), a taped crate on a pallet (Handover bay)
 add('board', 16, 6, 'still', (g) => { box(g, 0, 2, 13, 4, PAPER); rect(g, 2, 3, 4, 1, 'y'); put(g, 2, 4, 'y'); put(g, 5, 4, 'y'); rect(g, 7, 4, 4, 1, 'y'); put(g, 8, 3, 'y'); rect(g, 1, 1, 11, 1, 'G'); for (const x of [3, 6, 9]) put(g, x, 1, 'J'); box(g, 12, 1, 4, 5, PAPER, true); });

@@ -148,9 +148,10 @@ const srcBytes = fs.statSync(new URL('./public/sprites.js', import.meta.url)).si
 check(`budget: the atlas source is under 200 KB (${Math.round(srcBytes / 1024)} KB)`, srcBytes < 200 * 1024);
 check('budget: 60 fps cap in the stage settings', STAGE.fps === 60);
 // the stations (rename S7c): site art, and a busy station costs exactly the draws it did as a kitchen
-const KITCHEN_FOOD = /[wuxKCs]/;   // leaf, water, soup glow, blush, carrot: none of it on a station any more
-check('SiteStations: the station art and props carry no kitchen food or water (Survey table, Workbench, Inspection desk, Test rig, Handover bay)',
-  ['counter', 'stove', 'sink', 'board', 'pot', 'bowl', 'plates'].every((n) => P.framesOf(n).every((f) => !KITCHEN_FOOD.test(f.join('')))) && STATIONS.board.label === 'Survey table' && STATIONS.plate.label === 'Handover bay');
+// leaf, water, soup glow, blush, carrot: none of it on a station any more; green (u, w) only on the Test rig, its scope trace and LEDs (S7h)
+const KITCHEN_FOOD = /[wuxKCs]/, onlyRigGreen = (n) => (n === 'sink' ? /[xKCs]/ : KITCHEN_FOOD);
+check('SiteStations: the station art and props carry no kitchen food or water (Survey table, Workbench, Inspection desk, Test rig, Handover bay); green only on the Test rig',
+  ['counter', 'stove', 'sink', 'pallet', 'board', 'pot', 'bowl', 'plates'].every((n) => P.framesOf(n).every((f) => !onlyRigGreen(n).test(f.join('')))) && STATIONS.board.label === 'Survey table' && STATIONS.plate.label === 'Handover bay');
 const stationDraws = (role, busyOn) => { const st = stageNew(); st.W = 224; stageSync(st, layoutScene({ jobs: [job('J1', { ...role, ...(busyOn ? {} : { status: 'pending', step: 4 }) })] }, [], {}, Date.parse('2026-10-22T12:00:00'))); return drawStage(mk(224, STAGE.h).getContext(), st, kit); };
 const extra = Object.fromEntries([['board', { role: 'plan' }], ['stove', { role: 'do' }], ['taste', { role: 'check' }], ['sink', { station: 'tests', role: '' }], ['plate', { station: 'merge', role: '' }]].map(([k, r]) => [k, stationDraws(r, true) - stationDraws(r, false)]));
 check(`SiteStations: a busy station costs what it did (work loop + effects: Workbench 6, Inspection desk 2, Test rig 4, Survey table 1, Handover bay 1; ${JSON.stringify(extra)})`,
@@ -463,6 +464,23 @@ const card = one1('ticket'), onPaper = (x0, x1, rows) => rows.every((y) => card[
 check(`SiteRoom: the work-order card's digits and step bar land on paper and read (digits ${ratio(P.PALETTE.a, P.PALETTE.p).toFixed(1)}:1, bar ${ratio(P.PALETTE.r, P.PALETTE.p).toFixed(1)}:1)`,
   onPaper(2, 8, [3, 4, 5, 6, 7, 10]) && ratio(P.PALETTE.a, P.PALETTE.p) >= 4.5 && ratio(P.PALETTE.r, P.PALETTE.p) >= 3 && P.SPRITES.ticket.w === 11 && P.SPRITES.ticket.h === 13);
 check('SiteRoom: the job board and the sign-off window wear hazard tape (yellow and black)', /H/.test(one1('rail').join('')) && /H/.test(one1('pass').slice(0, 3).join('')));
+// the polish (S7h, board concept 2026-10-26 section 5 items 1-4): open stations, a poured slab; nothing reads as a cabinet, an oven or a tiled floor
+const fill = (rows) => rows.join('').replace(/\./g, '').length / rows.join('').length;
+check(`SiteOpenStations: the Survey table and Inspection desk are trestle tables and the Workbench stands on legs: open under the top (filled ${Math.round(fill(one1('counter').slice(5)) * 100)} % and ${Math.round(fill(one1('stove').slice(5)) * 100)} %; the old cabinets 100 %), the Test rig is open between its panel and its shelf`,
+  fill(one1('counter').slice(5)) <= 0.25 && fill(one1('stove').slice(5)) <= 0.5 && fill(one1('sink').slice(14, 17)) <= 0.5 && one1('counter').slice(5).every((r) => /^\.{3}/.test(r)));
+const bench = one1('stove');
+check('SiteWorkbench: no dark recess with a red block (no red in the Workbench); a yellow toolbox with a handle above it and a latch on it sits on the lower shelf',
+  !/[qAB]/.test(bench.join('')) && /H/.test(bench.slice(10, 15).join('')) && /a{6}/.test(bench[8]) && /f/.test(bench[12].slice(8, 20)) && /^\.\.g+\.\.$/.test(bench[15]));
+check('SiteWorkbench: the weld sparks are white and yellow only (no orange: orange over a bench read as a hob); the weld flash stays blue-white',
+  P.framesOf('flame').every((f) => /^[.Wt]+$/.test(f.join(''))) && P.framesOf('oven-glow').every((f) => /^[.WIz]+$/.test(f.join(''))));
+const rig = one1('sink'), led = one1('bubble');
+check('SiteTestRig: a scope screen with a green trace, and the busy LEDs are green (not the orange of an oven display); each chasing LED lands on the dark LED strip',
+  /^[.vw]+$/.test(led.join('')) && /w/.test(rig.slice(2, 9).join('')) && [0, 1, 2, 3].every((k) => led.every((r, y) => [...r].every((c, x) => c === '.' || /[Nu]/.test(rig[10 + y][4 + k * 3 + x])))));
+check('SiteHandoverBay: the Handover bay is a crate on a pallet on the slab, not a table (the floor bakes 2 trestle tables, 1 pallet)',
+  bare.filter((r) => r === 'counter:0').length === 2 && bare.filter((r) => r === 'pallet:0').length === 1 && /^[.a]+$/.test(one1('pallet')[19]) && /\.{3}/.test(one1('pallet')[19]));
+const seamless = (rows) => rows.every((r) => /n/.test(r)) && rows[0].split('').every((_, x) => rows.some((r) => r[x] === 'n'));
+check('SiteSlab: a poured slab: both floor tiles are one colour with a few specks (a crack on one), and no tile seam (no row or column of another colour)',
+  most(one1('floor-a')) === 'n' && most(one1('floor-b')) === 'n' && seamless(one1('floor-a')) && seamless(one1('floor-b')) && ['floor-a', 'floor-b'].every((n) => one1(n).join('').replace(/n/g, '').length <= 8));
 // the words around the scene (rename S7g): nothing a person reads or hears from the scene is a kitchen word any more
 const KITCHEN_WORDS = /\b(toques?|cloches?|chefs?|order up|kitchen|cooks?|cooking|stove|sink|plates?|tickets?|rail|waiters?|sous|pass|coin jar|chalkboard|cork board|recipes?|fuse box|heat lamps?|hatch|window sign|closed)\b/i;
 const busyL = layoutScene(busy, [{ type: 'job.done', job: 'J39', ts: new Date(T0 - 60000).toISOString() }], {}, T0), cardHtml = sceneHtml(busy, [{ type: 'job.done', job: 'J39', ts: new Date(T0 - 60000).toISOString() }], {}, T0);
