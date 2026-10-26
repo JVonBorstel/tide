@@ -268,7 +268,7 @@ function testView() {
   check('view: a failed step with no retry is stuck with its reason', full.rows.find((r) => r.id === 'WO-2002')?.state === 'stuck');
   // WIP: 5 build streams, a stack on ART, 3 cards in one stream
   const wip = []; let seq = 1;
-  for (const s of ['ART', 'CITY', 'PORT', 'RENAME', 'GOWEST']) wip.push(ev(seq++, 'wo.created', `WO-${s}-1`, { goal: `${s} work`, stream: s }, '2030-01-10T00:00:00Z'));
+  for (const s of ['ART', 'CITY', 'PORT', 'RENAME', 'DOCS']) wip.push(ev(seq++, 'wo.created', `WO-${s}-1`, { goal: `${s} work`, stream: s }, '2030-01-10T00:00:00Z'));
   wip.push(ev(seq++, 'pr.opened', 'WO-ART-1', { pr: 'example#1', branch: 'art-a', base: 'main', head: SHA1 }, '2030-01-10T10:00:00Z'));
   wip.push(ev(seq++, 'wo.created', 'WO-ART-2', { goal: 'ART stacked', stream: 'ART' }, '2030-01-10T01:00:00Z'));
   wip.push(ev(seq++, 'pr.opened', 'WO-ART-2', { pr: 'example#2', branch: 'art-b', base: 'art-a', head: SHA2 }, '2030-01-10T10:00:00Z'));
