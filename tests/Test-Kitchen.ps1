@@ -289,12 +289,14 @@ $null = & pwsh -NoProfile -File $sp -Candidates "$verDir\pwsh.exe" 2>$null
 Check 'stable-pwsh fails closed when only a versioned pwsh exists' ($LASTEXITCODE -eq 1)
 # Task Scheduler is denied at Low integrity by design (the kitchen sandbox): this check needs it, so it runs at Medium only
 if ((& "$env:SystemRoot\System32\whoami.exe" /groups 2>$null | Out-String) -match 'Low Mandatory Level') { Write-Host 'SKIP: install-tasks check needs Task Scheduler (not at Low)' } else {
-$before = try { (Export-ScheduledTask -TaskName 'Kitchen-Supervisor' -ErrorAction Stop) } catch { '' }
+# the tick's live name (old or new, scripts/task-names.json): the plan uses whichever one is registered
+$liveTick = @(foreach ($n in 'Tide-Yard', 'Kitchen-Supervisor') { if (Get-ScheduledTask -TaskName $n -ErrorAction SilentlyContinue) { $n } })[0]; if (-not $liveTick) { $liveTick = 'Kitchen-Supervisor' }
+$before = try { (Export-ScheduledTask -TaskName $liveTick -ErrorAction Stop) } catch { '' }
 $wi = & pwsh -NoProfile -File $it -WhatIf -RunBeforeSignIn | Out-String
-Check 'install-tasks -WhatIf plans both tasks with the alias pwsh and registers nothing' ($LASTEXITCODE -eq 0 -and $wi -match 'WHATIF: nothing registered' -and $wi -match 'Kitchen-Supervisor: \S*\\Microsoft\\WindowsApps\\pwsh\.exe .*kitchen\.ps1" tick -Quiet' -and $wi -match 'Kitchen-Pass: \S*wscript\.exe' -and $wi -match 'and at startup' -and $wi -match 'stored password')
-Check 'install-tasks -WhatIf plans Kitchen-Chores (TARGET W2): kitchen.ps1 chores every 2 minutes, 10 min limit' ($wi -match 'Kitchen-Chores: \S*\\Microsoft\\WindowsApps\\pwsh\.exe .*kitchen\.ps1" chores -Quiet' -and $wi -match 'every 2 minutes, forever')
-Check 'install-tasks never plans a versioned pwsh'($wi -notmatch 'Kitchen-Supervisor: [^\r\n]*Microsoft\.PowerShell_\d')
-$after = try { (Export-ScheduledTask -TaskName 'Kitchen-Supervisor' -ErrorAction Stop) } catch { '' }
+Check 'install-tasks -WhatIf plans both tasks with the alias pwsh and registers nothing' ($LASTEXITCODE -eq 0 -and $wi -match 'WHATIF: nothing registered' -and $wi -match '(Kitchen-Supervisor|Tide-Yard): \S*\\wscript\.exe //B //NoLogo "\S*\\run-hidden\.vbs" "\S*\\Microsoft\\WindowsApps\\pwsh\.exe" .*kitchen\.ps1" tick -Quiet' -and $wi -match '(Kitchen-Pass|Tide-Board): \S*wscript\.exe' -and $wi -match 'and at startup' -and $wi -match 'stored password')
+Check 'install-tasks -WhatIf plans Kitchen-Chores (TARGET W2): kitchen.ps1 chores every 2 minutes, 10 min limit' ($wi -match '(Kitchen-Chores|Tide-Cleanup): \S*\\wscript\.exe //B //NoLogo "\S*\\run-hidden\.vbs" "\S*\\Microsoft\\WindowsApps\\pwsh\.exe" .*kitchen\.ps1" chores -Quiet' -and $wi -match 'every 2 minutes, forever')
+Check 'install-tasks never plans a versioned pwsh'($wi -notmatch '(Kitchen-Supervisor|Tide-Yard|Kitchen-Chores|Tide-Cleanup): [^\r\n]*Microsoft\.PowerShell_\d')
+$after = try { (Export-ScheduledTask -TaskName $liveTick -ErrorAction Stop) } catch { '' }
 Check 'install-tasks -WhatIf left the live task untouched' ($before -eq $after)
 }
 $wf = & pwsh -NoProfile -File $it -WhatIf -PwshCandidates "$verDir\pwsh.exe" | Out-String
