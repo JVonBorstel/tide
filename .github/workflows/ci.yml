@@ -145,11 +145,13 @@ jobs:
         if: always() && github.event_name == 'pull_request'
         run: |
           word="${{ steps.vale.outcome }}"
-          if command -v vale >/dev/null 2>&1; then
-            n=$(vale --config .vale/vale.ini --output=line --minAlertLevel=warning docs 2>/dev/null | wc -l)
-            line="all of docs/ has ${n} alert(s) at warning or above; the annotations show the ones on added lines"
+          vale=$(command -v vale || ls "$RUNNER_TOOL_CACHE"/vale/*/x64/vale 2>/dev/null | head -n 1 || true)
+          if [ -n "$vale" ]; then
+            w=$("$vale" --config .vale/vale.ini --output=line --minAlertLevel=warning docs 2>/dev/null | wc -l)
+            e=$("$vale" --config .vale/vale.ini --output=line --minAlertLevel=error docs 2>/dev/null | wc -l)
+            line="all of docs/: ${e} error(s), ${w} alert(s) at warning or above; the annotations show the ones on lines this PR adds"
           else
-            line="vale was not on PATH after the action, so no count (see the annotations)"
+            line="the Vale binary was not found after the action, so no count (see the annotations)"
           fi
           printf '### Gate Vale vocabulary (docs/): %s (%s)\n\n- %s\n' "$word" "$GATE_VALE" "$line" >> "$GITHUB_STEP_SUMMARY"
           echo "Gate Vale vocabulary: ${word} (${GATE_VALE}); ${line}"
