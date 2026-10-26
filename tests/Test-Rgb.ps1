@@ -34,6 +34,7 @@ if ($off -and $on) {
     Check 'on task time 07:00' ($on.at -eq '07:00')
     Check 'off task runs rgb.ps1 set 0' (($off.arguments -match 'rgb\.ps1') -and ($off.arguments -match '-Brightness 0'))
     Check 'on task uses brightness 60' ($on.arguments -match '-Brightness 60')
+    Check 'headless: runs wscript //B run-hidden.vbs "<pwsh>" (no console flash, exit code kept)' ($off.execute -eq (Join-Path $env:SystemRoot 'System32\wscript.exe') -and $off.arguments -match '^//B //NoLogo "[^"]*\\scripts\\run-hidden\.vbs" "[^"]*\\pwsh\.exe" -NoProfile ' -and $on.execute -eq $off.execute)
     Check 'runs as current user, interactive, not elevated' ($off.logonType -eq 'Interactive' -and $off.runLevel -eq 'Limited')
     Check 'time limit set' ($off.timeLimit -match 'PT[0-9]+M')
     Check 'no overlapping runs' ($off.multipleInstances -eq 'IgnoreNew')

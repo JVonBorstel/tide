@@ -76,7 +76,34 @@ try {
     Check 'install-tasks stops when a list does not start with the old name' ($r.code -eq 2 -and $r.out -match 'must list supervisor as \[Kitchen-Supervisor, new name\]')
     $r = Run ($base + @('-TaskNamesPath', (Join-Path $root 'nope.json'), '-TestRegistered', ''))
     Check 'install-tasks with no task-names.json: the old names' ($r.code -eq 0 -and $r.out -match '(?m)^Kitchen-Supervisor: ' -and $r.out -match '(?m)^Kitchen-Pass: ')
+
+    # 5. headless: the tick and chores never flash a console and keep pwsh's exit code (wscript //B //NoLogo run-hidden.vbs "<pwsh>" <args>).
+    # The printed line is the built New-ScheduledTask action (Execute, then Arguments); the stand-in pwsh proves the right one is inside.
+    $ws = [regex]::Escape((Join-Path $env:SystemRoot 'System32\wscript.exe')); $vbs = [regex]::Escape((Join-Path $repo 'scripts\run-hidden.vbs')); $kps = [regex]::Escape((Join-Path $repo 'kitchen\kitchen.ps1')); $fp = [regex]::Escape($fakePwsh)
+    $r = Run ($base + @('-TestRegistered', 'Tide-Yard,Tide-Cleanup,Tide-Board'))
+    Check 'headless: Tide-Yard is wscript run-hidden.vbs with the stable pwsh and the tick arguments' ($r.code -eq 0 -and $r.out -match "(?m)^Tide-Yard: $ws //B //NoLogo `"$vbs`" `"$fp`" -NoProfile -NonInteractive -WindowStyle Hidden -File `"$kps`" tick -Quiet\r?$")
+    Check 'headless: Tide-Cleanup is wscript run-hidden.vbs with the stable pwsh and the chores arguments' ($r.out -match "(?m)^Tide-Cleanup: $ws //B //NoLogo `"$vbs`" `"$fp`" -NoProfile -NonInteractive -WindowStyle Hidden -File `"$kps`" chores -Quiet\r?$")
+    Check 'headless: the Board stays on wscript start-hidden.vbs (a GUI program: no console to flash; the server stays stoppable as today)' ($r.out -match '(?m)^Tide-Board: \S*\\wscript\.exe "' -and $r.out -notmatch '(?m)^Tide-Board: [^\r\n]*(conhost|run-hidden)')
+    Check 'headless: no pwsh task runs pwsh directly' ($r.out -notmatch '(?m)^Tide-(Yard|Cleanup): \S*pwsh\.exe')
     }
+
+    # 6. headless-task-lib.ps1: the action builder and the reader kitchen-check.ps1 uses to find the pwsh inside a headless task
+    . (Join-Path $repo 'scripts\headless-task-lib.ps1')
+    $h = Get-HeadlessAction 'C:\x y\pwsh.exe' '-File "a.ps1" tick'
+    Check 'lib: Get-HeadlessAction runs System32\wscript.exe //B //NoLogo "<scripts>\run-hidden.vbs" "<program>" <args>' ($h.Execute -eq (Join-Path $env:SystemRoot 'System32\wscript.exe') -and $h.Args -eq ('//B //NoLogo "{0}" "C:\x y\pwsh.exe" -File "a.ps1" tick' -f (Join-Path $repo 'scripts\run-hidden.vbs')))
+    Check 'lib: Get-TaskProgram reads the pwsh inside the run-hidden form' ((Get-TaskProgram 'C:\Windows\System32\wscript.exe' '//B //NoLogo "C:\r p\scripts\run-hidden.vbs" "C:\Users\j\AppData\Local\Microsoft\WindowsApps\pwsh.exe" -NoProfile -File "k.ps1" tick -Quiet') -eq 'C:\Users\j\AppData\Local\Microsoft\WindowsApps\pwsh.exe')
+    Check 'lib: Get-TaskProgram keeps a versioned Store pwsh visible in the run-hidden form (so kitchen-check warns)' ((Get-TaskProgram 'C:\Windows\System32\wscript.exe' '//B //NoLogo "C:\r\run-hidden.vbs" "C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.7.0_x64__8wekyb3d8bbwe\pwsh.exe" -x') -match '\\WindowsApps\\Microsoft\.PowerShell_')
+    Check 'lib: Get-TaskProgram reads the quoted pwsh inside the older conhost --headless form' ((Get-TaskProgram 'C:\Windows\System32\conhost.exe' '--headless "C:\Users\j\AppData\Local\Microsoft\WindowsApps\pwsh.exe" -NoProfile -File "k.ps1" tick -Quiet') -eq 'C:\Users\j\AppData\Local\Microsoft\WindowsApps\pwsh.exe')
+    Check 'lib: Get-TaskProgram reads an unquoted pwsh and expands %variables%' ((Get-TaskProgram '%SystemRoot%\System32\conhost.exe' '--headless %SystemRoot%\p.exe -x') -eq (Join-Path $env:SystemRoot 'p.exe'))
+    Check 'lib: Get-TaskProgram keeps a versioned Store pwsh visible (so kitchen-check warns)' ((Get-TaskProgram 'C:\Windows\System32\conhost.exe' '--headless "C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.7.0_x64__8wekyb3d8bbwe\pwsh.exe" -x') -match '\\WindowsApps\\Microsoft\.PowerShell_')
+    Check 'lib: Get-TaskProgram returns Execute for a direct (old-form) task' ((Get-TaskProgram 'C:\p\pwsh.exe' '-File x.ps1') -eq 'C:\p\pwsh.exe' -and (Get-TaskProgram '"C:\WINDOWS\System32\wscript.exe"' '"s.vbs"') -eq 'C:\WINDOWS\System32\wscript.exe')
+    Check 'lib: Get-TaskProgram returns conhost itself when no --headless program follows (then the path check sees conhost)' ((Get-TaskProgram 'C:\Windows\System32\conhost.exe' '') -eq 'C:\Windows\System32\conhost.exe')
+    # run-hidden.vbs itself: pwsh's exit code comes back, and a program that cannot start is an error, never 0 (2026-10-26: conhost gave 0)
+    $rh = Join-Path $repo 'scripts\run-hidden.vbs'; $ex = Join-Path $root 'exit with space.ps1'; Set-Content -LiteralPath $ex 'param([int]$Code) exit $Code'
+    $codes = foreach ($a in @("`"$((Get-Process -Id $PID).Path)`" -NoProfile -File `"$ex`" -Code 5", "`"$((Get-Process -Id $PID).Path)`" -NoProfile -File `"$ex`" -Code 0", "`"$(Join-Path $root 'no such.exe')`"", '')) { (Start-Process (Join-Path $env:SystemRoot 'System32\wscript.exe') -ArgumentList "//B //NoLogo `"$rh`" $a" -Wait -PassThru -WindowStyle Hidden).ExitCode }
+    Check "run-hidden.vbs returns the program's exit code (5, 0), 0x80070002 for a missing program and 2 with no program ($($codes -join ', '))" ($codes[0] -eq 5 -and $codes[1] -eq 0 -and $codes[2] -eq -2147024894 -and $codes[3] -eq 2)
+    $kc = Get-Content -LiteralPath (Join-Path $repo 'scripts\kitchen-check.ps1') -Raw
+    Check 'kitchen-check checks the pwsh inside a headless task (Get-TaskProgram with the Arguments)' ($kc -match 'Get-TaskProgram \(\[string\]\$task\.Actions\[0\]\.Execute\) \(\[string\]\$task\.Actions\[0\]\.Arguments\)' -and $kc -match "headless-task-lib\.ps1")
 } finally {
     foreach ($n in $saved.Keys) { [Environment]::SetEnvironmentVariable($n, $saved[$n]) }
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue

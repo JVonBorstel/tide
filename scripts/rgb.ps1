@@ -48,13 +48,15 @@ switch ($Action) {
         if ((BadTime $OffAt) -or (BadTime $OnAt)) { Write-Output 'ERROR: times must be HH:mm (24h)'; exit 2 }
         if ($OffAt -eq $OnAt) { Write-Output 'ERROR: off and on times must differ'; exit 2 }
         # the update-proof pwsh (not this process's versioned Store path, which the next PowerShell update deletes: Rig-RGB-* then failed 0x80070002)
+        . (Join-Path $PSScriptRoot 'headless-task-lib.ps1')
         $pwsh = & (Join-Path $PSScriptRoot 'stable-pwsh.ps1') 2>$null; if ($LASTEXITCODE -ne 0 -or -not $pwsh) { Write-Output 'ERROR: no update-proof pwsh.exe found'; exit 1 }
         if ($DryRun) { Write-Output "DRY RUN: would register $TaskPrefix-Off at $OffAt (brightness 0) and $TaskPrefix-On at $OnAt (brightness $OnBrightness), running $pwsh"; exit 0 }
         $plan = @()
         foreach ($t in @(@('Off', $OffAt, 0), @('On', $OnAt, $OnBrightness))) {
             $name = "$TaskPrefix-$($t[0])"
             $arg = '-NoProfile -WindowStyle Hidden -File "{0}" -Action set -Brightness {1}' -f $PSCommandPath, $t[2]
-            $taskAction = New-ScheduledTaskAction -Execute $pwsh -Argument $arg
+            $h = Get-HeadlessAction $pwsh $arg   # hidden, exit code kept: no console flash at the off and on times (scripts/headless-task-lib.ps1)
+            $taskAction = New-ScheduledTaskAction -Execute $h.Execute -Argument $h.Args
             $trigger = New-ScheduledTaskTrigger -Daily -At ([datetime]::ParseExact($t[1], 'HH:mm', $null))
             $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
             $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 5) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries
