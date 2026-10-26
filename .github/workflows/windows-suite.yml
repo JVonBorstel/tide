@@ -1,6 +1,6 @@
 # The full Windows suite on a clean box, the way the kitchen runs it (sandboxed tests station), with nothing from Jordan's PC.
 # Not per change (see ci.yml): weekly as a drift check, by hand (Actions > windows-suite > Run workflow), and on pushes to ci/** branches.
-# ~28 min, billed 2x on the free private plan: about 250 of the 2000 monthly minutes at this pace.
+# ~28 min. The repo is public now, so GitHub-hosted runner minutes are free (it was ~250 of the 2000 private-plan minutes a month at 2x).
 name: windows-suite
 on:
   schedule:
