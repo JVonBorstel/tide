@@ -16,9 +16,10 @@ It opens a tide PR whose body links the private PR. The private PR stays open. I
 ## What it does
 
 1. **Reads the private PR** with gh: its branch, head commit, title and description. It fetches that branch from the `private` remote and refuses if the branch is not at the commit the PR names.
-2. **Cleans two trees.** The merge-base M of the branch with `private-main` (the old private main, `d37031d`), and the branch head B. Both go through the public cleaning: rules R1-R9 plus the cleaning patch. That cleaning has ONE implementation, `public-tide-clean.ps1`, in the brain's `projects/tide/audits` folder. It sits outside this repo because its rules name the private values. `public-tide-refresh.ps1` now calls it too, and it takes `-Ref` (any commit), not only `main`.
+2. **Cleans two trees.** The merge-base M of the branch with `private-main` (the old private main, `d37031d`), and the branch head B. Both go through the public cleaning: rules R1-R10 plus the cleaning patch. R10 is new (2026-10-26, found by porting #132): a user path on a whole-line code comment, which is only an example, becomes `%USERPROFILE%`. Code lines still stop at R4. That cleaning has ONE implementation, `public-tide-clean.ps1`, in the brain's `projects/tide/audits` folder. It sits outside this repo because its rules name the private values. `public-tide-refresh.ps1` now calls it too, and it takes `-Ref` (any commit), not only `main`.
 3. **Diffs cleaned(M) to cleaned(B)** and applies that patch with `git apply -3` on a new branch `port/<branch>` from tide `main`, in its own worktree `wt/port-<branch>`. Only the branch's own changes move, so commits made on tide since the cut-over are never reverted. Replacing the whole tree would revert them.
    - On a conflict it stops and keeps the worktree. You fix the files and `git add` them, then run again with `-Continue`.
+   - `-NoCommit` stops after the apply on purpose, for a hand fix. `-Note <text>` says what was done by hand, and it goes into the PR body, the commit message and the change note.
 4. **Scans** (`public-tide-scan.ps1 -Json`) every changed file, the commit message and the PR text. The same files on tide `main` are scanned too, as the baseline.
    - Any live hit refuses: a value read from this PC (`LIVE:*`), the owner's full name, or the interview project's name (`project-name`, new in the scan).
    - Any other class that is new in a changed file refuses, unless `-Allow <class>` says a person read it.
@@ -28,7 +29,7 @@ It opens a tide PR whose body links the private PR. The private PR stays open. I
 
 **Other refusals:**
 
-- **A cleaning-patch hunk that applied on M but not on B.** The diff would undo that cleaning, so it refuses and names the files. `-AcceptRejects` (after reading them, e.g. with `-NoPush`) lets it through, and the PR names those files.
+- **A cleaning-patch hunk that applied on M but not on B.** The diff would undo that cleaning, so it refuses and names the files. `-AcceptRejects -NoCommit` applies the port and stops before the commit. A person restores the cleaning by hand, then `-Continue` scans and commits. The PR names those files. The first real case was private #132: its loop rewrite in `scripts/verify-all.ps1` undid the `ExpandEnvironmentVariables` cleaning.
 - **A cleaning that needs a hand fix (R4).**
 - **A closed private PR.**
 - **A branch that changes nothing once cleaned.**
@@ -46,10 +47,10 @@ Exit: 0 PR opened or reused (or committed, with `-NoPush`); 1 refused; 2 bad inp
 
 ## Tests
 
-`tests/Test-PortPrivate.ps1`: 38 checks, all passed locally.
+`tests/Test-PortPrivate.ps1`: 40 checks, all passed locally.
 
 - It uses two local bare repos (private and tide) over git's `ext::` transport, the fake gh (now with a per-PR bare repo, title, body and `pr comment`), and a fake cleaning and scan with the same contract. The real ones read this PC's private values. No network.
-- The cases: a full port (the cleaned change, an add and a delete, tide-only commits kept, no private word, noreply author and committer, the commit message, the PR title and body, the change note, the private-PR comment, `ports.jsonl`); a second run refused and `-Continue` reusing the PR; a live value refused and never printed; a conflict refused with the worktree kept, then fixed and `-Continue`; a private title or description left out; a hand fix; a cleaning-patch reject, refused and then `-AcceptRejects -NoPush` and `-Continue`; a non-live class refused, then `-Allow`; `-Allow` never passing a live hit; nothing to port; a closed PR; a failed scan; a missing cleaning script; no tide branch moved.
+- The cases: a full port (the cleaned change, an add and a delete, tide-only commits kept, no private word, noreply author and committer, the commit message, the PR title and body, the change note, the private-PR comment, `ports.jsonl`); a second run refused and `-Continue` reusing the PR; a live value refused and never printed; a conflict refused with the worktree kept, then fixed and `-Continue`; a private title or description left out; a hand fix; a cleaning-patch reject, refused and then `-AcceptRejects -NoCommit`, a hand fix, `-Continue -NoPush` and `-Continue`; `-Note` in the PR body, the commit and the change note; a non-live class refused, then `-Allow`; `-Allow` never passing a live hit; nothing to port; a closed PR; a failed scan; a missing cleaning script; no tide branch moved.
 - `tests/Test-PrFlow.ps1` with the changed fake gh: 83 passed, 0 failed.
 
 **The tests can fail.** Each change below was put into port-private.ps1, the suite run, and the file restored:
