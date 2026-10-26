@@ -3,9 +3,11 @@
 import fs from 'node:fs';
 import { layoutScene, sceneHtml, stationFor, cookOf, lookOf, skyAt, hashId, activityWord, STATIONS, COOK_COLORS,
   STAGE, pixelScale, stageNew, stageSync, stageTick, drawStage, makeKit, makeLoop, hitItems, hitHtml,
-  stageCalm, frameStats } from './public/scene.js';
+  stageCalm, frameStats, stepWord, writeHits, dropStage } from './public/scene.js';
 import { stageOk, stageFps, stageWalking, frameKey } from './public/frame.js';
-import { WORLD, worldOf, worldWords, worldKey, legendRows, legendHtml, PLACE } from './public/world.js';
+import { WORLD, worldOf, worldWords, worldKey, legendRows, legendHtml, PLACE, HANG, bakeWorld } from './public/world.js';
+import { PURPOSE } from './public/purpose.js';
+import { kitchenHits } from './site-words.mjs';
 import zlib from 'node:zlib';
 import * as P from './public/sprites.js';
 import { MOMENTS, FX, momentsFrom, fxNew, spawn, easeOutBack, easeInOutCubic, chefPose, passFx, approveFx, tapChef, fxBusy, spread, propRects } from './public/moments.js';
@@ -456,10 +458,10 @@ check('frames: moment sprites have their declared frames (flip 4, crouch 1, squa
 // bytes after brotli (node's own brotli, as the server sends them) of the stage files, against the plan's budgets
 // the site around the crew (rename S7d): the room, the job board and the sign-off window
 const one1 = (n) => P.framesOf(n)[0], most = (rows) => { const c = {}; for (const ch of rows.join('')) c[ch] = (c[ch] || 0) + 1; return Object.entries(c).sort((a, b) => b[1] - a[1])[0][0]; };
-check('SiteRoom: a concrete slab, not a checker floor (both floor tiles share one base colour); plywood hoarding, not white tile; blockwork above',
-  most(one1('floor-a')) === most(one1('floor-b')) && !/[on]/.test(one1('subway').join('')) && /e/.test(one1('subway').join('')) && one1('wall').every((r, y) => y % 4 || /^D+$/.test(r)));
-check('SiteRoom: the runners carry clipboards (paper on a board, no steel dome), tools hang on pegboards, a caged work light burns over the sign-off window',
-  /p/.test(one1('cloche').join('')) && /[bd]/.test(one1('cloche').join('')) && !/i/.test(one1('cloche').join('')) && /h/.test(one1('pan').join('')) && /c/.test(one1('pan').slice(1, -1).join('')) && one1('lamp')[5].startsWith('.a') && /I/.test(one1('lamp').join('')) && !/[IW]/.test(one1('lamp-off').join('')));
+check('SiteRoom: a concrete slab, not a checker floor (both floor tiles share one base colour); no white tile and no brick anywhere in the room',
+  most(one1('floor-a')) === most(one1('floor-b')) && !/[oDEF]/.test(one1('subway').join('') + one1('wall').join('')));
+check('SiteRoom: the runners carry clipboards (paper on a board, no steel dome), a caged work light burns over the sign-off window',
+  /p/.test(one1('cloche').join('')) && /[bd]/.test(one1('cloche').join('')) && !/i/.test(one1('cloche').join('')) && one1('lamp')[5].startsWith('.a') && /I/.test(one1('lamp').join('')) && !/[IW]/.test(one1('lamp-off').join('')));
 const card = one1('ticket'), onPaper = (x0, x1, rows) => rows.every((y) => card[y].slice(x0, x1 + 1).split('').every((c) => c === 'p'));
 check(`SiteRoom: the work-order card's digits and step bar land on paper and read (digits ${ratio(P.PALETTE.a, P.PALETTE.p).toFixed(1)}:1, bar ${ratio(P.PALETTE.r, P.PALETTE.p).toFixed(1)}:1)`,
   onPaper(2, 8, [3, 4, 5, 6, 7, 10]) && ratio(P.PALETTE.a, P.PALETTE.p) >= 4.5 && ratio(P.PALETTE.r, P.PALETTE.p) >= 3 && P.SPRITES.ticket.w === 11 && P.SPRITES.ticket.h === 13);
@@ -481,6 +483,29 @@ check('SiteHandoverBay: the Handover bay is a crate on a pallet on the slab, not
 const seamless = (rows) => rows.every((r) => /n/.test(r)) && rows[0].split('').every((_, x) => rows.some((r) => r[x] === 'n'));
 check('SiteSlab: a poured slab: both floor tiles are one colour with a few specks (a crack on one), and no tile seam (no row or column of another colour)',
   most(one1('floor-a')) === 'n' && most(one1('floor-b')) === 'n' && seamless(one1('floor-a')) && seamless(one1('floor-b')) && ['floor-a', 'floor-b'].every((n) => one1(n).join('').replace(/n/g, '').length <= 8));
+// the polish (S7i, section 5 items 5-9 and 11): the live floor is the tower's top floor, open to the real sky
+const sky = one1('wall'), edgeBand = one1('subway');
+check('SiteOpenSky: the back is the real sky (only the hour\'s sky slots X/Y/Z and steel shores, 40 rows), which changes with the hour and stays lit at night',
+  P.SPRITES.wall.h === 40 && /^[XYZfgh]+$/.test(sky.join('')) && sky.filter((r) => /^[XYZ]+$/.test(r.replace(/[fgh]/g, ''))).length === 40 && sky.every((r) => /[fg]/.test(r))
+  && P.paletteFor({ sky: 'night' }).X !== P.paletteFor({ sky: 'day' }).X && /X/.test(P.EMISSIVE) && /Z/.test(P.EMISSIVE));
+check(`SiteGuardRail: at the open edge a yellow top rail and mid rail on posts, debris netting, the sky behind, and a toe board a shade lighter than the slab (luminance ${lum(P.PALETTE.m).toFixed(2)} vs ${lum(P.PALETTE.n).toFixed(2)})`,
+  edgeBand.filter((r) => /^H+$/.test(r)).length === 2 && /z/.test(edgeBand.slice(4, 7).join('')) && /Z/.test(edgeBand[0]) && /^m+$/.test(edgeBand[13]) && lum(P.PALETTE.m) > lum(P.PALETTE.n) && /[fg]/.test(edgeBand[5]));
+const hoistOf = (key) => { const st = stageNew(); stageSync(st, layoutScene({ jobs: [] }, [], {}, T0)); if (key) stageSync(st, layoutScene({ jobs: [job(key, { role: 'plan' })] }, [], {}, T0)); rec.length = 0; drawStage(rkit.mk(STAGE.w, STAGE.h).getContext(), st, rkit); return [...rec]; };
+const cageArt = one1('door'), cageOpen = one1('hoist-open');
+check('SiteHoist: the crews arrive by the hoist: a steel mesh cage between hazard bands (no wooden door); its gate stands open with the call lamp lit only while a crew is arriving',
+  !/[bcde]/.test(cageArt.join('')) && /H/.test(cageArt[1]) && /H/.test(cageArt[27]) && /t/.test(cageOpen[0]) && !/t/.test(cageArt.join(''))
+  && hoistOf('J61').includes('hoist-open:0') && !hoistOf(null).includes('hoist-open:0'));
+check('SiteCut: the paint tins, the pegboards, their shelf and the window frame are gone (no data: decoration, P8); the bake draws none of them',
+  ['jar', 'pan', 'shelf', 'window'].every((k) => !P.SPRITES[k] && !bare.some((r) => r.startsWith(k + ':'))) && !('jars' in P.FRAMES));
+const cabin = one1('pass'), glow = one1('pass-glow').join(''), needsOne = { jobs: [job('J80', { status: 'waiting-approval', approval: { id: 'A80' } })] };
+check('SiteCabin: the sign-off window is the site cabin: corrugated steel, a framed window of dark glass that glows amber only while a sign-off waits',
+  cabin.slice(4, 26).every((r) => /^a[gh]{2}/.test(r)) && !/[DEFIt]/.test(cabin.join('')) && /N/.test(cabin.slice(5, 24).join(''))
+  && (glow.match(/[ts]/g) || []).length > glow.length * 0.8 && !drawnW({ jobs: [] }).includes('pass-glow:0') && drawnW(needsOne).includes('pass-glow:0'));
+const NIGHT = new Date(2026, 9, 22, 23, 0).getTime(), drawnAt = (s, now) => { rec.length = 0; rkit.layers.clear(); const st = stageNew(); stageSync(st, layoutScene(s, [], {}, now), {}); drawStage(rkit.mk(STAGE.w, STAGE.h).getContext(), st, rkit); return [...rec]; };
+check('SiteDepth: a contact shadow under each station (2 each), a darker strip along the slab\'s front edge, and a warm pool under the work light only on a night shift (crews at work after dark with the light on: none idle, by day, with the light out or without its field)',
+  bare.filter((r) => r === 'shadow:0').length >= 10 && bare.filter((r) => r === 'edge:0').length >= 12 && /I/.test(one1('pool').join('')) && /I/.test(P.EMISSIVE)
+  && drawnAt({ jobs: [job('J1')], breaker: false }, NIGHT).includes('pool:0') && !drawnAt({ jobs: [], breaker: false }, NIGHT).includes('pool:0') && !drawnAt({ jobs: [job('J1')], breaker: false }, T0).includes('pool:0')
+  && !drawnAt({ jobs: [job('J1')], breaker: true }, NIGHT).includes('pool:0') && !drawnAt({ jobs: [job('J1')] }, NIGHT).includes('pool:0'));
 // the words around the scene (rename S7g): nothing a person reads or hears from the scene is a kitchen word any more
 const KITCHEN_WORDS = /\b(toques?|cloches?|chefs?|order up|kitchen|cooks?|cooking|stove|sink|plates?|tickets?|rail|waiters?|sous|pass|coin jar|chalkboard|cork board|recipes?|fuse box|heat lamps?|hatch|window sign|closed)\b/i;
 const busyL = layoutScene(busy, [{ type: 'job.done', job: 'J39', ts: new Date(T0 - 60000).toISOString() }], {}, T0), cardHtml = sceneHtml(busy, [{ type: 'job.done', job: 'J39', ts: new Date(T0 - 60000).toISOString() }], {}, T0);
@@ -493,6 +518,94 @@ check(`SiteWords: no toque, cloche, chef, ORDER UP or other kitchen word in what
   said.length === 0 && heard.length > 40 && /<p>Nothing building\.<\/p>/.test(appSrc) && !/Nothing on the stove/.test(appSrc) && /aria-label="Listen to this work order"/.test(pageSrc) && !/Listen to this ticket/.test(pageSrc)
   && appSrc.includes('toast(`${STATUS_LABEL.done}: ${ticket(e.job)}.`)') && !/Order up/i.test(appSrc)
   && appSrc.includes("old ${list.length === 1 ? 'work order' : 'work orders'}?") && !/old tickets/.test(appSrc));
+// the critic's MUST items (audits/art-critique-S7-2026-10-26.md, 2026-10-26): words that match the stations, bubbles that stay with their crew
+const sw = (k) => stepWord({ station: 'agent', role: k }), swS = (k) => stepWord({ station: k });
+check('StationWords: the Inspection desk says "inspecting" (check, review) and the Test rig says "testing" (tests); every step word is lower case',
+  sw('check') === 'inspecting' && sw('review') === 'inspecting' && swS('tests') === 'testing' && stationFor('review') === 'taste' && stationFor('tests') === 'sink'
+  && ['plan', 'do', 'check', 'review', 'tests', 'lint', 'mutate', 'verify', 'commit', 'merge', 'freshen', 'map', 'diagnose'].every((k) => { const w = sw(k); return w === w.toLowerCase(); }));
+const bubK = 1.5, bubH = 14 / bubK, bubCases = [busy, fullState()].map((s) => hitItems(layoutScene(s, [], {}, T0), 0, { P, k: bubK, W: STAGE.w }).filter((i) => i.kind === 'say'));
+check(`BubbleNear: a speech bubble stands at most one bubble height over its crew member's head, or on the floor in front of its station (never up by the job board; ${bubCases.map((c) => c.length).join(' and ')} bubbles)`,
+  bubCases.every((c) => c.length > 0 && c.every((b) => b.y >= STAGE.aisle - 24 - bubH - 0.01)));
+check('SceneFrameWord: Settings > About says "Scene frame", never "Kitchen frame"', appSrc.includes('<dt>Scene frame</dt>') && !/Kitchen frame/i.test(appSrc));
+// nothing floats: the gate sign and the budget meter hang by two chains from a gantry beam across the top; the power board hangs under it
+const fullBake = drawnW(fullState(), fullEvents()), chainsAt = []; bakeWorld(worldOf(fullState(), fullEvents(), T0), (n, x, y) => n === 'chain' && chainsAt.push([x, y]));
+check(`GantryHang: a gantry beam spans the sky (${fullBake.filter((r) => r === 'rail:0').length} beam tiles with the job board) and the gate sign and budget meter hang by 2 chains each that reach their tops; the power board touches the beam`,
+  fullBake.filter((r) => r === 'rail:0').length >= 3 && fullBake.filter((r) => r === 'chain:0').length === 4 && chainsAt.every(([x, y]) => y === 3 || y === 4)
+  && HANG.sign.every((dx) => chainsAt.some(([x, y]) => x === PLACE.sign[0] + dx && y + 12 === PLACE.sign[1])) && HANG.jar.every((dx) => chainsAt.some(([x, y]) => x === PLACE.jar[0] + dx && y + 12 === PLACE.jar[1]))
+  && PLACE.fuse[1] <= 3 && !drawnW({ jobs: [] }).includes('chain:0'));
+check('WorkLightTruth: the work light is drawn only with its field (breaker): none without it, lit when false, out when true',
+  !drawnW({ jobs: [] }).some((r) => /^lamp/.test(r)) && drawnW({ jobs: [], breaker: false }).includes('lamp:0') && drawnW({ jobs: [], breaker: true }).includes('lamp-off:0') && !drawnW({ jobs: [], breaker: true }).includes('lamp:0'));
+// no lost taps: the link layer is written only when its markup changes; a replaced stage lets go of its observers
+let hitWrites = 0; const fakeSc = { hit: { set innerHTML(v) { hitWrites++; } } }, sameHtml = hitItems(layoutScene(busy, [], {}, T0), 0, { P }).map((it) => hitHtml(it)).join('');
+const w1 = writeHits(fakeSc, sameHtml), w2 = writeHits(fakeSc, sameHtml), w3 = writeHits(fakeSc, sameHtml + ' ');
+let disc = 0; const obs = () => ({ disconnect: () => disc++ }), oldSc = { io: obs(), ro: obs() }; dropStage(oldSc); dropStage(oldSc); dropStage(null);
+check(`HitsStable: the same links twice write the layer once (${hitWrites} writes for 3 renders, 2 different); a dropped stage disconnects both observers once (${disc})`,
+  w1 && !w2 && w3 && hitWrites === 2 && disc === 2 && oldSc.io === null && /dropStage\(sc\);\s*el\.innerHTML/.test(fs.readFileSync(new URL('./public/scene.js', import.meta.url), 'utf8')));
+// ---- the Purpose Ledger (purpose.js): nothing drawn without a row, every row bound to a real field and event, every data mark a door ----
+const rowsWith = (name) => PURPOSE.filter((r) => r.sprites.includes(name));
+const drawnNames = new Set(), noteDrawn = (list) => { for (const r of list) drawnNames.add(r.split(':')[0]); return list; };
+const NIGHTJ = new Date(2026, 9, 22, 23, 30).getTime(), DAWN = new Date(2026, 9, 22, 6, 30).getTime(), DUSK = new Date(2026, 9, 22, 19, 30).getTime();
+const ledgerStates = [{ jobs: [] }, busy, fullState(), { ...fullState(), paused: true }, { ...fullState(), stalled: true, lastTick: ago(14) }, { ...fullState(), breaker: true }, { ...busy, breaker: false }];
+for (const s of ledgerStates) for (const now of [T0, NIGHTJ, DAWN, DUSK]) noteDrawn(drawnAt(s, now));
+for (const s of ledgerStates) noteDrawn(drawnW(s, fullEvents()));
+noteDrawn(hoistOf('J61'));
+// every moment, played: a stage opened on a busy floor, then fresh events of every kind arrive, then frames over 2 s
+const mSt = stageNew(); stageSync(mSt, layoutScene({ ...busy, ...fullState(), jobs: busy.jobs }, [], {}, T0)); const fresh = (o) => ({ ...o, ts: iso(T0) });
+const mEv = [fresh({ type: 'step.done', job: 'J40', step: 3 }), fresh({ type: 'step.rework', job: 'J41', step: 3 }), fresh({ type: 'job.quarantined', job: 'J74' }), fresh({ type: 'approval.requested', job: 'J71', approval: 'A7' }), fresh({ type: 'job.done', job: 'J39' }), fresh({ type: 'step.crash', job: 'J42', step: 3 })];
+stageSync(mSt, layoutScene({ ...busy, jobs: [...busy.jobs, job('J71', { status: 'waiting-approval', approval: { id: 'A7' } }), job('J74', { status: 'quarantined' })] }, mEv, {}, T0));
+for (let i = 0; i < 40; i++) { stageTick(mSt, 60); rec.length = 0; drawStage(rkit.mk(STAGE.w, STAGE.h).getContext(), mSt, rkit); noteDrawn(rec); }
+const undeclared = [...drawnNames].filter((n) => !rowsWith(n).length), groundNames = PURPOSE.filter((r) => r.kind === 'ground').flatMap((r) => r.sprites);
+check(`PurposeNoUndeclared: every sprite the stage draws (${drawnNames.size} names over 7 states x 4 skies, the hoist and every moment) has a Purpose Ledger row${undeclared.length ? '; undeclared: ' + undeclared.join(', ') : ''}; ground (no field) is capped at 19 names (${groundNames.length})`,
+  undeclared.length === 0 && drawnNames.size > 60 && groundNames.length <= 19 && PURPOSE.every((r) => r.sprites.every((n) => P.SPRITES[n])));
+const serverSrc = fs.readFileSync(new URL('./server.mjs', import.meta.url), 'utf8'), kitchenDir = new URL('../kitchen/', import.meta.url);
+const kitchenSrc = fs.readdirSync(kitchenDir).filter((f) => f.endsWith('.ps1')).map((f) => fs.readFileSync(new URL(f, kitchenDir), 'utf8')).join('\n');
+const stepKinds = (kitchenSrc.match(/'\^step\\\.\(([a-z|]+)\)\$'/) || [, ''])[1].split('|').filter(Boolean);
+const emitted = (ev) => kitchenSrc.includes(`Emit '${ev}'`) || (ev.startsWith('step.') && stepKinds.includes(ev.slice(5)) && kitchenSrc.includes('Emit "step.$kind"'));
+const unbound = PURPOSE.filter((r) => r.kind === 'data').flatMap((r) => [...r.fields.filter((f) => !new RegExp(`\\b${f}\\b`).test(serverSrc)).map((f) => r.id + '.' + f),
+  ...(r.events || []).filter((e) => !emitted(e)).map((e) => r.id + ':' + e), ...(serverSrc.includes(`'${r.endpoint}'`) ? [] : [r.id + ' ' + r.endpoint])]);
+check(`PurposeBound: every data row names state fields the server sends (server.mjs), an endpoint it serves, and events the Yard emits (kitchen/*.ps1; step kinds ${stepKinds.join('/')})${unbound.length ? '; unbound: ' + unbound.join(', ') : ''}`,
+  unbound.length === 0 && stepKinds.length >= 7 && PURPOSE.filter((r) => r.kind === 'data').every((r) => r.changes && r.absent && r.tap && (r.fields.length || r.events?.length)));
+check(`MomentsBound: every moment plays for an event the Yard really emits (${Object.keys(MOMENTS).length} event types)`, Object.keys(MOMENTS).every(emitted));
+// doors: every data row on the stage has one (its work order's link, or a button to its legend line), and every door leads somewhere real
+const doorCases = [layoutScene(fullState(), fullEvents(), {}, T0), layoutScene({ ...busy, breaker: false }, [{ type: 'job.done', job: 'J39', ts: ago(1) }], {}, NIGHTJ), layoutScene({ jobs: [], due: 1 }, [], {}, T0)];
+const dead = [];
+for (const L of doorCases) {
+  const items = hitItems(L, 0, { P }), lines = legendRows(L).map((r) => r.key), ids = new Set([...L.src.jobs.map((j) => j.id), ...L.runners.map((r) => r.id)]);
+  for (const key of lines) {
+    const r = PURPOSE.find((x) => x.id === key), byLink = { crew: 'chef', cards: 'ticket', aside: 'aside', handed: 'waiter', signoff: 'waiter' }[key];
+    if (!items.some((it) => it.row === key || (byLink && it.kind === byLink))) dead.push(key);
+    if (!r) dead.push('no ledger row ' + key);
+  }
+  for (const it of items.filter((i) => i.kind !== 'say')) if (it.id ? !ids.has(it.id) : !lines.includes(it.row)) dead.push('door to nothing ' + it.key);
+}
+const markHtml = hitItems(doorCases[0], 0, { P }).filter((i) => i.kind === 'mark').map((i) => hitHtml(i)).join('');
+check(`PurposeDoors: every data mark on the stage is a door (${hitItems(doorCases[0], 0, { P }).filter((i) => i.kind === 'mark').length} marks on a full floor: legend buttons, the cabin and each sign-off light open their work order), and every door leads to a real work order or legend line${dead.length ? '; dead: ' + dead.join(', ') : ''}`,
+  dead.length === 0 && /<button class="px-a px-mark" type="button" data-legend="sign"/.test(markHtml) && /px-mark" href="#\/job\/J72"/.test(markHtml) && /id="wl-sign"/.test(legendHtml(legendRows(doorCases[0]))));
+// flips: the picture changes when (and because) the field does
+const has = (list, n) => list.includes(n), FLIPS = [
+  ['a crew arrives: the hoist gate opens', hoistOf(null), hoistOf('J61'), ['hoist-open:0']],
+  ['a sign-off waits: the cabin window glows, a runner brings the clipboard', drawnW({ jobs: [job('J1')] }), drawnW({ jobs: [job('J1'), job('J9', { status: 'waiting-approval', approval: { id: 'A9' } })] }, [{ type: 'approval.requested', job: 'J9', approval: 'A9', ts: ago(5) }]), ['pass-glow:0', 'cloche:0', 'heat:0']],
+  ['the wait passes 1 h: the sign-off light turns amber', drawnW(needsOne, [{ type: 'approval.requested', job: 'J80', approval: 'A80', ts: ago(5) }]), drawnW(needsOne, [{ type: 'approval.requested', job: 'J80', approval: 'A80', ts: ago(70) }]), ['heat:1']],
+  ['the wait passes 4 h: the sign-off light turns red', drawnW(needsOne, [{ type: 'approval.requested', job: 'J80', approval: 'A80', ts: ago(70) }]), drawnW(needsOne, [{ type: 'approval.requested', job: 'J80', approval: 'A80', ts: ago(250) }]), ['heat:2']],
+  ['paused: the gate sign says PAUSED and tape runs across the stations', drawnW(fullState()), drawnW({ ...fullState(), paused: true }), ['sign:2', 'tape:0', 'chair-up:0']],
+  ['a stop-work order: the power board sparks and the work light goes out', drawnW(fullState()), drawnW({ ...fullState(), breaker: true }), ['fuse:1', 'lamp-off:0']],
+  ['the spend rises: the budget meter fills', drawnW(fullState()), drawnW({ ...fullState(), spent: 15 }), ['coin-jar:6']],
+  ['the walkrounds stop: the clock freezes and the Dispatcher is gone', drawnW(fullState()), drawnW({ ...fullState(), stalled: true, lastTick: ago(14) }), []],
+  ['a work order fails: a crate on the bench, dust for 2 minutes', drawnW({ jobs: [job('J1')] }), drawnW({ jobs: [job('J1'), job('J5', { status: 'quarantined' })] }, [{ type: 'job.quarantined', job: 'J5', ts: ago(1) }]), ['plate-aside:0', 'smoke:0']],
+];
+const flat = FLIPS.filter(([, a, b, want]) => a.join() === b.join() || !want.every((n) => has(b, n) && !has(a, n)));
+check(`PurposeFlips: each field change changes the picture with the sprites it should (${FLIPS.length} flips: ${FLIPS.map((f) => f[0].split(':')[0]).join('; ')})${flat.length ? '; flat: ' + flat.map((f) => f[0]).join(' | ') : ''}`,
+  flat.length === 0 && drawnW(fullState()).some((r) => /^chef-s(it|ide):/.test(r)) && !drawnW({ ...fullState(), stalled: true, lastTick: ago(14) }).some((r) => /^chef-s(it|ide):/.test(r)));
+check('PurposeLegend: the legend sheet is the ledger (every line is a data row; every data row with a line has its icon; no kitchen words)',
+  doorCases.every((L) => legendRows(L).every((r) => PURPOSE.some((x) => x.id === r.key && x.kind === 'data') && P.LEGEND_ICONS[r.key] && /^[A-Z].*\.$/.test(r.text) && !KITCHEN_WORDS.test(r.text))));
+// no kitchen word anywhere on screen (chain review 2026-10-26): every string a person can read in the Board's scripts and index.html
+// (site-words.mjs: string literals and template text with markup plumbing and file names taken out; comments never count). sw.js is
+// left out: the service worker shows nothing (its one hit is the cache name 'chef-shell-...', a code name the old stored caches use)
+const pubDir = new URL('./public/', import.meta.url), screenFiles = fs.readdirSync(pubDir).filter((f) => /\.(js|html)$/.test(f) && f !== 'sw.js');
+const onScreen = screenFiles.flatMap((f) => kitchenHits(fs.readFileSync(new URL(f, pubDir), 'utf8'), f));
+const catches = kitchenHits("x = ['open', 'Open ticket']; toast(`Order up! ${t}`); h = `<h3 id=\"dish-h\">The dish</h3>`; // a ticket in a comment\nconst ticket = (id) => id; c = 'chef.' + k; d = `<div class=\"dish-head ${a}\">Recap</div>`;", 'probe.js');
+check(`SiteWordsEverywhere: no chef, toque, kitchen, ticket, dish or ORDER UP in any string a person can read (${screenFiles.length} files: app.js, index.html, live.js, scene.js ...)${onScreen.length ? '; found: ' + onScreen.join(', ') : ''}; the probe catches the old words (${catches.length}) and skips comments, code names and classes`,
+  onScreen.length === 0 && screenFiles.includes('app.js') && screenFiles.includes('index.html') && catches.length === 3 && catches.every((h) => /"(ticket|Order up|dish)"/i.test(h)));
 const siteChrome = P.chromeSprites(mk);
 check('SiteChrome: loading, offline and empty are drawn as site art (32x32: 4, 2 and 2 frames) and the empty one holds no clipboard or cloche (a shovel and an empty pallet)',
   siteChrome.load.width === 128 && siteChrome.off.width === 64 && siteChrome.empty.width === 64 && !/cloche/.test(fs.readFileSync(new URL('./public/sprites.js', import.meta.url), 'utf8').match(/one\('empty'[^\n]*/)[0]));

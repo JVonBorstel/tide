@@ -224,7 +224,7 @@ document.addEventListener('click', (e) => {
 });
 function rowMenu(id) {
   const j = jobOf(id); $('row-menu-title').textContent = ticket(id);
-  const items = [['open', 'Open ticket'], ['logs', 'Logs']];
+  const items = [['open', 'Open work order'], ['logs', 'Logs']];
   if (NEEDS(j)) items.unshift(['approve', 'Approve'], ['reject', 'Reject']);
   if (j.status === 'running' || j.status === 'pending') items.push(['stop', 'Cancel work order']);
   if (ASIDE(j)) items.unshift(['retry', retryLabel(j)]);
@@ -535,7 +535,7 @@ function dishHtml(d) {
   const sp = splitPlain(d.text);
   if (sp) return `<section class="dish" aria-labelledby="dish-h"><div class="dish-head"><h3 id="dish-h">In plain words</h3><span class="muted">${esc(d.by || '')}${d.at ? ' · ' + clock(d.at) : ''}</span>
     <button class="text-btn" data-copy-dish>Copy</button></div><div class="md plain">${md(sp.plain)}</div>${sp.rest ? `<details class="more"><summary>Technical details</summary><div class="md">${md(sp.rest)}</div></details>` : ''}</section>`;
-  return `<section class="dish" aria-labelledby="dish-h"><div class="dish-head"><h3 id="dish-h">The dish</h3><span class="muted">${esc(d.by || '')}${d.at ? ' · ' + clock(d.at) : ''}</span>
+  return `<section class="dish" aria-labelledby="dish-h"><div class="dish-head"><h3 id="dish-h">The report</h3><span class="muted">${esc(d.by || '')}${d.at ? ' · ' + clock(d.at) : ''}</span>
     <button class="text-btn" data-copy-dish>Copy</button></div><div class="md">${md(d.text)}</div>${d.cut ? '<p class="note faint">Long answer: the rest is in the log.</p>' : ''}</section>`;
 }
 
@@ -634,7 +634,7 @@ $('job-listen').addEventListener('click', () => { if (S.jobSpeech) speaker.toggl
 // ---------- job detail ----------
 async function openJob(id) {
   S.openJob = id; S.openSig = ''; $('job-ticket').textContent = ticket(id);
-  if (!$('job-sheet').open) { $('job-body').innerHTML = '<div class="skeleton" aria-label="Loading the ticket"><i></i><i></i><i></i></div>'; $('job-actions').innerHTML = ''; openSheet('job-sheet'); }
+  if (!$('job-sheet').open) { $('job-body').innerHTML = '<div class="skeleton" aria-label="Loading the work order"><i></i><i></i><i></i></div>'; $('job-actions').innerHTML = ''; openSheet('job-sheet'); }
   await loadJob(id);
 }
 const isImprove = (j) => j.recipe === 'improve' || /^improve:/i.test(j.name || '');
@@ -656,7 +656,7 @@ async function fillPhoneDiff(id) {
 }
 async function loadJob(id) {
   const r = await api('/api/job/' + id); if (S.openJob !== id) return;
-  if (!r.ok) { $('job-body').innerHTML = `<p class="empty-line fault">${esc(r.error || 'Could not load this ticket.')}</p>`; return; }
+  if (!r.ok) { $('job-body').innerHTML = `<p class="empty-line fault">${esc(r.error || 'Could not load this work order.')}</p>`; return; }
   const j = r.data; const [cls, sentence] = stateSentence(j);
   S.jobSpeech = jobSpeech(j, nameOf(j).text, sentence); syncListen();
   const created = j.created ? `${clock(j.created)}${isToday(j.created) ? '' : ' ' + new Date(j.created).toLocaleDateString()}` : '';
@@ -960,10 +960,10 @@ async function openCook(name) {
       <div><dt>Models</dt><dd class="mono">${[].concat(c.models || []).map(esc).join(', ')}</dd></div></dl>
     ${planBlock(name, c.planUse)}
     <h3 class="group-label">Last 7 days</h3>
-    <svg class="spark" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="Dishes per day: ${esc(vals.join(', '))}"><line x1="0" y1="38" x2="100" y2="38"/><polyline points="${pts}"/></svg>
-    <div class="spark-axis"><span>${days[0] ? new Date(days[0]).toLocaleDateString(undefined, { weekday: 'short' }) : ''}</span><span>${vals.reduce((a, b) => a + b, 0)} dishes · ${h ? h.passed.reduce((a, b) => a + b, 0) : 0} passed</span><span>today</span></div>
+    <svg class="spark" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="Steps per day: ${esc(vals.join(', '))}"><line x1="0" y1="38" x2="100" y2="38"/><polyline points="${pts}"/></svg>
+    <div class="spark-axis"><span>${days[0] ? new Date(days[0]).toLocaleDateString(undefined, { weekday: 'short' }) : ''}</span><span>${vals.reduce((a, b) => a + b, 0)} steps · ${h ? h.passed.reduce((a, b) => a + b, 0) : 0} passed</span><span>today</span></div>
     <h3 class="group-label">Track record</h3>
-    <dl class="kv">${Object.entries(c.track || {}).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd class="mono">${esc(v)} passed</dd></div>`).join('') || '<div><dt>No dishes yet</dt><dd></dd></div>'}</dl>
+    <dl class="kv">${Object.entries(c.track || {}).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd class="mono">${esc(v)} passed</dd></div>`).join('') || '<div><dt>No steps yet</dt><dd></dd></div>'}</dl>
     ${h?.recent?.length ? `<h3 class="group-label">Recent</h3><ul class="rows">${h.recent.slice().reverse().map((x) => `<li class="row compact"><div class="row-inner"><a class="row-link" href="#/job/${esc(x.job)}" aria-label="${esc(ticket(x.job))}"></a><span class="glyph ${x.ok ? 'g-done' : 'g-fail'}" aria-hidden="true"></span><div class="row-main"><div class="row-meta"><span class="mono">${ticket(x.job)}</span> · ${esc(x.kind || '')} · ${esc(x.model || '')} · ${x.ok ? 'passed' : 'did not pass'}</div></div><div class="row-side"><span class="pos">${clock(x.ts)}</span></div></div></li>`).join('')}</ul>` : ''}
     ${act_ ? `<div data-css="padding:24px var(--gutter) 0">${act_}</div>` : ''}`;
 }
@@ -1927,7 +1927,7 @@ async function openSettings() {
     <h3 class="set-label">About</h3>
     <dl class="kv"><div><dt>Signed in as</dt><dd id="whoami">…</dd></div><div><dt>The Board</dt><dd class="mono">${esc(s.version || '')} · ${esc(S.build || '')}</dd></div>
       <div><dt>Updates</dt><dd>${S.updateReady ? 'New version ready, loads when you leave the app' : 'Automatic, when you are not using it'}</dd></div>
-      ${(() => { const f = frameStats(); return f ? `<div><dt>Kitchen frame</dt><dd class="mono">p95 ${f.p95} ms · p50 ${f.p50} ms · ${f.n} frames</dd></div>` : ''; })()}
+      ${(() => { const f = frameStats(); return f ? `<div><dt>Scene frame</dt><dd class="mono">p95 ${f.p95} ms · p50 ${f.p50} ms · ${f.n} frames</dd></div>` : ''; })()}
       <div><dt>Supervisor</dt><dd>${tickAge() == null ? 'never ran' : 'last pass ' + words(tickAge()) + ' ago'}</dd></div></dl>
     <div class="set-group" data-css="margin-top:24px"><button class="set-row danger" data-set="stop-all"><i class="set-ic" aria-hidden="true">■</i><span>Stop everything<small>Every running and waiting work order stops now</small></span></button></div>`;
   openSheet('menu-sheet');
@@ -2075,7 +2075,7 @@ daypart(); setInterval(daypart, 600000);
   window.addEventListener('online', () => { if (!es || es.readyState === 2) connect(); });
 })();
 
-// ---------- the animated kitchen at the top of Pass and Live (scene.js) ----------
+// ---------- the animated building site at the top of the Board and Live tabs (scene.js) ----------
 import { sceneHtml, activityWord, mountScene, cookOf, COOK_COLORS, stepWord, applyCss, sceneLegend, frameStats, sceneApproved } from './scene.js';
 import { startLive, floorStep } from './live.js';
 import { mainStatusBanners } from './main-status.js';   // TD-EH-03a main-is-red banner

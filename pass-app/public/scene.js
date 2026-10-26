@@ -5,6 +5,7 @@
 // moments. Private work orders show no words anywhere.
 import { WORLD, worldOf, worldWords, legendRows, legendHtml, PLACE, worldKey, bakeWorld, plural } from './world.js';
 import { stageOk, stageFps, frameKey, makeLoop } from './frame.js';
+import { markItems, nightShift } from './purpose.js';
 import { fxSync, fxTick, fxBusy, drawFx, chefPose, passFx, chefSpots, propRects, placeSays, approveFx, tapChef, FX } from './moments.js';
 export { makeLoop };
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -50,8 +51,8 @@ const SKIN = ['#f6d5bd', '#eab98f', '#d39a6a', '#b0784c', '#8a5634', '#5e3a22'];
 export function lookOf(id) { const h = hashId(id); return { skin: SKIN[h % SKIN.length], hat: 6 + ((h >>> 4) % 4) * 1.5, stache: ((h >>> 8) & 3) === 0, delay: ((h >>> 11) % 40) / 10 }; }
 export function skyAt(hour) { return hour >= 5 && hour < 8 ? 'dawn' : hour >= 8 && hour < 18 ? 'day' : hour >= 18 && hour < 21 ? 'dusk' : 'night'; }
 
-const STEP_WORD = { plan: 'planning', do: 'building', build: 'building', check: 'Inspection', research: 'researching', talk: 'chatting', diagnose: 'diagnosing',
-  tests: 'inspecting', repair: 'fixing it', commit: 'saving', freshen: 'resurveying', merge: 'handing over', map: 'mapping', worktree: 'setting up', lint: 'checking',
+const STEP_WORD = { plan: 'planning', do: 'building', build: 'building', check: 'inspecting', review: 'inspecting', research: 'researching', talk: 'chatting', diagnose: 'diagnosing',
+  tests: 'testing', repair: 'fixing it', commit: 'saving', freshen: 'resurveying', merge: 'handing over', map: 'mapping', worktree: 'setting up', lint: 'checking',
   mutate: 'testing hard', verify: 'double-checking', slice: 'splitting up' };
 const TOOL_WORD = { edit: 'Editing', write: 'Editing', multiedit: 'Editing', notebookedit: 'Editing', read: 'Reading', bash: 'Running', shell: 'Running', powershell: 'Running',
   grep: 'Searching', glob: 'Searching', websearch: 'Searching', webfetch: 'Fetching', task: 'Delegating', agent: 'Delegating' };
@@ -67,7 +68,7 @@ export function activityWord(j) {
   return base && word !== 'Running' ? word + ' ' + base : word;
 }
 const doing = (j) => activityWord(j) || STEP_WORD[stepKey(j)] || 'working';
-// what a step is, in site words ("inspecting" for tests); the Board's crew cards use it too
+// what a step is, in site words ("inspecting" at the Inspection desk, "testing" at the Test rig); the Board's crew cards use it too
 export const stepWord = (j) => STEP_WORD[stepKey(j)] || 'working';
 
 // ---- what is on the floor right now (pure: tested in node) ----
@@ -121,11 +122,11 @@ export function sceneHtml(s, events, opts = {}, now = Date.now()) { return s ? c
 // the pixel stage once sprites.js has loaded; the still card until then (rebuilt only when its words change: nothing in it moves)
 export function mountScene(el, s, events, opts = {}) {
   if (!el) return;
-  if (!s) { el.innerHTML = ''; el._card = null; el._px = null; return; }
+  if (!s) { dropStage(el._px); el.innerHTML = ''; el._card = null; el._px = null; return; }
   const L = layoutScene(s, events, opts);
   el._args = [s, events, opts]; mounted.add(el);
   if (PX && canvasOk()) { el._card = null; mountPixel(el, L); return; }
-  const html = cardHtml(L); el._px = null;
+  const html = cardHtml(L); dropStage(el._px); el._px = null;
   if (el._card !== html || !el.firstElementChild) { el._card = html; el.innerHTML = html; applyCss(el); }
 }
 
@@ -214,7 +215,8 @@ export function makeKit(P, mk) {
 }
 const at = (n, ms, t, off = 0) => Math.floor((t + off) / ms) % n;
 const bobOf = (P, anim, f) => (P.BOB[anim] || [0])[f % (P.BOB[anim] || [0]).length];
-// the still site, drawn once per sky: walls, window, gate, shelf, job board, sign-off window (back), or the stations and their props (front);
+// the still site, drawn once per sky: the top floor open to the sky (S7i): sky and shores, the guard rail, the slab and its front edge,
+// the hoist cage, job board, site cabin, the night work-light pool (back); or the stations, their contact shadows and props (front);
 // (the newest bake per sky, dim and width is re-used while its world key holds)
 function layer(kit, which, room, W = STAGE.w, world = {}) {
   const sky = room.sky, pre = which + sky + (room.dim ? '-dim' : '') + W, wk = which === 'bg' ? worldKey(world) : String(world.sign?.state === 'closed');
@@ -224,20 +226,23 @@ function layer(kit, which, room, W = STAGE.w, world = {}) {
   const d = (name, x, y, f = 0, extra) => { const s = kit.get(name, extra ? { ...o, ...extra } : o); ctx.drawImage(s.img, f * s.w, 0, s.w, s.h, x + ox, y, s.w, s.h); };
   const tiles = (y0, y1, pick) => { for (let y = y0; y < y1; y += 16) for (let x = (ox % 16) - 16 - ox; x < W - ox; x += 16) d(pick(y, (((x / 16 + y / 16) % 2) + 2) % 2), x, y); };
   if (which === 'bg') {
-    tiles(0, 56, (y) => (y >= 32 ? 'subway' : 'wall')); tiles(56, STAGE.h, (y, odd) => (odd ? 'floor-b' : 'floor-a'));
-    d('window', 20, 3); d('door', 0, 26);
-    if (sky === 'night') { d('moon', 28, 7); ctx.fillStyle = P.PALETTE.I; for (const [x, y] of [[42, 9], [47, 15], [26, 17], [40, 19]]) ctx.fillRect(x + ox, y, 1, 1); }
+    tiles(0, 1, () => 'wall'); tiles(40, 41, () => 'subway'); tiles(56, STAGE.h, (y, odd) => (odd ? 'floor-b' : 'floor-a')); tiles(STAGE.h - 3, STAGE.h, () => 'edge');
+    d('door', 0, 26);
+    if (sky === 'night') { d('moon', 28, 7); ctx.fillStyle = P.PALETTE.I; for (const [x, y] of [[42, 9], [47, 15], [26, 17], [40, 19], [12, 6], [57, 24], [101, 23], [129, 27], [143, 21], [188, 33]]) ctx.fillRect(x + ox, y, 1, 1); }
     else d('sun', sky === 'day' ? 43 : 26, sky === 'day' ? 7 : 9);
-    d('shelf', 62, 26); [0, 1, 2, 0, 2].forEach((f, i) => d('jar', [66, 73, 140, 147, 154][i], 19, f));
-    for (const x of [82, 98, 114]) d('pan', x, 30);
-    d('rail', 60, 3); d('pass', 152, 14); d(world.fuse?.tripped ? 'lamp-off' : 'lamp', 168, 4);
+    for (let x = -ox; x < W - ox; x += 100) d('rail', x, 0);   // the gantry beam across the top: the job board, the signs and the power board hang from it
+    d('rail', 60, 3); d('pass', 152, 14); if (world.fuse) d(world.fuse.tripped ? 'lamp-off' : 'lamp', 168, 4);   // the work light only with its field (breaker)
     bakeWorld(world, d);
   } else {
     for (const [st, s] of Object.entries(STATIONS)) {
-      const cx = sx(s.x); d(STATION_ART[st], cx - 14, STAGE.top);
+      const cx = sx(s.x); d('shadow', cx - 14, STAGE.top + 18); d('shadow', cx, STAGE.top + 18); d(STATION_ART[st], cx - 14, STAGE.top);   // a contact shadow under each
       if (PROP[st]) d(PROP[st], cx - 8, STAGE.top - (st === 'stove' ? 6 : 5));
     }
-    if (world.sign?.state === 'closed') for (const st of ['taste', 'plate']) d('chair-up', sx(STATIONS[st].x) - 5, STAGE.top - 8);   // PAUSED: barriers across two stations
+    if (world.sign?.state === 'closed') {   // PAUSED: hazard tape strung across every station on its posts, and the barriers on two of them
+      const xs = Object.values(STATIONS).map((s) => sx(s.x)), x0 = xs[0] - 18, x1 = xs[xs.length - 1] + 18;
+      for (let x = x0; x < x1; x += 16) d('tape', x, STAGE.top + 6);
+      for (const st of ['taste', 'plate']) d('chair-up', sx(STATIONS[st].x) - 5, STAGE.top - 8);
+    }
   }
   kit.layers.set(pre, { key: wk, c }); return c;
 }
@@ -248,6 +253,8 @@ export function drawStage(ctx, st, kit) {
   const d = (s, f, x, y) => { ctx.drawImage(s.img, (f % s.n) * s.w, 0, s.w, s.h, Math.round(x) + ox, Math.round(y), s.w, s.h); n++; };
   const pal = (a) => ({ skin: a.look?.skin, cook: COOK_COLORS[a.cook || 'hand'], hair: a.hair || 0, sky, dim });
   ctx.drawImage(layer(kit, 'bg', room, W, WD), 0, 0); n++;
+  if ([...st.actors.values()].some((a) => a.kind === 'chef' && a.path.length && a.x < STAGE.doorX + 15)) d(kit.get('hoist-open', room), 0, 0, 26);   // a crew is arriving: the hoist gate stands open
+  if (nightShift(L)) d(kit.get('pool', room), 0, 152, 57);   // night shift: the work light's pool on the slab
   const pf = passFx(st);   // a 1 px shake after Jordan's Approve; the bell bounces when a work order needs him
   if (L.pass) { d(kit.get('pass-glow', room), 0, 156 + pf.dx, 18); for (let i = 0; i < Math.min(3, L.pass); i++) d(kit.get('cloche', room), 0, 155 + pf.dx + i * 11, 33); d(kit.get('bell', room), t % 4000 < 640 ? at(2, 160, t) : 0, 183 + pf.dx, 35 + pf.bell); }
   for (const h of WD.heat || []) d(kit.get('heat', room), h.level, PLACE.heat[0] + h.i * 11, PLACE.heat[1]);
@@ -301,10 +308,12 @@ export function hitItems(L, ox = 0, o = {}) {
   const ids = L.world?.aside?.ids || [], id = ids[ids.length - 1], spots = chefSpots(L);   // the set-aside shelf: one link, to the newest
   const chefs = L.chefs.map((c) => ({ c, x: spots.get(c.key), word: o.wave === c.key ? c.act : c.word })).sort((a, b) => a.x - b.x);
   const says = placeSays(chefs.filter((h) => h.word).map((h) => ({ kind: 'say', key: 's' + h.c.key, word: h.word.length > 11 ? h.word.slice(0, 10) + '…' : h.word, x: h.x, show: o.wave === h.c.key })), propRects(L.world, o.P), o.k, o.W);
-  return [...L.tickets.map((t) => ({ kind: 'ticket', key: 't' + t.key, id: t.id, x: sx(t.x) + TICKET_DX + ox, y: 17, label: `${ticket(t.id)}, open it` })),
+  // the doors first (underneath): every data mark with no link of its own (purpose.js); then the work orders' own links on top
+  return [...markItems(L, ox), ...L.tickets.map((t) => ({ kind: 'ticket', key: 't' + t.key, id: t.id, x: sx(t.x) + TICKET_DX + ox, y: 17, label: `${ticket(t.id)}, open it` })),
     ...chefs.map(({ c, x }) => ({ kind: 'chef', key: c.key, id: c.id, x: x + ox, y: STAGE.aisle - 6, label: c.label + (c.priv || c.cook === 'hand' || c.cook === 'sous' ? '' : ', crew ' + c.cook) })),
     ...says.map((s) => ({ ...s, x: s.bx + ox, y: s.by })),
     ...L.waiters.map((w, i) => ({ kind: 'waiter', key: w.key, id: w.id, x: waiterX(i) + ox, y: STAGE.front, label: w.label })),
+    ...L.runners.map((r) => ({ kind: 'waiter', key: 'h' + r.key, id: r.id, x: 166 + ox, y: STAGE.front, label: `${ticket(r.id)} handed over, open it` })),
     ...(id ? [{ kind: 'aside', key: 'aside', id, x: PLACE.aside[0] + 13 + ox, y: PLACE.aside[1] + 4, label: `${plural(ids.length, 'work order')} failed or stopped; the newest is ${ticket(id)}, open it` }] : [])];
 }
 // nothing moves (no walk, busy station, sparkle, smoke or spark): 10 fps is enough
@@ -312,8 +321,10 @@ export const stageCalm = (st) => !st.L || (![...st.actors.values()].some((a) => 
 // the set-aside smoke still under 2 minutes old (real time: the last sync plus the stage clock since)
 const smoking = (st) => (st.L.world?.aside?.smoke || []).filter((s) => (st.L.now ?? 0) + st.t - st.syncT < s.until);
 export function hitHtml(it, W = STAGE.w) {
-  const [w, h] = { ticket: [11, 13], aside: [27, 12] }[it.kind] || [16, 24], pc = (v, of) => ((v / of) * 100).toFixed(2) + '%';
+  const [w, h] = it.w ? [it.w, it.h] : { ticket: [11, 13], aside: [27, 12] }[it.kind] || [16, 24], pc = (v, of) => ((v / of) * 100).toFixed(2) + '%';
   if (it.kind === 'say') return `<span class="px-say" aria-hidden="true" data-key="${esc(it.key)}" data-css="left:${pc(it.x, W)};top:${pc(it.y, STAGE.h)};bottom:auto;margin:0;pointer-events:none${it.show ? ';display:block' : ''}">${esc(it.word)}</span>`;
+  const at = `data-key="${esc(it.key)}" aria-label="${esc(it.label)}" data-css="left:${pc(it.x, W)};top:${pc(it.y - h, STAGE.h)};width:${pc(w, W)};height:${pc(h, STAGE.h)}"`;
+  if (it.kind === 'mark' && !it.id) return `<button class="px-a px-mark" type="button" data-legend="${esc(it.row)}" ${at}></button>`;   // its line in the legend sheet
   return `<a class="px-a px-${it.kind}" href="#/job/${esc(it.id)}" data-key="${esc(it.key)}" aria-label="${esc(it.label)}" data-css="left:${pc(it.x, W)};top:${pc(it.y - h, STAGE.h)};width:${pc(w, W)};height:${pc(h, STAGE.h)}"></a>`;
 }
 
@@ -347,11 +358,17 @@ function paint(sc) {
 // the links and bubbles over the canvas (again when a tapped crew member's wave starts or ends); a moment's line goes to #announce
 function hits(sc) {
   sc.wave = sc.st.fx?.wave?.key; const fx = sc.st.fx, a = fx?.line && document.getElementById('announce'); if (a) a.textContent = fx.line; if (fx) fx.line = null;
-  sc.hit.innerHTML = hitItems(sc.st.L, (sc.st.W - STAGE.w) >> 1, { P: KIT.P, k: sc.k, W: sc.st.W, wave: sc.wave }).map((it) => hitHtml(it, sc.st.W)).join(''); applyCss(sc.hit);
+  writeHits(sc, hitItems(sc.st.L, (sc.st.W - STAGE.w) >> 1, { P: KIT.P, k: sc.k, W: sc.st.W, wave: sc.wave }).map((it) => hitHtml(it, sc.st.W)).join(''));
 }
+// the link layer is written only when its markup changes: a state render that changes nothing never replaces the link under a finger
+// mid-tap (a lost tap); returns whether it wrote (tested)
+export function writeHits(sc, html) { if (sc.hitHtml === html) return false; sc.hitHtml = html; sc.hit.innerHTML = html; applyCss(sc.hit); return true; }
+// a stage that is replaced or leaves the page lets go of its observers (they held the old stage alive for as long as the page was open)
+export function dropStage(sc) { if (!sc) return; sc.io?.disconnect?.(); sc.ro?.disconnect?.(); sc.io = sc.ro = null; }
 function mountPixel(el, L) {
   let sc = el._px;
   if (!sc || !el.contains(sc.root) || sc.compact !== L.compact) {
+    dropStage(sc);
     el.innerHTML = `<div class="px-stage${L.compact ? ' compact' : ''}" role="group"><canvas class="px-canvas" width="${STAGE.w}" height="${STAGE.h}" aria-hidden="true"></canvas><div class="px-hit"></div>`
       + '<button class="px-info" type="button" aria-haspopup="dialog" aria-label="What am I looking at?">i</button></div>';
     const root = el.firstElementChild, canvas = root.querySelector('canvas');
@@ -360,13 +377,16 @@ function mountPixel(el, L) {
     // the (i) chip: app.js opens the legend sheet
     root.querySelector('.px-info').addEventListener('click', () => el.dispatchEvent(new CustomEvent('scene-legend', { bubbles: true })));
     sc.hit.addEventListener('click', (e) => {   // a tapped crew member waves and says what they do for 3 s, then the work order opens (a second tap: now)
+      const m = e.target.closest?.('[data-legend]');   // a mark's door: the legend sheet, scrolled to its line
+      if (m) { el.dispatchEvent(new CustomEvent('scene-legend', { bubbles: true, detail: { row: m.dataset.legend } })); setTimeout(() => { const li = document.getElementById('wl-' + m.dataset.legend); li?.classList.add('wl-on'); li?.scrollIntoView?.({ block: 'center' }); }, 60); return; }
       const a = e.target.closest?.('.px-chef'), key = a?.getAttribute('data-key'); if (!a || reduced() || sc.st.fx?.wave?.key === key) return;
       e.preventDefault(); sc.tap = key; tapChef(sc.st, key); hits(sc); sc.loop.start(); setTimeout(() => { if (sc.tap === key) location.hash = a.getAttribute('href'); }, FX.wave);
     });
     sc.loop = makeLoop({ raf: (f) => requestAnimationFrame(f), ok: () => stageOk(sc, document, reduced()), fps: () => stageFps(sc.st),
       frame: (dt) => { const t0 = FPS_ON ? performance.now() : 0; stageTick(sc.st, dt); const k = frameKey(sc.st, KIT); if (sc.st.fx?.line || sc.st.fx?.wave?.key !== sc.wave) hits(sc);
         if (k !== sc.key) { sc.key = k; drawStage(sc.ctx, sc.st, KIT); } if (FPS_ON) frameNote(performance.now() - t0); } });   // the same picture is not drawn again
-    if (typeof IntersectionObserver === 'function') new IntersectionObserver((es) => { const v = es.some((e) => e.isIntersecting); sc.visible = v; if (v) sc.loop.start(); }).observe(root); if (typeof ResizeObserver === 'function') new ResizeObserver(() => { fit(sc); paint(sc); }).observe(el);
+    if (typeof IntersectionObserver === 'function') (sc.io = new IntersectionObserver((es) => { const v = es.some((e) => e.isIntersecting); sc.visible = v; if (v) sc.loop.start(); })).observe(root);
+    if (typeof ResizeObserver === 'function') (sc.ro = new ResizeObserver(() => { fit(sc); paint(sc); })).observe(el);
     fit(sc);
   }
   sc.root.setAttribute('aria-label', L.summary);
@@ -395,5 +415,5 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     PX = P; KIT = makeKit(P, mkCanvas); installChrome(P);
     for (const el of mounted) if (el.isConnected && el._args) mountScene(el, ...el._args);
   }).catch(() => { /* no sprites (offline before the first load): the still card stays */ });
-  document.addEventListener('visibilitychange', () => { for (const el of mounted) if (!el.isConnected) mounted.delete(el); else el._px?.loop.start(); });
+  document.addEventListener('visibilitychange', () => { for (const el of mounted) if (!el.isConnected) { dropStage(el._px); mounted.delete(el); } else el._px?.loop.start(); });
 }

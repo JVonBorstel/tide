@@ -26,10 +26,10 @@ export const PALETTE = {
 export const EMISSIVE = 'stIKXYZW';                                 // light sources keep their colour at night (no tint)
 export const SKIES = { dawn: ['#e0805f', '#f0a77f', '#ffe2b0'], day: ['#4f86c6', '#7fb3e0', '#bfe3fb'], dusk: ['#3d2e5c', '#a8506a', '#e2805a'], night: ['#0b1022', '#141c3a', '#1f2a48'] };
 const TINT = { dawn: ['#f0a070', 0.08], day: null, dusk: ['#5a2f5c', 0.16], night: ['#141a3a', 0.32] };
-const DIM = ['#0d0a14', 0.34];
+const DIM = ['#0d0a14', 0.48];   // paused: the floor dims clearly (the sky keeps the hour: it is EMISSIVE)
 export const HAIR = [['#2a1a14', '#4a3020'], ['#5a2a14', '#8a4a24'], ['#6e5a4e', '#a8927e'], ['#1a1a24', '#34344a']];
 // frames per animation, as declared (the tests hold every sprite to these)
-export const FRAMES = { still: 1, walk: 4, idle: 2, work: 4, flame: 3, steam: 4, sparkle: 4, bell: 2, sleep: 2, lantern: 2, glyph: 10, icon: 6, jars: 3,
+export const FRAMES = { still: 1, walk: 4, idle: 2, work: 4, flame: 3, steam: 4, sparkle: 4, bell: 2, sleep: 2, lantern: 2, glyph: 10, icon: 6,
   // world props: sign 3, clock hands 12, coin jar 9, heat lamp 3, fuse 2, tally 0-10, recipe cards 0-4
   sign: 3, hand: 12, jar: 9, heat: 3, fuse: 2, tally: 11, cards: 5,
   // moments (wave 2): a brick laid 4, puff 4, dark smoke 6, confetti 3 colours
@@ -120,8 +120,6 @@ const HAMMER = ['aaaa.', 'aghha', 'aaca.', '..c..', '..c..'];
 const LENS = ['aaa', 'aza', 'aaa', '.c.', '.c.'];
 const PROBE = ['aaa.', 'aBBa', 'aaa.'];
 const LABEL = ['aaa', 'apa', 'aaa'];
-// paint tins on the shelf (red, blue, green: a drip over the rim, a label band)
-const JAR = strip(['aaaaa aaaaa aaaaa', 'aBhia ayhia avhia', 'ahiia ahiia ahiia', 'aBBBa ayyya avvva', 'aBpBa aypya avpva', 'ahiia ahiia ahiia', 'aaaaa aaaaa aaaaa'], 3);
 const SUN = ['.ttt.', 'ttttt', 'ttWtt', 'ttttt', '.ttt.'];
 const MOON = ['.II..', 'II...', 'II...', 'II...', '.II..'];
 const DIGITS = strip(['aaa .a. aaa aaa a.a aaa aaa aaa aaa aaa', 'a.a aa. ..a ..a a.a a.. a.. ..a a.a a.a', 'a.a .a. aaa aaa aaa aaa aaa ..a aaa aaa',
@@ -169,19 +167,30 @@ add('work-stove', 16, 8, 'work', W((g, f) => { const y = [-1, 0, 2, 1][f]; blit(
 add('work-taste', 16, 8, 'work', W((g, f) => { const up = [3, 1, -1, 1][f]; blit(g, HAND, 1, 4); blit(g, LENS, 10, up - 2); blit(g, HAND, 9, up + 2); }));
 add('work-sink', 16, 8, 'work', W((g, f, k) => { blit(g, HAND, 1, 4); blit(g, PROBE, 8 + k, 5); blit(g, HAND, 9 + k, 3); }));
 add('work-plate', 16, 8, 'work', W((g, f) => { blit(g, HAND, 1, 4); blit(g, LABEL, 10, [0, 1, 3, 4][f]); blit(g, HAND, 9, [0, 0, 1, 2][f]); }));
-// the room: blockwork above, plywood hoarding below (code name 'subway'); underfoot a poured slab (S7h): one colour, specks and a
-// hairline crack, no seams (a seam on every 16 px tile read as a kitchen's tiled floor)
+// the live floor is the tower's top floor, open to the sky (S7i): underfoot a poured slab (S7h): one colour, specks and a hairline
+// crack, no seams (a seam on every 16 px tile read as a kitchen's tiled floor); a darker strip along its front edge ('edge')
 const slab = (specks, crack) => (g) => { rect(g, 0, 0, 16, 16, 'n'); for (const [x, y] of specks) put(g, x, y, 'l'); if (crack) for (const [x, y] of [[6, 7], [7, 8], [8, 8], [9, 9]]) put(g, x, y, 'k'); };
 add('floor-a', 16, 16, 'still', slab([[3, 4], [10, 9], [6, 12], [12, 3], [1, 14]]));
 add('floor-b', 16, 16, 'still', slab([[4, 10], [11, 5], [2, 13], [14, 1]], true));
-add('wall', 16, 16, 'still', (g) => { rect(g, 0, 0, 16, 16, 'E'); for (let y = 0; y < 16; y += 4) { rect(g, 0, y, 16, 1, 'D'); for (const j of [0, 8].map((v) => v + ((y / 4) % 2) * 4)) { rect(g, j, y + 1, 1, 3, 'D'); rect(g, j + 1, y + 1, 6, 1, 'F'); } } });
-add('subway', 16, 16, 'still', (g) => { rect(g, 0, 0, 16, 16, 'e'); rect(g, 15, 0, 1, 16, 'c'); rect(g, 0, 0, 15, 1, 'd'); for (const [x, y, w] of [[1, 5, 5], [8, 8, 5], [2, 11, 4], [9, 3, 3]]) rect(g, x, y, w, 1, 'd'); for (const [x, y] of [[2, 2], [12, 2], [2, 13], [12, 13]]) put(g, x, y, 'c'); });
-add('window', 34, 26, 'still', (g) => {
-  box(g, 0, 0, 34, 26, WOOD); rect(g, 3, 3, 28, 19, 'X');
-  for (let y = 3; y < 22; y++) for (let x = 3; x < 31; x++) { const b = y < 8 ? 'X' : y < 10 ? ((x + y) % 2 ? 'X' : 'Y') : y < 15 ? 'Y' : y < 17 ? ((x + y) % 2 ? 'Y' : 'Z') : 'Z'; put(g, x, y, b); }
-  rect(g, 16, 3, 2, 19, 'c'); rect(g, 3, 12, 28, 1, 'c'); rect(g, 16, 3, 1, 19, 'd'); box(g, -1, 22, 36, 4, DARKWOOD);
+add('edge', 16, 3, 'still', (g) => { rect(g, 0, 0, 16, 3, 'l'); put(g, 4, 1, 'k'); put(g, 11, 2, 'k'); });
+// the back is the real sky (code name 'wall', 16x40: the X/Y/Z slots follow the hour, so no window frame), a steel shore every 16 px;
+// the open edge (code name 'subway'): a yellow guard rail (top and mid rail) on its posts, debris netting, a toe board a shade lighter
+// than the slab (it is further away); the sun, the moon and the stars stay in the sky
+add('wall', 16, 40, 'still', (g) => { for (let y = 0; y < 40; y++) for (let x = 0; x < 16; x++) put(g, x, y, y < 12 ? 'X' : y < 14 ? ((x + y) % 2 ? 'X' : 'Y') : y < 26 ? 'Y' : y < 28 ? ((x + y) % 2 ? 'Y' : 'Z') : 'Z'); rect(g, 7, 2, 1, 38, 'g'); rect(g, 8, 2, 1, 38, 'f'); rect(g, 6, 0, 4, 2, 'f'); rect(g, 6, 20, 4, 1, 'f'); });
+add('subway', 16, 16, 'still', (g) => {
+  rect(g, 0, 0, 16, 11, 'Z'); for (let y = 4; y < 11; y++) for (let x = 0; x < 16; x++) if ((x + y) % 4 === 0 || (x - y + 16) % 4 === 0) put(g, x, y, 'z');
+  rect(g, 7, 0, 1, 11, 'g'); rect(g, 8, 0, 1, 11, 'f'); for (const y of [1, 7]) { rect(g, 0, y, 16, 1, 'a'); rect(g, 0, y + 1, 16, 1, 'H'); } rect(g, 0, 3, 16, 1, 'J');
+  rect(g, 0, 11, 16, 1, 'a'); rect(g, 0, 12, 16, 4, 'm'); rect(g, 0, 15, 16, 1, 'l');
 });
-add('door', 18, 30, 'still', (g) => { box(g, 0, 0, 18, 30, DARKWOOD); box(g, 3, 3, 12, 11, WOOD); box(g, 3, 16, 12, 12, WOOD); put(g, 13, 16, 't'); put(g, 13, 17, 's'); });
+// the hoist cage where crews step onto the floor (code name 'door'; the City's hoist rides up to here): diamond steel mesh between
+// hazard bands; 'hoist-open' is the same cage with its mesh gate slid back and the call lamp lit, drawn only while a crew arrives
+const cage = (open) => (g) => {
+  box(g, 0, 0, 18, 30, IRON); hazard(g, 1, 1, 16, 2); hazard(g, 1, 27, 16, 2);
+  for (let y = 3; y < 27; y++) for (let x = 1; x < 17; x++) put(g, x, y, open && x > 2 && x < 15 ? (y > 23 ? 'g' : 'N') : (x + y) % 4 === 0 || (x - y + 40) % 4 === 0 ? 'h' : 'f');
+  if (open) { rect(g, 3, 3, 1, 24, 'g'); rect(g, 14, 3, 1, 24, 'g'); rect(g, 7, 0, 4, 1, 't'); } else rect(g, 8, 3, 2, 24, 'g');
+};
+add('door', 18, 30, 'still', cage(false));
+add('hoist-open', 18, 30, 'still', cage(true));
 // the stations (code names stay), open frames with air under them (S7h: closed fronts read as kitchen cabinets and an oven):
 // 'counter' = a trestle table, a plank top on two A-frame trestles (Survey table, Inspection desk); 'stove' = the Workbench, a heavy
 // top on steel legs with a yellow toolbox (handle, latch) on its lower shelf; 'sink' = the Test rig, an open rack with a scope trace,
@@ -204,18 +213,24 @@ add('pot', 16, 8, 'still', (g) => { box(g, 2, 2, 4, 5, IRON); box(g, 8, 2, 4, 5,
 add('bowl', 16, 6, 'still', (g) => { box(g, 0, 1, 7, 5, DARKWOOD); box(g, 1, 2, 5, 4, PAPER); rect(g, 2, 0, 3, 2, 'g'); rect(g, 2, 3, 3, 1, 'k'); put(g, 2, 4, 'k'); rect(g, 12, 2, 1, 4, 'a'); rect(g, 10, 5, 5, 1, 'a'); box(g, 8, 0, 6, 3, IRON, true); rect(g, 9, 2, 4, 1, 'I'); });
 add('plates', 16, 6, 'still', (g) => { box(g, 2, 0, 10, 5, WOOD); rect(g, 6, 1, 2, 3, 'n'); rect(g, 3, 2, 2, 1, 'p'); rect(g, 0, 5, 14, 1, 'a'); for (const x of [1, 6, 11]) rect(g, x, 5, 2, 1, 'c'); });
 add('crate', 20, 12, 'still', (g) => { box(g, 0, 0, 20, 12, WOOD); rect(g, 1, 4, 18, 1, 'c'); rect(g, 1, 8, 18, 1, 'c'); });
-// the sign-off window (code name 'pass'): a site-cabin hatch with hazard tape over it and a steel ledge for the clipboards
+// the sign-off window (code name 'pass', S7i): the site cabin, corrugated steel under hazard tape, a framed window of dark glass and
+// a steel ledge for the clipboards; 'pass-glow' lights that window amber, drawn only while a sign-off waits (so dark glass = none waits)
 const hazard = (g, x0, y0, w, h) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) put(g, x, y, (x + y) % 6 < 3 ? 'H' : 'a'); };
-add('pass', 40, 34, 'still', (g) => { box(g, 0, 0, 40, 34, IRON); hazard(g, 1, 1, 38, 2); box(g, 3, 3, 34, 24, ['D', 'E', 'F'], false); box(g, -2, 27, 44, 5, STEEL); });
-add('pass-glow', 32, 20, 'still', (g) => { for (let y = 0; y < 20; y++) for (let x = 0; x < 32; x++) put(g, x, y, y < 3 ? 'K' : y === 3 ? ((x % 2) ? 'K' : 'I') : 'I'); });
+add('pass', 40, 34, 'still', (g) => {
+  box(g, 0, 0, 40, 34, IRON); for (let y = 3; y < 27; y++) for (let x = 1; x < 39; x++) put(g, x, y, x % 3 ? 'h' : 'g'); hazard(g, 1, 1, 38, 2);
+  box(g, 3, 3, 34, 22, ['O', 'N', 'Q']); for (const [x, y] of [[6, 6], [7, 5], [8, 4], [24, 8], [25, 7]]) put(g, x, y, 'Q'); rect(g, 19, 4, 2, 20, 'f'); rect(g, 4, 13, 32, 1, 'f'); box(g, -2, 27, 44, 5, STEEL);
+});
+add('pass-glow', 32, 20, 'still', (g) => { for (let y = 0; y < 20; y++) for (let x = 0; x < 32; x++) put(g, x, y, x === 15 || x === 16 || y === 9 ? 'f' : y < 2 ? 's' : (x + 2 * y) % 13 === 0 && y < 9 ? 'I' : 't'); });
+// at night the caged work light over the cabin throws a warm pool on the slab (light, so EMISSIVE: it stays bright); none when it is out
+add('pool', 40, 8, 'still', (g) => { for (let y = 0; y < 8; y++) for (let x = 0; x < 40; x++) { const d = ((x - 19.5) / 20) ** 2 + ((y - 3.5) / 4) ** 2; if (d < 1 && (x + y) % 2 === 0 && (d < 0.4 || (x * 3 + y) % 4 === 0)) put(g, x, y, 'I'); } });
 add('bell', 7, 6, 'bell', (g, f) => { blit(g, f ? ['....a..', '..aaa..', '.atta..', 'atssta.', 'aaaaaaa', '.......'] : ['...a...', '..aaa..', '.atsta.', 'atssssa', 'aaaaaaa', '.......'], 0, 0); });
-add('shelf', 100, 4, 'still', (g) => { box(g, 0, 0, 100, 4, DARKWOOD); });
-// tools on a pegboard (code name 'pan', hung three times under the shelf): a board with peg holes and a wrench across it
-add('pan', 9, 10, 'still', (g) => { box(g, 0, 0, 9, 10, WOOD); for (let y = 2; y < 9; y += 3) for (let x = 2; x < 8; x += 3) put(g, x, y, 'c'); for (let i = 0; i < 6; i++) put(g, 2 + i, 7 - i, 'h'); put(g, 1, 8, 'g'); put(g, 1, 7, 'h'); put(g, 2, 8, 'h'); put(g, 7, 1, 'i'); put(g, 7, 2, 'i'); put(g, 6, 1, 'i'); });
-addFrames('jar', JAR, 'jars');
 // the job board (code name 'rail'): a hazard-taped bar the work-order cards clip to; a card (code name 'ticket'): paper on a clipboard,
 // the digits and the step bar land on the paper
 add('rail', 100, 3, 'still', (g) => { hazard(g, 0, 0, 100, 3); rect(g, 0, 0, 100, 1, 'a'); });
+// the chains the Yard-wide signs (gate sign, budget meter) hang by from the gantry beam (S7j moves those signs to the City gate)
+add('chain', 1, 12, 'still', (g) => { for (let y = 0; y < 12; y++) put(g, 0, y, y % 3 === 2 ? 'a' : 'h'); });
+// paused: hazard tape strung across every station at table height (the floor's echo of PAUSED; tiled 16 px)
+add('tape', 16, 2, 'still', (g) => hazard(g, 0, 0, 16, 2));
 add('ticket', 11, 13, 'still', (g) => { box(g, 0, 1, 11, 12, DARKWOOD); rect(g, 2, 3, 7, 9, 'p'); rect(g, 1, 2, 9, 1, 'd'); rect(g, 4, 0, 3, 2, 'g'); put(g, 5, 0, 'a'); });
 addFrames('digit', DIGITS, 'glyph');
 addFrames('sun', [SUN], 'still');
@@ -306,7 +321,8 @@ add('confetti', 2, 2, 'confetti', (g, f) => rect(g, 0, 0, 2, 2, 'Bty'[f]));
 add('banner', 51, 11, 'still', (g) => { box(g, 0, 0, 51, 11, ['q', 'r', 's']); say(g, BANNER_WORDS, 4, 3, 'p'); });   // a work order handed over (the status word)
 // the legend sheet's icon per row: [sprite, frame, crew colour (optional; the Dispatcher's white hard hat)]
 export const LEGEND_ICONS = { sign: ['sign', 1], clock: ['clock', 0], sous: ['chef-sit', 0, DISPATCHER],
-  fuse: ['fuse', 1], jar: ['coin-jar', 5], aside: ['plate-aside', 0], spike: ['tag', 0], heat: ['heat', 1], letters: ['letter', 0], specials: ['chalk', 0], recipes: ['recipes', 3], hats: ['hat', 0] };
+  fuse: ['fuse', 1], jar: ['coin-jar', 5], aside: ['plate-aside', 0], spike: ['tag', 0], heat: ['heat', 1], letters: ['letter', 0], specials: ['chalk', 0], recipes: ['recipes', 3], hats: ['hat', 0],
+  crew: ['chef-idle', 0, '#d97757'], hoist: ['hoist-open', 0], cards: ['ticket', 0], signoff: ['cloche', 0], handed: ['crate', 0], idle: ['chef-sleep', 0], pool: ['lamp', 0] };
 export const SPRITES = S;
 
 // ---- decoding: name -> frames (each an array of strings, one character per pixel) ----
