@@ -1,4 +1,5 @@
 {
+  "v": "1.0",
   "wo": "WO-2004",
   "stream": "DEMO",
   "plan": "plans/example-plan.md#slice-2",

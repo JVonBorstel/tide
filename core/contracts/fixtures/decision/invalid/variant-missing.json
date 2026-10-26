@@ -2,6 +2,7 @@
   "why": "a choose card has one mock-up per option",
   "expect": "/variants: rule",
   "doc": {
+    "v": "1.0",
     "id": "D-8",
     "wo": "WO-2001",
     "kind": "choose",

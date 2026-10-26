@@ -2,6 +2,7 @@
   "why": "a failed step says why",
   "expect": "/data/reason: required",
   "doc": {
+    "v": "1.0",
     "seq": 5,
     "at": "2030-01-07T09:05:00Z",
     "actor": "engine",

@@ -2,6 +2,7 @@
   "why": "kinds are the 8 of build-way 4.2",
   "expect": "/kind: enum",
   "doc": {
+    "v": "1.0",
     "id": "D-1",
     "wo": "WO-2001",
     "kind": "deploy",

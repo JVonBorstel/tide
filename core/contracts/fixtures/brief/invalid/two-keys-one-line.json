@@ -2,6 +2,7 @@
   "why": "one key per line: \"branch: x  base: main\" is not a branch name",
   "expect": "/branch: pattern",
   "doc": {
+    "v": "1.0",
     "wo": "WO-2001",
     "stream": "DEMO",
     "plan": "plans/example-plan.md#slice-2",

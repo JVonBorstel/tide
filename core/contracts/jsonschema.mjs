@@ -1,8 +1,9 @@
 // Owns a small JSON Schema 2020-12 checker: only the keywords Tide's contracts use. Any other keyword is refused, so nothing is skipped quietly.
 // Called by core/contracts/validate.mjs (makeChecker) and tests/core/contracts/test-contracts.mjs. Zero dependencies; Node 18 or later.
 
-// Every keyword this checker understands. The first group only describes; the rest are checked.
-export const KEYWORDS = new Set(['$schema', '$id', '$defs', '$comment', 'title', 'description', 'examples',
+// Every keyword this checker understands. The first group only describes (x-local-only marks a value that may name this PC's files:
+// localOnly below finds them for the public/export path); the rest are checked.
+export const KEYWORDS = new Set(['$schema', '$id', '$defs', '$comment', 'title', 'description', 'examples', 'x-local-only',
   '$ref', 'type', 'enum', 'const', 'properties', 'patternProperties', 'additionalProperties', 'required', 'maxProperties',
   'items', 'minItems', 'maxItems', 'uniqueItems', 'minLength', 'maxLength', 'pattern', 'minimum', 'maximum', 'format',
   'allOf', 'anyOf', 'oneOf', 'not', 'if', 'then', 'else']);
@@ -158,6 +159,21 @@ function lintNode(ctx, node, file) {
   for (const k of ['items', 'additionalProperties', 'not', 'if', 'then', 'else']) lintNode(ctx, node[k], file);
 }
 
+// The JSON pointers of every value in a document whose schema says x-local-only. Conservative on purpose: a value counts when any
+// branch (allOf, anyOf, oneOf, then, else) marks it, so a conditional shape can never hide one.
+function localOnly(ctx, schema, value, file, path, out, depth) {
+  if (!schema || typeof schema !== 'object' || depth > 60) return;
+  if (schema['x-local-only'] === true) { out.add(path); return; }
+  if (schema.$ref !== undefined) { const r = resolve(ctx, schema.$ref, file); localOnly(ctx, r.schema, value, r.file, path, out, depth + 1); }
+  for (const s of [...(schema.allOf || []), ...(schema.anyOf || []), ...(schema.oneOf || []), schema.then, schema.else]) localOnly(ctx, s, value, file, path, out, depth + 1);
+  if (Array.isArray(value) && schema.items) value.forEach((v, i) => localOnly(ctx, schema.items, v, file, `${path}/${i}`, out, depth + 1));
+  if (typeOf(value) !== 'object') return;
+  for (const k of Object.keys(value)) {
+    if (schema.properties && k in schema.properties) localOnly(ctx, schema.properties[k], value[k], file, `${path}/${k}`, out, depth + 1);
+    for (const [p, sub] of Object.entries(schema.patternProperties || {})) if (regex(ctx, p).test(k)) localOnly(ctx, sub, value[k], file, `${path}/${k}`, out, depth + 1);
+  }
+}
+
 // schemas: a Map of file name (event.schema.json) to its parsed schema.
 export function makeChecker(schemas) {
   const ctx = { schemas, regex: new Map() };
@@ -168,6 +184,7 @@ export function makeChecker(schemas) {
       run(ctx, schemas.get(file), value, file, '', errs);
       return errs;
     },
+    localOnly(file, value) { const out = new Set(); localOnly(ctx, schemas.get(file), value, file, '', out, 0); return [...out].sort(); },
     resolve: (ref, file) => resolve(ctx, ref, file),
     lint() { for (const [file, schema] of schemas) lintNode(ctx, schema, file); },
   };

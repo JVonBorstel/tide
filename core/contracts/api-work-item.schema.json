@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tide.example/contracts/api-work-item.schema.json",
+  "$id": "https://tide.example/contracts/v1/api-work-item.schema.json",
   "title": "GET /api/work/:id: one work order",
   "description": "The row, its events oldest first, its decisions, the BRIEF path and the last REPORT's front matter. An unknown id answers not-found.",
   "anyOf": [

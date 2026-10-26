@@ -1,7 +1,8 @@
 // Owns the tests of the shared contracts (core/contracts): schemas, fixtures, the validator, the front matter format and the upgrade switches.
 // Called by tests/Test-Contracts.ps1 (the Yard's tests Step, verify-all), the ci.yml contracts step, and by hand: node tests/core/contracts/test-contracts.mjs
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import { spawnSync } from 'node:child_process'; import { fileURLToPath } from 'node:url';
-import { validate, runFixtures, loadSchemas, contractNames, readDoc } from '../../../core/contracts/validate.mjs';
+import { validate, runFixtures, loadSchemas, contractNames, readDoc, localOnlyPaths, KNOWN_MAJORS } from '../../../core/contracts/validate.mjs';
+import { publicErrors, toPublic, STRIPPED } from '../../../core/contracts/public.mjs';
 import { makeChecker, isDateTime } from '../../../core/contracts/jsonschema.mjs';
 import { parseFrontMatter, formatFrontMatter } from '../../../core/contracts/frontmatter.mjs';
 import { PIECES, switchOf, readSwitches } from '../../../core/contracts/upgrade.mjs';
@@ -29,8 +30,8 @@ function testSchemas() {
   }
   const lint = (() => { try { makeChecker(schemas).lint(); return ''; } catch (e) { return e.message; } })();
   check('schemas: every keyword is one the validator checks and every $ref resolves', !lint, lint);
-  const wrong = [...schemas].filter(([f, s]) => s.$schema !== 'https://json-schema.org/draft/2020-12/schema' || s.$id !== `https://tide.example/contracts/${f}`).map(([f]) => f);
-  check('schemas: all are JSON Schema 2020-12 with an $id named after the file', !wrong.length, wrong.join(', '));
+  const wrong = [...schemas].filter(([f, s]) => s.$schema !== 'https://json-schema.org/draft/2020-12/schema' || s.$id !== `https://tide.example/contracts/v${KNOWN_MAJORS[0]}/${f}`).map(([f]) => f);
+  check('schemas: all are JSON Schema 2020-12 with a versioned $id (contracts/v1/<file>)', !wrong.length, wrong.join(', '));
 }
 
 // ---- fixtures: one fixture per event kind (17), per decision kind (8), per stage (8); all synthetic
@@ -91,7 +92,7 @@ function testValidatorCli() {
 function testValidatorCore() {
   const refused = (() => { try { makeChecker(new Map([['x.schema.json', { type: 'array', minContains: 1 }]])).check('x.schema.json', []); return false; } catch (e) { return /unsupported keyword "minContains"/.test(e.message); } })();
   check('validator: an unsupported keyword is refused, never skipped', refused);
-  check('validator: date-time takes RFC 3339 and refuses impossible dates', isDateTime('2030-01-07T09:00:00Z') && isDateTime('2030-01-07T09:00:00.5-07:00') && !isDateTime('2030-02-30T09:00:00Z') && !isDateTime('2030-01-07 09:00'));
+  check('validator: date-time takes RFC 3339 and refuses impossible dates', isDateTime('2030-01-07T09:00:00Z') && isDateTime('2030-01-07T09:00:00.5+09:00') && !isDateTime('2030-02-30T09:00:00Z') && !isDateTime('2030-01-07 09:00'));
   const r = validate('event', { seq: 1 });
   check('validator: validate() returns readable reasons with the path', !r.ok && r.errors.includes('/at: required: is missing'), r.errors.join('; '));
 }
@@ -138,7 +139,65 @@ function testSwitches() {
   check('switch block: an unreadable kitchen.json reads all old, with the reason', none.error && Object.values(none.switches).every((s) => s === 'old'), JSON.stringify(none));
 }
 
-for (const t of [testSchemas, testFixtureCoverage, testSynthetic, testValidatorCli, testValidatorCore, testFrontMatter, testSwitches]) {
+// ---- review fixes: versions, CREED 6, relative paths, local-only values
+const PERSISTED = ['event', 'decision', 'row', 'brief', 'report', 'activity', 'activity-result', 'upgrade'];
+const fixture = (rel) => readDoc(path.join(fixtures, rel));
+function testVersions() {
+  const schemas = loadSchemas(dir);
+  const missing = PERSISTED.filter((n) => { const s = schemas.get(`${n}.schema.json`); return !s.required.includes('v') || !s.properties.v; });
+  check('versions: every persisted record (event, decision, row, brief, report, activity, result, upgrade) requires v', !missing.length, missing.join(', '));
+  const ev = fixture('event/valid/step.done.json');
+  check('versions: a newer minor of a known major is accepted', validate('event', { ...ev, v: '1.7' }).ok);
+  const two = validate('event', { ...ev, v: '2.0' });
+  check('versions: an unknown major is refused by name', !two.ok && two.errors.some((e) => e.startsWith('/v: version: major 2 is not known')), two.errors.join('; '));
+  const readme = fs.readFileSync(path.join(dir, 'README.md'), 'utf8');
+  check('versions: the README states the evolution rule (additive = minor, breaking = new major, readers accept known majors)', /additive/i.test(readme) && /new major/i.test(readme) && /known majors/i.test(readme));
+}
+function testCreed6() {
+  const ev = fixture('event/valid/review.verdict.json');
+  check('creed 6: a verdict by a verifier that is not the builder passes', validate('event', ev).ok);
+  const same = validate('event', { ...ev, data: { ...ev.data, reviewer: ev.data.builder } });
+  check('creed 6: reviewer = builder is refused', !same.ok && same.errors.some((e) => e.startsWith('/data/reviewer: creed6')), same.errors.join('; '));
+  const item = fixture('api-work-item/valid/item.json');
+  const nested = validate('api-work-item', { ...item, events: [...item.events, { ...ev, actor: ev.data.builder }] });
+  check('creed 6: a verdict written by the builder is refused inside an API answer too', !nested.ok && nested.errors.some((e) => /^\/events\/\d+\/actor: creed6/.test(e)), nested.errors.join('; '));
+}
+function testRelPaths() {
+  const row = fixture('row/valid/build.json');
+  const ok = ['work/WO-1/BRIEF.md', 'mockups/a.png', 'wt/wo-1', 'a..b/c.md'];
+  const refused = ['~/notes/x.md', '~someone/x.md', '/srv/x.md', '\\host\\share\\x.md', 'D:/x.md', 'D:\\x.md', 'file:///x.md', '../x.md', 'work/../../x.md', 'work\\..\\x.md', 'work/..'];
+  const wrongOk = ok.filter((p) => !validate('row', { ...row, brief: p }).ok);
+  const wrongBad = refused.filter((p) => validate('row', { ...row, brief: p }).ok);
+  check('paths: relative paths pass; ~, absolute, drive, scheme and .. escapes are refused', !wrongOk.length && !wrongBad.length, `accepted: ${wrongBad.join(' ')}; refused: ${wrongOk.join(' ')}`);
+}
+function testLocalOnly() {
+  const merged = fixture('event/valid/merged.json');
+  const marked = [['event', merged, '/proof'], ['row', fixture('row/valid/closed.json'), '/proof'], ['activity', fixture('activity/valid/freshen.json'), '/args'],
+    ['activity-result', fixture('activity-result/valid/ok.json'), '/out'], ['activity-result', fixture('activity-result/valid/ok.json'), '/proof']];
+  const unmarked = marked.filter(([n, d, p]) => !localOnlyPaths(n, d).includes(p)).map(([n, , p]) => n + p);
+  check('local-only: proof, out and args are marked x-local-only', !unmarked.length, unmarked.join(', '));
+  const item = fixture('api-work-item/valid/item.json');
+  check('local-only: marks are found inside nested records (an API answer)', localOnlyPaths('api-work-item', item).includes('/events/0/proof') && localOnlyPaths('api-work-item', item).includes('/row/proof'));
+  const leaky = { ...merged, proof: 'D:\\private\\notes\\merge.txt and ~/notes/x' };
+  const errs = publicErrors('event', leaky);
+  check('local-only: the public path rejects a local path in proof', errs.length === 1 && errs[0].startsWith('/proof: local-only'), errs.join('; '));
+  const act = { ...fixture('activity/valid/freshen.json'), args: { log: '/srv/private/run.log', list: ['ok', '\\\\host\\share\\x'] } };
+  const pub = toPublic('activity', act);
+  const clean = JSON.stringify(pub.doc);
+  check('local-only: toPublic strips every local path (nested args too) and the record stays valid',
+    pub.stripped.length === 2 && !clean.includes('/srv/') && !clean.includes('share') && clean.includes(STRIPPED) && validate('activity', pub.doc).ok && act.args.log === '/srv/private/run.log', JSON.stringify(pub));
+  const url = { ...merged, proof: 'https://github.com/example-owner/example-repo/home/x and sha a1b2c3d' };
+  check('local-only: a URL or a sha in proof is left as it is', !publicErrors('event', url).length && toPublic('event', url).doc.proof === url.proof);
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tide-public-'));
+  try {
+    fs.writeFileSync(path.join(tmp, 'leaky.json'), JSON.stringify(leaky));
+    const good = node(['core/contracts/public.mjs', 'event', 'core/contracts/fixtures/event/valid/merged.json']);
+    const bad = node(['core/contracts/public.mjs', 'event', path.join(tmp, 'leaky.json')]);
+    check('local-only: public.mjs exits 0 on a clean record and 1 on a leaky one', good.status === 0 && bad.status === 1, `${good.status}/${bad.status}: ${bad.stdout}`);
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+}
+
+for (const t of [testSchemas, testFixtureCoverage, testSynthetic, testValidatorCli, testValidatorCore, testFrontMatter, testSwitches, testVersions, testCreed6, testRelPaths, testLocalOnly]) {
   try { t(); } catch (e) { check(`${t.name} ran without a crash`, false, e.stack.split('\n').slice(0, 3).join(' | ')); }
 }
 for (const r of results.filter((x) => !x.pass)) console.log(`FAIL: ${r.name}`);

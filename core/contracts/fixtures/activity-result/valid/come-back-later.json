@@ -1,4 +1,5 @@
 {
+  "v": "1.0",
   "ok": false,
   "exit": 11,
   "out": "CI still running; check again in 2 minutes",

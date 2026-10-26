@@ -2,6 +2,7 @@
   "why": "at is an RFC 3339 time",
   "expect": "/at: format",
   "doc": {
+    "v": "1.0",
     "seq": 4,
     "at": "2030-02-30T09:00:00Z",
     "actor": "engine",

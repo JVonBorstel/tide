@@ -1,4 +1,5 @@
 ---
+v: 1.0
 wo: WO-2005
 status: pushed
 branch: wo/2005-empty-state

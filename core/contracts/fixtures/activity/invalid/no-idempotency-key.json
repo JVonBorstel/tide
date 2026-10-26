@@ -2,6 +2,7 @@
   "why": "a rerun must be safe",
   "expect": "/idempotencyKey: required",
   "doc": {
+    "v": "1.0",
     "wo": "WO-2001",
     "name": "freshen",
     "args": {

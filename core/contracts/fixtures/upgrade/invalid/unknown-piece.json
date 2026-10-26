@@ -2,6 +2,7 @@
   "why": "new pieces are added to the schema first",
   "expect": "/rocket: additionalProperties",
   "doc": {
+    "v": "1.0",
     "_about": "Example block.",
     "ledger": "old",
     "engine": {

@@ -1,6 +1,7 @@
 {
   "ok": true,
   "row": {
+    "v": "1.0",
     "id": "WO-2001",
     "alias": null,
     "goal": "Example: show a sunrise colour in the sky of the demo scene",
@@ -35,6 +36,7 @@
   },
   "events": [
     {
+      "v": "1.0",
       "seq": 1,
       "at": "2030-01-07T09:01:00Z",
       "actor": "crew:lead-1",
@@ -50,6 +52,7 @@
       "proof": null
     },
     {
+      "v": "1.0",
       "seq": 2,
       "at": "2030-01-07T09:02:00Z",
       "actor": "engine",
@@ -62,6 +65,7 @@
       "proof": null
     },
     {
+      "v": "1.0",
       "seq": 10,
       "at": "2030-01-07T09:10:00Z",
       "actor": "engine",
@@ -69,6 +73,7 @@
       "wo": "WO-2001",
       "data": {
         "decision": {
+          "v": "1.0",
           "id": "D-1",
           "wo": "WO-2001",
           "kind": "merge",
@@ -92,6 +97,7 @@
   ],
   "decisions": [
     {
+      "v": "1.0",
       "id": "D-1",
       "wo": "WO-2001",
       "kind": "merge",
@@ -112,6 +118,7 @@
   ],
   "brief": "work/WO-2001/BRIEF.md",
   "report": {
+    "v": "1.0",
     "wo": "WO-2001",
     "status": "pushed",
     "branch": "wo/2001-sunrise",

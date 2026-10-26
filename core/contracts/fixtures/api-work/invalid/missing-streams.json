@@ -8,6 +8,7 @@
     "queue": [
       {
         "decision": {
+          "v": "1.0",
           "id": "D-1",
           "wo": "WO-2001",
           "kind": "merge",
@@ -31,6 +32,7 @@
       },
       {
         "decision": {
+          "v": "1.0",
           "id": "D-8",
           "wo": "WO-2001",
           "kind": "choose",
@@ -71,6 +73,7 @@
       },
       {
         "decision": {
+          "v": "1.0",
           "id": "D-7",
           "wo": null,
           "kind": "question",
@@ -96,6 +99,7 @@
     "queueTotal": 3,
     "rows": [
       {
+        "v": "1.0",
         "id": "WO-2001",
         "alias": null,
         "goal": "Example: show a sunrise colour in the sky of the demo scene",
@@ -129,6 +133,7 @@
         "lastSeq": 9
       },
       {
+        "v": "1.0",
         "id": "WO-2001",
         "alias": null,
         "goal": "Example: show a sunrise colour in the sky of the demo scene",

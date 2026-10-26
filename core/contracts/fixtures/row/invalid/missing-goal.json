@@ -2,6 +2,7 @@
   "why": "every row has a goal",
   "expect": "/goal: required",
   "doc": {
+    "v": "1.0",
     "id": "WO-2001",
     "alias": null,
     "stream": "DEMO",

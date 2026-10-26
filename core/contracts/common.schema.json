@@ -1,9 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tide.example/contracts/common.schema.json",
+  "$id": "https://tide.example/contracts/v1/common.schema.json",
   "title": "Shared pieces every Tide contract uses",
   "description": "Ids, times, actors, stages, states and the definition-of-done checklist. Referenced as common.schema.json#/$defs/<name>; never validated on its own.",
   "$defs": {
+    "version": {
+      "description": "The contract version a persisted record was written with: <major>.<minor>. These schemas are major 1 and accept every 1.x (a minor only adds optional fields). A breaking change is a new major under contracts/v2/; readers accept the majors they know and refuse the rest by name.",
+      "type": "string",
+      "pattern": "^1\\.(0|[1-9][0-9]*)$"
+    },
     "woId": {
       "description": "A work order id: WO- then upper-case letters, digits and dashes (WO-312, WO-0207, WO-UPG-L1-3).",
       "type": "string",
@@ -115,9 +120,9 @@
       "additionalProperties": false
     },
     "relPath": {
-      "description": "A path relative to a known root (the repo or the private notes folder). Never a drive letter or a user folder.",
+      "description": "A path relative to a known root (the repo or the private notes folder). Refused: an absolute path (/x, \\x, \\\\host), a drive letter or any scheme (C:, file:), a home path (~ or ~user), and any '..' step.",
       "type": "string",
-      "pattern": "^(?![A-Za-z]:)(?![\\\\/])(?!.*\\.\\.)[^\\s<>|\"*?]+$",
+      "pattern": "^(?![A-Za-z][A-Za-z0-9+.-]*:)(?![\\\\/])(?!~)(?!(?:.*[\\\\/])?\\.\\.(?:[\\\\/]|$))[^\\s<>|\"*?:]+$",
       "maxLength": 300
     }
   }

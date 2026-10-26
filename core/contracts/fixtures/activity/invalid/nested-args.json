@@ -2,6 +2,7 @@
   "why": "args are flat: strings, numbers, booleans or lists of strings",
   "expect": "/args/opts: anyOf",
   "doc": {
+    "v": "1.0",
     "wo": "WO-2001",
     "name": "freshen",
     "args": {

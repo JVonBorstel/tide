@@ -2,6 +2,7 @@
   "why": "dod items are the checklist of build-way 3.5",
   "expect": "/dod/lint: additionalProperties",
   "doc": {
+    "v": "1.0",
     "wo": "WO-2001",
     "status": "pushed",
     "branch": "wo/2001-sunrise",

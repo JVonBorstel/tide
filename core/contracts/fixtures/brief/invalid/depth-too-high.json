@@ -2,6 +2,7 @@
   "why": "crews start at most 3 levels of helpers",
   "expect": "/depth: maximum",
   "doc": {
+    "v": "1.0",
     "wo": "WO-2001",
     "stream": "DEMO",
     "plan": "plans/example-plan.md#slice-2",

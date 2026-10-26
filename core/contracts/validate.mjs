@@ -49,8 +49,33 @@ function queueRule(name, v) {
   });
   return errs;
 }
+// CREED 6, the reviewer is never the builder: a review.verdict whose reviewer is its builder, or that the builder wrote, is refused.
+function eventsIn(name, v) {
+  if (!v || typeof v !== 'object') return [];
+  if (name === 'event') return [['', v]];
+  if (name === 'api-work-item' && Array.isArray(v.events)) return v.events.map((e, i) => [`/events/${i}`, e]);
+  if (name === 'api-work-stream' && v.type === 'event') return [['/data', v.data]];
+  return [];
+}
+function creedRule(p, e) {
+  if (!e || e.kind !== 'review.verdict' || !e.data || typeof e.data.builder !== 'string') return [];
+  const errs = [];
+  if (e.data.reviewer === e.data.builder) errs.push({ path: `${p}/data/reviewer`, keyword: 'creed6', message: 'the reviewer is never the builder' });
+  if (e.actor === e.data.builder) errs.push({ path: `${p}/actor`, keyword: 'creed6', message: 'a verdict is never written by the builder' });
+  return errs;
+}
+
+// Versions: these schemas are major 1. A record of another major is named as such, so a reader knows to update rather than guess.
+export const KNOWN_MAJORS = [1];
+function versionRule(v) {
+  const m = v && typeof v === 'object' && typeof v.v === 'string' ? /^(\d+)\./.exec(v.v) : null;
+  if (!m || KNOWN_MAJORS.includes(Number(m[1]))) return [];
+  return [{ path: '/v', keyword: 'version', message: `major ${m[1]} is not known here (known: ${KNOWN_MAJORS.join(', ')}); update core/contracts` }];
+}
+
 function rules(name, v) {
-  return [...decisionsIn(name, v).flatMap(([p, d]) => decisionRule(p, d)), ...queueRule(name, v)];
+  return [...decisionsIn(name, v).flatMap(([p, d]) => decisionRule(p, d)), ...queueRule(name, v),
+    ...eventsIn(name, v).flatMap(([p, e]) => creedRule(p, e)), ...versionRule(v)];
 }
 
 let cache = null;
@@ -68,6 +93,11 @@ export function validate(name, value, dir = here) {
   const { checker } = checkerFor(dir);
   const errs = [...checker.check(`${name}.schema.json`, value), ...rules(name, value)];
   return { ok: errs.length === 0, errors: errs.map(formatError) };
+}
+
+// The JSON pointers of the x-local-only values in a document (proof, out, args): see public.mjs for the public/export path.
+export function localOnlyPaths(name, value, dir = here) {
+  return checkerFor(dir).checker.localOnly(`${name}.schema.json`, value);
 }
 
 // A file as the contract sees it: JSON, or a markdown file's front matter. Throws with a plain reason when it cannot be read.

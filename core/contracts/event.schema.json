@@ -1,10 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tide.example/contracts/event.schema.json",
+  "$id": "https://tide.example/contracts/v1/event.schema.json",
   "title": "Event: one line of the append-only record of truth",
   "description": "Every change to a work order is one event (build-way 4.2). Events are only ever appended: the ledger, Jordan's queue and BOOT are queries over them. 17 kinds are fixed; x.<source>.<name> is an open namespace for kinds no lane depends on yet (for example Claude Code hook lines).",
   "type": "object",
   "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
     "seq": { "description": "Position in the log, from 1, assigned by the one writer.", "type": "integer", "minimum": 1 },
     "at": { "$ref": "common.schema.json#/$defs/time" },
     "actor": { "$ref": "common.schema.json#/$defs/actor" },
@@ -20,11 +21,11 @@
     },
     "data": { "description": "What changed; its shape depends on kind (below).", "type": "object" },
     "proof": {
-      "description": "Where the claim can be checked: a sha, a URL, a file, a command and its output line. null when the event claims nothing outside itself.",
+      "x-local-only": true, "description": "Where the claim can be checked: a sha, a URL, a file, a command and its output line. null when the event claims nothing outside itself.",
       "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 500 }, { "type": "null" }]
     }
   },
-  "required": ["seq", "at", "actor", "kind", "wo", "data", "proof"],
+  "required": ["v", "seq", "at", "actor", "kind", "wo", "data", "proof"],
   "additionalProperties": false,
   "allOf": [
     { "if": { "$ref": "#/$defs/isWoKind" }, "then": { "properties": { "wo": { "$ref": "common.schema.json#/$defs/woId" } } } },
@@ -129,7 +130,7 @@
       "additionalProperties": false
     },
     "reviewVerdict": {
-      "description": "The verifier's verdict on one head sha. The reviewer is never the builder (CREED 6), and never Jordan (his yes is decision.answered).",
+      "description": "The verifier's verdict on one head sha. The reviewer is never the builder (CREED 6; validate.mjs refuses reviewer = builder and an event written by the builder), and never Jordan (his yes is decision.answered).",
       "type": "object",
       "properties": {
         "verdict": { "enum": ["ship", "fix", "hold"] },
@@ -139,7 +140,7 @@
         "builder": { "type": "string", "pattern": "^crew:[a-z0-9][a-z0-9-]*$" },
         "findings": { "type": "integer", "minimum": 0 }
       },
-      "required": ["verdict", "reasons", "head", "reviewer"],
+      "required": ["verdict", "reasons", "head", "reviewer", "builder"],
       "additionalProperties": false
     },
     "decisionAsked": {

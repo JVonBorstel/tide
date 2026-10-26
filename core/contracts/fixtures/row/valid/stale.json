@@ -1,4 +1,5 @@
 {
+  "v": "1.0",
   "id": "WO-2003",
   "alias": "J2003",
   "goal": "Example: show a sunrise colour in the sky of the demo scene",

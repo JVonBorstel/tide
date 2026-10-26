@@ -1,10 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tide.example/contracts/decision.schema.json",
+  "$id": "https://tide.example/contracts/v1/decision.schema.json",
   "title": "Decision: one card for Jordan",
   "description": "A question only Jordan answers, with the recommended answer first (build-way 3.2 and 4.2). Open while answer is null. His tap is a decision.answered event; this object is the projection. Cross-field rules (checked by validate.mjs): recommended and answer are among options.",
   "type": "object",
   "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
     "id": { "$ref": "common.schema.json#/$defs/decisionId" },
     "wo": { "anyOf": [{ "$ref": "common.schema.json#/$defs/woId" }, { "type": "null" }] },
     "kind": { "$ref": "common.schema.json#/$defs/decisionKind" },
@@ -42,7 +43,7 @@
     "via": { "anyOf": [{ "enum": ["board", "/decide"] }, { "type": "null" }] },
     "standing": { "description": "true for a standing yes (build-way section 9): it covers every later case of the same kind until withdrawn.", "type": "boolean" }
   },
-  "required": ["id", "wo", "kind", "ask", "options", "recommended", "answer", "note", "at", "answeredAt", "via"],
+  "required": ["v", "id", "wo", "kind", "ask", "options", "recommended", "answer", "note", "at", "answeredAt", "via"],
   "additionalProperties": false,
   "allOf": [
     {
