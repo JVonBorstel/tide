@@ -229,7 +229,8 @@ function layer(kit, which, room, W = STAGE.w, world = {}) {
     d('door', 0, 26);
     if (sky === 'night') { d('moon', 28, 7); ctx.fillStyle = P.PALETTE.I; for (const [x, y] of [[42, 9], [47, 15], [26, 17], [40, 19], [12, 6], [57, 24], [101, 23], [129, 27], [143, 21], [188, 33]]) ctx.fillRect(x + ox, y, 1, 1); if (!world.fuse?.tripped) d('pool', 150, 57); }
     else d('sun', sky === 'day' ? 43 : 26, sky === 'day' ? 7 : 9);
-    d('rail', 60, 3); d('pass', 152, 14); d(world.fuse?.tripped ? 'lamp-off' : 'lamp', 168, 4);
+    for (let x = -ox; x < W - ox; x += 100) d('rail', x, 0);   // the gantry beam across the top: the job board, the signs and the power board hang from it
+    d('rail', 60, 3); d('pass', 152, 14); if (world.fuse) d(world.fuse.tripped ? 'lamp-off' : 'lamp', 168, 4);   // the work light only with its field (breaker)
     bakeWorld(world, d);
   } else {
     for (const [st, s] of Object.entries(STATIONS)) {

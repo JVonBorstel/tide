@@ -227,6 +227,8 @@ add('bell', 7, 6, 'bell', (g, f) => { blit(g, f ? ['....a..', '..aaa..', '.atta.
 // the job board (code name 'rail'): a hazard-taped bar the work-order cards clip to; a card (code name 'ticket'): paper on a clipboard,
 // the digits and the step bar land on the paper
 add('rail', 100, 3, 'still', (g) => { hazard(g, 0, 0, 100, 3); rect(g, 0, 0, 100, 1, 'a'); });
+// the chains the Yard-wide signs (gate sign, budget meter) hang by from the gantry beam (S7j moves those signs to the City gate)
+add('chain', 1, 12, 'still', (g) => { for (let y = 0; y < 12; y++) put(g, 0, y, y % 3 === 2 ? 'a' : 'h'); });
 add('ticket', 11, 13, 'still', (g) => { box(g, 0, 1, 11, 12, DARKWOOD); rect(g, 2, 3, 7, 9, 'p'); rect(g, 1, 2, 9, 1, 'd'); rect(g, 4, 0, 3, 2, 'g'); put(g, 5, 0, 'a'); });
 addFrames('digit', DIGITS, 'glyph');
 addFrames('sun', [SUN], 'still');

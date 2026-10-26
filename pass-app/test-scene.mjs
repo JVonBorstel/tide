@@ -5,7 +5,7 @@ import { layoutScene, sceneHtml, stationFor, cookOf, lookOf, skyAt, hashId, acti
   STAGE, pixelScale, stageNew, stageSync, stageTick, drawStage, makeKit, makeLoop, hitItems, hitHtml,
   stageCalm, frameStats, stepWord } from './public/scene.js';
 import { stageOk, stageFps, stageWalking, frameKey } from './public/frame.js';
-import { WORLD, worldOf, worldWords, worldKey, legendRows, legendHtml, PLACE } from './public/world.js';
+import { WORLD, worldOf, worldWords, worldKey, legendRows, legendHtml, PLACE, HANG, bakeWorld } from './public/world.js';
 import zlib from 'node:zlib';
 import * as P from './public/sprites.js';
 import { MOMENTS, FX, momentsFrom, fxNew, spawn, easeOutBack, easeInOutCubic, chefPose, passFx, approveFx, tapChef, fxBusy, spread, propRects } from './public/moments.js';
@@ -524,6 +524,14 @@ const bubK = 1.5, bubH = 14 / bubK, bubCases = [busy, fullState()].map((s) => hi
 check(`BubbleNear: a speech bubble stands at most one bubble height over its crew member's head, or on the floor in front of its station (never up by the job board; ${bubCases.map((c) => c.length).join(' and ')} bubbles)`,
   bubCases.every((c) => c.length > 0 && c.every((b) => b.y >= STAGE.aisle - 24 - bubH - 0.01)));
 check('SceneFrameWord: Settings > About says "Scene frame", never "Kitchen frame"', appSrc.includes('<dt>Scene frame</dt>') && !/Kitchen frame/i.test(appSrc));
+// nothing floats: the gate sign and the budget meter hang by two chains from a gantry beam across the top; the power board hangs under it
+const fullBake = drawnW(fullState(), fullEvents()), chainsAt = []; bakeWorld(worldOf(fullState(), fullEvents(), T0), (n, x, y) => n === 'chain' && chainsAt.push([x, y]));
+check(`GantryHang: a gantry beam spans the sky (${fullBake.filter((r) => r === 'rail:0').length} beam tiles with the job board) and the gate sign and budget meter hang by 2 chains each that reach their tops; the power board touches the beam`,
+  fullBake.filter((r) => r === 'rail:0').length >= 3 && fullBake.filter((r) => r === 'chain:0').length === 4 && chainsAt.every(([x, y]) => y === 3 || y === 4)
+  && HANG.sign.every((dx) => chainsAt.some(([x, y]) => x === PLACE.sign[0] + dx && y + 12 === PLACE.sign[1])) && HANG.jar.every((dx) => chainsAt.some(([x, y]) => x === PLACE.jar[0] + dx && y + 12 === PLACE.jar[1]))
+  && PLACE.fuse[1] <= 3 && !drawnW({ jobs: [] }).includes('chain:0'));
+check('WorkLightTruth: the work light is drawn only with its field (breaker): none without it, lit when false, out when true',
+  !drawnW({ jobs: [] }).some((r) => /^lamp/.test(r)) && drawnW({ jobs: [], breaker: false }).includes('lamp:0') && drawnW({ jobs: [], breaker: true }).includes('lamp-off:0') && !drawnW({ jobs: [], breaker: true }).includes('lamp:0'));
 const siteChrome = P.chromeSprites(mk);
 check('SiteChrome: loading, offline and empty are drawn as site art (32x32: 4, 2 and 2 frames) and the empty one holds no clipboard or cloche (a shovel and an empty pallet)',
   siteChrome.load.width === 128 && siteChrome.off.width === 64 && siteChrome.empty.width === 64 && !/cloche/.test(fs.readFileSync(new URL('./public/sprites.js', import.meta.url), 'utf8').match(/one\('empty'[^\n]*/)[0]));
