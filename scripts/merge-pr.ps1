@@ -112,8 +112,9 @@ $err = ''
 try {
     & git init -q $tmp 2>&1 | Out-Null
     $f = Git-Here @('fetch', '-q', '--no-tags', $remote, "+refs/heads/${base}:refs/remotes/base", "+refs/pull/$Pr/head:refs/remotes/pr")
+    $prHead = if ($f.ok) { (Git-Here @('rev-parse', 'refs/remotes/pr')).out } else { '' }
     if (-not $f.ok) { $err = "could not fetch $base and the pull request ($($f.out))" }
-    elseif ("$(& git -C $tmp rev-parse refs/remotes/pr 2>$null)".Trim() -ne $sha) { $err = "the pull request on GitHub is no longer at $short" }
+    elseif ($prHead -ne $sha) { $err = "the pull request on GitHub is no longer at $short" }
     else {
         $null = Git-Here @('checkout', '-q', '--detach', 'refs/remotes/base')
         $mg = Git-Here @('merge', '--no-ff', '-q', '-m', $subject, '-m', $body, $sha)
