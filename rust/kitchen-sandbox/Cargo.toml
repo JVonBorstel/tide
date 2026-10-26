@@ -1,0 +1,12 @@
+[package]
+name = "kitchen-sandbox"
+version = "0.1.0"
+edition = "2021"
+description = "Runs one command line contained: Windows Job Object (tree kill, memory cap, process cap), Low integrity, private TEMP/HOME. std only, no crates, builds offline."
+
+# Zero external crates on purpose: it must build with `cargo build --release --offline` and nothing is downloaded.
+[dependencies]
+
+[profile.release]
+opt-level = 2
+debug = false

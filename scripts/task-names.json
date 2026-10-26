@@ -1,0 +1,6 @@
+{
+  "_note": "Each scheduled task's names, [old, new]. Readers accept both; the newest one registered wins, else the first (old). The tasks keep their old names until S4 (Jordan's tap). Read by kitchen/kitchen.ps1 (watchdog), kitchen/watch.ps1, scripts/kitchen-check.ps1, scripts/install-tasks.ps1, pass-app/update.ps1 and the justfile.",
+  "supervisor": ["Kitchen-Supervisor", "Tide-Yard"],
+  "chores": ["Kitchen-Chores", "Tide-Cleanup"],
+  "board": ["Kitchen-Pass", "Tide-Board"]
+}

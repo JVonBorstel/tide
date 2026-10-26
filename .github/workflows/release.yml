@@ -1,0 +1,40 @@
+# Tag and release every green main. Runs after the ci workflow finishes on a push to main; skips unless ci succeeded.
+# Tag scheme: vYYYY.MM.DD.N (UTC date, N = 1, 2, ... within that day). One release per commit: if the commit is already tagged, do nothing.
+# The release is created through the API (the tag is made on GitHub at the exact commit ci passed), so nothing is pushed from here
+# and no checkout is needed. Only this job gets write access.
+name: release
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+concurrency:
+  group: release
+  cancel-in-progress: false
+permissions: {}
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Tag and release this commit
+        run: |
+          set -euo pipefail
+          existing="$(gh api --paginate "repos/$GH_REPO/git/matching-refs/tags/v" --jq '.[] | select(.object.sha == env.SHA) | .ref')"
+          if [ -n "$existing" ]; then
+            echo "Commit $SHA is already tagged ($existing); nothing to do."
+            exit 0
+          fi
+          day="$(date -u +%Y.%m.%d)"
+          n=1
+          while gh api "repos/$GH_REPO/git/ref/tags/v$day.$n" >/dev/null 2>&1; do n=$((n + 1)); done
+          tag="v$day.$n"
+          echo "Releasing $tag at $SHA"
+          gh release create "$tag" --target "$SHA" --title "$tag" --generate-notes --latest

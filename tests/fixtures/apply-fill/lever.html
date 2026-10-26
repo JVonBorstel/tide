@@ -1,0 +1,39 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Acme - Agent Engineer</title></head>
+<body>
+<!-- Lever-like (wrapping labels, custom question cards without labels, a radio card, no captcha). Fixture only. -->
+<div class="content"><h2>Agent Engineer</h2>
+<form id="application-form" action="/apply/lever" method="post" enctype="multipart/form-data">
+<h4>Your application</h4>
+<ul>
+  <li class="application-question resume"><label><div class="application-label">Resume/CV<span class="required">✱</span></div><div class="application-field"><input type="file" name="resume" id="resume-upload-input" required></div></label></li>
+  <li class="application-question"><label><div class="application-label">Full name<span class="required">✱</span></div><div class="application-field"><input type="text" name="name" required></div></label></li>
+  <li class="application-question"><label><div class="application-label">Email<span class="required">✱</span></div><div class="application-field"><input type="email" name="email" required></div></label></li>
+  <li class="application-question"><label><div class="application-label">Phone</div><div class="application-field"><input type="text" name="phone"></div></label></li>
+  <li class="application-question"><label><div class="application-label">Current location</div><div class="application-field"><input type="text" name="location"></div></label></li>
+  <li class="application-question"><label><div class="application-label">Current company</div><div class="application-field"><input type="text" name="org"></div></label></li>
+</ul>
+<h4>Links</h4>
+<ul>
+  <li class="application-question"><label><div class="application-label">LinkedIn URL</div><div class="application-field"><input type="text" name="urls[LinkedIn]"></div></label></li>
+  <li class="application-question"><label><div class="application-label">GitHub URL</div><div class="application-field"><input type="text" name="urls[GitHub]"></div></label></li>
+  <li class="application-question"><label><div class="application-label">Portfolio URL</div><div class="application-field"><input type="text" name="urls[Portfolio]"></div></label></li>
+  <li class="application-question"><label><div class="application-label">Twitter URL</div><div class="application-field"><input type="text" name="urls[Twitter]"></div></label></li>
+</ul>
+<ul>
+  <li class="application-question custom-question"><div class="application-label"><div class="text">How many years of professional TypeScript experience do you have?<span class="required">✱</span></div></div><div class="application-field"><input type="text" name="cards[c1][field0]" required></div></li>
+  <li class="application-question custom-question"><div class="application-label"><div class="text">Are you willing to relocate?</div></div><div class="application-field"><ul><li><label><input type="radio" name="cards[c1][field1]" value="Yes"> Yes</label></li><li><label><input type="radio" name="cards[c1][field1]" value="No"> No</label></li></ul></div></li>
+  <li class="application-question custom-question"><div class="application-label"><div class="text">Describe a time you disagreed with a teammate and how it was resolved.</div></div><div class="application-field"><textarea name="cards[c1][field2]"></textarea></div></li>
+  <li class="application-question"><label><div class="application-label">Additional information</div><div class="application-field"><textarea name="comments" placeholder="Add a cover letter or anything else you want to share."></textarea></div></label></li>
+</ul>
+<label><input type="checkbox" name="consent[marketing]" value="1"> Send me future job updates</label>
+<button type="submit" id="btn-submit" onclick="fetch('/marker/lever-press')">Submit application</button>
+</form></div>
+<script>
+let seq = 0; const f = document.getElementById('application-form');
+const push = () => { const s = { seq: ++seq }; for (const el of f.querySelectorAll('input,textarea,select')) { const k = el.id || el.name;
+  if (el.type === 'file') s[k] = [...el.files].map((x) => x.name + ':' + x.size); else if (el.type === 'radio' || el.type === 'checkbox') { if (el.checked) s[k + '=' + el.value] = true; } else s[k] = el.value; }
+  fetch('/state/lever', { method: 'POST', body: JSON.stringify(s) }); };
+f.addEventListener('input', push); f.addEventListener('change', push);
+</script>
+</body></html>

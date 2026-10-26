@@ -1,0 +1,39 @@
+{
+  "description": "Application pack: tailored one-page resume PDF and draft answers for every question. Private, local cook; never leaves this PC and never invents claims.",
+  "vars": {
+    "appId": { "required": true, "max": 20 },
+    "company": { "default": "", "max": 120 },
+    "role": { "default": "", "max": 160 },
+    "description": { "default": "", "max": 12000 },
+    "questions": { "default": "", "max": 12000 }
+  },
+  "steps": [
+    {
+      "station": "agent", "timeoutSec": 1500, "maxMB": 3000, "retries": 1, "mustMatch": "(?mi)^#\\s*Resume HTML\\s*$[\\s\\S]*?<(html|body|header|section|div|h1)\\b",
+      "args": {
+        "Role": "do", "Tools": "none", "MaxTurns": 3, "MaxBudgetUsd": 0.5,
+        "Private": true, "Supplier": "local", "Model": "qwen3.5:9b",
+        "Context": "{{resume}};{{claims}}",
+        "SaveTo": "{{home}}\\gemini-brain\\projects\\career\\packs\\{{appId}}-draft.md",
+        "Prompt": "You help Jordan apply for this role. His real canonical resume and defense boundaries are attached below. Use ONLY facts from the attached resume. NEVER invent years, titles, numbers, tools, or credentials. Do not claim '7+ years', '90%+', inflated leadership titles, or tools he has not used. If the posting asks for tools or skills he lacks, do not invent them.\n\nROLE:\n{{role}} at {{company}}\n\nJOB DESCRIPTION:\n{{description}}\n\nAPPLICATION QUESTIONS:\n{{questions}}\n\nWrite your output in two sections:\n\n# Resume HTML\nWrite a complete tailored resume as semantic HTML (header with contact info, tailored summary, core skills, tailored experience bullets from his verified background, education) styled to fit strictly on a single printed letter page.\n\n# Draft Answers\nFor every question listed under APPLICATION QUESTIONS, write a thoughtful, authentic, and compelling answer grounded strictly in his real experience. If no specific questions were provided, write brief interview talking points matching his background to this role."
+      }
+    },
+    {
+      "station": "tailor-check", "timeoutSec": 120, "retries": 0, "mustMatch": "TAILOR-CHECK PASS",
+      "args": {
+        "Draft": "{{home}}\\gemini-brain\\projects\\career\\packs\\{{appId}}-draft.md",
+        "Claims": "{{claims}}",
+        "Resume": "{{resume}}",
+        "Sections": "resume html,draft answers",
+        "Posting": "{{role}} at {{company}}\n{{description}}"
+      }
+    },
+    {
+      "station": "pack-render", "timeoutSec": 120, "maxMB": 2000, "retries": 0,
+      "args": {
+        "AppId": "{{appId}}",
+        "DraftFile": "{{home}}\\gemini-brain\\projects\\career\\packs\\{{appId}}-draft.md"
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "public": true,
+  "description": "Verify one due public claim (ZG-21): a Cloud crew checks it on the web with sources (a copy of the research Spec), then the lobe Step hands the saved answer to zeitgeistd, which resolves the claim only by its evidence. Filed by the lobe Step from `claims due --public`; the question is the claim and its dates alone.",
+  "vars": { "question": { "required": true, "max": 3000 } },
+  "steps": [
+    { "station": "agent", "timeoutSec": 1500, "maxMB": 2500, "retries": 0, "mustMatch": "SOURCES",
+      "args": { "Role": "research", "Tools": "WebSearch,WebFetch", "MaxTurns": 30, "MaxBudgetUsd": 2,
+        "SaveTo": "{{kitchen}}\\lobe\\verify\\{{job}}.md",
+        "Prompt": "Check this public claim against the web, in plain language for the Owner, who reads on his phone.\n\n{{question}}\n\nPrefer recent primary sources. Cite a URL for every point and mark anything unverified. Keep it under 40 lines. Then give exactly one line VERDICT: followed by one word: VERIFIED (it happened as claimed), REFUTED (it did not), GOALPOST_MOVED (the claim's own terms or date were changed after it was made) or UNKNOWN (the sources do not settle it). Finish with a section headed SOURCES listing the URLs, one per line." } },
+    { "station": "lobe", "args": { "Cmd": "verify", "Only": "collect" }, "timeoutSec": 300, "maxMB": 1500, "retries": 0, "mustMatch": "(?m)^lobe: verify done items=\\d+ dropped=\\d+ ms=\\d+" }
+  ]
+}

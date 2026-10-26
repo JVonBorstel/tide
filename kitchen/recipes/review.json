@@ -1,0 +1,13 @@
+{
+  "about": "a code review of a software repository",
+  "description": "A taster reviews a repo or folder for bugs and risks and reports (read-only, changes nothing).",
+  "vars": {
+    "focus": { "required": true, "max": 1500 },
+    "repo": { "default": "{{home}}\\source\\repos\\brain-monitor" }
+  },
+  "steps": [
+    { "station": "agent", "timeoutSec": 1500, "maxMB": 3000, "retries": 0, "mustMatch": "FINDINGS",
+      "args": { "Role": "do", "WorkDir": "{{repo}}", "Tools": "Read,Grep,Glob", "MaxTurns": 40, "MaxBudgetUsd": 3,
+        "Prompt": "Review this repository with this focus: {{focus}}\n\nRead AGENTS.md first. Look for real bugs, security problems, missing tests and rule breaks. For each finding give the file and line, what goes wrong, and the fix. Rank by severity. Do not change any file. Start your list with a line that says FINDINGS." } }
+  ]
+}

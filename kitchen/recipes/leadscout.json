@@ -1,0 +1,18 @@
+{
+  "public": true,
+  "about": "a search of public posts where people ask to hire help with AI or automation",
+  "description": "Lead scout: finds fresh public posts from people or small businesses hiring for AI or automation work, then the PC's local model drafts a pitch for each (Clients in Chef). Only generic service words leave the PC; pitches are written locally. Never sends anything.",
+  "vars": {
+    "focus": { "default": "AI receptionists and booking (Calendly, Cal.com), lead follow-up and CRM automation (HubSpot, GoHighLevel, Pipedrive), landing pages, workflow automation (n8n, Zapier, Make), Claude or ChatGPT integrations, AI tools for small businesses", "max": 400 },
+    "max": { "default": "4", "max": 3 }
+  },
+  "steps": [
+    { "station": "agent", "timeoutSec": 1500, "maxMB": 2500, "retries": 1, "mustMatch": "SOURCES",
+      "args": { "Role": "research", "Tools": "WebSearch,WebFetch", "MaxTurns": 40, "MaxBudgetUsd": 2, "Public": true,
+        "Order": "About: a web search of public posts from people hiring freelance help (no personal details).\nOrder: list public hiring posts for {{focus}}",
+        "SaveTo": "{{home}}\\gemini-brain\\projects\\income\\scout\\{{job}}-leads.md",
+        "Prompt": "Find public posts from the last 14 days where a person or small business wants to HIRE someone for: {{focus}}.\n\nGood places: Reddit r/forhire and r/hiring posts tagged [Hiring], r/smallbusiness and r/Entrepreneur posts asking for help, the Hacker News monthly \"Freelancer? Seeking Freelancer?\" thread (SEEKING FREELANCER entries), public Upwork job pages, Contra, and other public freelance boards. Only posts you actually opened that need no login to read, are still open, and come from someone hiring (skip people offering their own services, agencies reselling, crypto, adult, anything unpaid or unlawful, and anything in mortgage, lending, loan origination, real-estate finance or title (Jordan works for a mortgage lender)). Prefer posts a solo developer could finish in days to a few weeks.\n\nAnswer in exactly this shape, best fit first, 6 to 12 leads:\n# Leads\n## Lead: short title of what they want\n- Source: site name\n- Link: the post URL\n- Posted: date\n- Budget: as stated, or not listed\n- Need: one or two lines quoting what they asked for\n\nFinish with a section headed SOURCES listing the URLs." } },
+    { "station": "lead-pitch", "timeoutSec": 1800, "maxMB": 1000, "retries": 0, "mustMatch": "lead-pitch: done",
+      "args": { "Leads": "{{home}}\\gemini-brain\\projects\\income\\scout\\{{job}}-leads.md", "Max": "{{max}}" } }
+  ]
+}

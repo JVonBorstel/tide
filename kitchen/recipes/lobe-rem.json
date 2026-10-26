@@ -1,0 +1,10 @@
+{
+  "description": "Lobe rem (Sleep, ZG-42): the zeitgeistd night on this PC in four Steps: rem, memory-check, memory-truth, then the frame (csf). Each Step's exit code and ms go into watch\\lobe.json sleep[]; a failing memory Step never stops the frame Step. No agent Step; models only on this PC.",
+  "vars": {},
+  "steps": [
+    { "station": "lobe", "args": { "Cmd": "rem" }, "timeoutSec": 1800, "maxMB": 2000, "retries": 0, "mustMatch": "(?m)^lobe: rem done items=\\d+ dropped=\\d+ ms=\\d+" },
+    { "station": "lobe", "args": { "Cmd": "memory-check" }, "timeoutSec": 300, "maxMB": 1500, "retries": 0, "mustMatch": "(?m)^lobe: memory-check done exit=(\\d+|none) ms=\\d+" },
+    { "station": "lobe", "args": { "Cmd": "memory-truth" }, "timeoutSec": 300, "maxMB": 1500, "retries": 0, "mustMatch": "(?m)^lobe: memory-truth done exit=(\\d+|none) ms=\\d+" },
+    { "station": "lobe", "args": { "Cmd": "csf" }, "timeoutSec": 300, "maxMB": 1500, "retries": 0, "mustMatch": "(?m)^lobe: csf done items=\\d+ dropped=\\d+ ms=\\d+" }
+  ]
+}

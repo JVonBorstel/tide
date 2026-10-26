@@ -1,0 +1,22 @@
+{
+  "note": "Old display words per file today, recorded by scripts/check-names.ps1 -WriteBaseline. word|file -> hits. Only shrink it: a line may be lowered or removed once the words are renamed; adding one needs Jordan's review.",
+  "words": {
+    "Chef|pass-app/AUDIT.md": 4,
+    "Chef|pass-app/DESIGN.md": 1,
+    "Chef|pass-app/README.md": 2,
+    "Chef|pass-app/SCENE.md": 20,
+    "kitchen|docs/CHANGES_2026-10-09.md": 1,
+    "kitchen|pass-app/AUDIT.md": 3,
+    "kitchen|pass-app/public/app.js": 1,
+    "kitchen|pass-app/SCENE.md": 5,
+    "Plated|pass-app/AUDIT.md": 1,
+    "recipe|pass-app/AUDIT.md": 2,
+    "recipe|pass-app/SCENE.md": 3,
+    "sous chef|pass-app/AUDIT.md": 3,
+    "sous chef|pass-app/SCENE.md": 2,
+    "the pass|pass-app/DESIGN.md": 1,
+    "the pass|pass-app/SCENE.md": 5,
+    "wave|pass-app/README.md": 1,
+    "wave|pass-app/SCENE.md": 6
+  }
+}

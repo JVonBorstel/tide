@@ -1,0 +1,9 @@
+{
+  "description": "A research cook answers a question from the web with sources (read-only).",
+  "vars": { "question": { "required": true, "max": 3000 } },
+  "steps": [
+    { "station": "agent", "timeoutSec": 1500, "maxMB": 2500, "retries": 0, "mustMatch": "SOURCES",
+      "args": { "Role": "research", "Tools": "WebSearch,WebFetch", "MaxTurns": 30, "MaxBudgetUsd": 2,
+        "Prompt": "Research this and answer in plain language for Jordan, who reads on his phone: {{question}}\n\nPrefer recent primary sources. Cite a URL for every claim and mark anything unverified. Keep it under 60 lines. Finish with a section headed SOURCES listing the URLs." } }
+  ]
+}

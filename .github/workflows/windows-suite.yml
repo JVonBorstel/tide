@@ -1,0 +1,43 @@
+# The full Windows suite on a clean box, the way the kitchen runs it (sandboxed tests station), with nothing from Jordan's PC.
+# Not per change (see ci.yml): weekly as a drift check, by hand (Actions > windows-suite > Run workflow), and on pushes to ci/** branches.
+# ~28 min, billed 2x on the free private plan: about 250 of the 2000 monthly minutes at this pace.
+name: windows-suite
+on:
+  schedule:
+    - cron: '17 9 * * 0'   # Sundays 09:17 UTC
+  workflow_dispatch:
+  push:
+    branches: ['ci/**']
+concurrency:
+  group: windows-suite-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Build the test sandbox
+        shell: pwsh
+        run: |
+          $env:BRAIN_KITCHEN = Join-Path $env:RUNNER_TEMP "kitchen-state"; "BRAIN_KITCHEN=$env:BRAIN_KITCHEN" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force -Path $env:BRAIN_KITCHEN, .kitchen | Out-Null
+          pwsh -NoProfile -File rust/kitchen-sandbox/build.ps1
+      - name: Tests (sandboxed, like the kitchen)
+        shell: pwsh
+        run: pwsh -NoProfile -File kitchen/stations/tests.ps1 -Dir $PWD
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tests-report
+          path: .kitchen/TESTS.txt
+          if-no-files-found: ignore
+          retention-days: 30

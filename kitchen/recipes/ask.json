@@ -1,0 +1,9 @@
+{
+  "description": "Ask the kitchen anything (an answer, a draft, a plan). Plain text, no files, no web. The sous chef picks the cook; personal orders stay on this PC.",
+  "vars": { "question": { "required": true, "max": 6000 } },
+  "steps": [
+    { "station": "agent", "timeoutSec": 900, "maxMB": 2500, "retries": 1,
+      "args": { "Role": "do", "Tools": "none", "MaxTurns": 3, "MaxBudgetUsd": 0.5,
+        "Prompt": "{{question}}\n\nAnswer for Jordan, who reads on a phone: clear, short, plain language." } }
+  ]
+}

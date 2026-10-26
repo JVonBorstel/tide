@@ -1,0 +1,29 @@
+{
+  "note": "Known violations of kitchen/STANDARDS.md, recorded by scripts/check-standards.ps1 -WriteBaseline. rule|file -> size (size: lines; header: 1; python, urlsecret, analyzer: hits). Only shrink it; a line may be removed once fixed.",
+  "violations": {
+    "header|kitchen/ats.ps1": 1,
+    "header|kitchen/stations/ideas.ps1": 1,
+    "header|tests/Test-Approvals.ps1": 1,
+    "header|tests/Test-Ats.ps1": 1,
+    "header|tests/Test-BrainMonitor.ps1": 1,
+    "header|tests/Test-Budget.ps1": 1,
+    "header|tests/Test-ContextGuard.ps1": 1,
+    "header|tests/Test-HandoffStandup.ps1": 1,
+    "header|tests/Test-Kitchen.ps1": 1,
+    "header|tests/Test-KitchenFreshen.ps1": 1,
+    "header|tests/Test-MutateStation.ps1": 1,
+    "header|tests/Test-RankFit.ps1": 1,
+    "header|tests/Test-RunRegistry.ps1": 1,
+    "header|tests/Test-Standup.ps1": 1,
+    "header|tests/Test-StandupRecap.ps1": 1,
+    "header|tests/Test-TailorCheck.ps1": 1,
+    "header|tests/Test-UsageReport.ps1": 1,
+    "header|tests/Test-VerifyAll.ps1": 1,
+    "size|kitchen/kitchen.ps1": 1374,
+    "size|pass-app/public/app.js": 1919,
+    "size|pass-app/server.mjs": 1510,
+    "size|tests/Test-KitchenSupervisor.ps1": 607,
+    "size|tests/Test-PassApp.ps1": 1168,
+    "size|tests/Test-SousChef.ps1": 759
+  }
+}

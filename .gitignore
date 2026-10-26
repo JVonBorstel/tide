@@ -1,0 +1,10 @@
+data/
+.tmp/
+.env
+.env.*
+*.pem
+*.pfx
+*.key
+
+# kitchen-sandbox build output: commit the source, never the binary
+rust/kitchen-sandbox/target/

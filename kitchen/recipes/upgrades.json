@@ -1,0 +1,13 @@
+{
+  "public": true,
+  "about": "public web research on software techniques to upgrade an app (no personal details)",
+  "description": "Research team: a cook studies what the kitchen already does, researches one focus area on the web, and files 3 to 5 concrete upgrade ideas (with sources) in the idea list. The autopilot builds the best ones; merging stays your yes.",
+  "vars": { "focus": { "required": true, "max": 600 } },
+  "steps": [
+    { "station": "agent", "timeoutSec": 1500, "maxMB": 2500, "retries": 1, "mustMatch": "IDEA:",
+      "args": { "Role": "research", "WorkDir": "{{home}}\\source\\repos\\brain-monitor", "Tools": "Read,Grep,Glob,WebSearch,WebFetch", "MaxTurns": 40, "MaxBudgetUsd": 2,
+        "SaveTo": "{{kitchen}}\\ideas\\{{job}}.md",
+        "Prompt": "You are on the research team of Jordan's Kitchen: an autonomous, private AI kitchen on his Windows PC (PowerShell supervisor and cook adapters in kitchen/, a phone app called Chef in pass-app/ with Node and plain JavaScript, no frameworks, no npm dependencies). First read README.md, pass-app/README.md and kitchen/kitchen.json in this folder so you know what already exists.\n\nResearch focus: {{focus}}\n\nSearch the web for what is new and proven (2025-2026), then pick 3 to 5 concrete upgrades for THIS codebase that are not built yet. Rules: no new paid services, nothing billed per token (subscriptions only), no new dependencies, private data stays on the PC, every guardrail stays (merges only with Jordan's yes).\n\nWrite a short summary of what you found, then one line per idea, exactly in this form (valid JSON on one line):\nIDEA: {\"title\":\"short name\",\"goal\":\"one paragraph goal for the Improve recipe: what to change, in which files, and which tests to add\",\"why\":\"one sentence on the benefit\",\"size\":\"S or M or L\",\"value\":1-10,\"source\":\"https://...\"}\n\nFinish with a section headed SOURCES listing the URLs." } },
+    { "station": "ideas", "timeoutSec": 120, "retries": 0, "args": { "Source": "research: {{focus}}" } }
+  ]
+}

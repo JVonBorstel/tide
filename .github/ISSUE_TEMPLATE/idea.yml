@@ -1,0 +1,36 @@
+name: Idea
+description: A change or feature worth building.
+title: "idea: "
+labels: ["idea"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What should exist or change, in plain words.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it is worth it
+      description: What it saves or protects (time, tokens, risk).
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Kitchen (supervisor, stations, cooks)
+        - Chef (pass-app)
+        - Scripts / brain monitor
+        - Tests / CI
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: shape
+    attributes:
+      label: Rough shape and risks
+      description: Optional. How you would build it, what could go wrong, how to roll it back.
