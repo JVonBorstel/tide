@@ -19,15 +19,29 @@ $ghFake = "$root-gh"; New-Item -ItemType Directory -Force $ghFake | Out-Null
 Set-Content "$ghFake\gh.mjs" @'
 // a fake gh for tests/Test-PassApp.ps1: answers from answers.json beside it; never the network
 import fs from 'node:fs'; import path from 'node:path'; import { fileURLToPath } from 'node:url';
-const a = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'answers.json'), 'utf8')); const args = process.argv.slice(2);
+const here = path.dirname(fileURLToPath(import.meta.url)); const args = process.argv.slice(2);
+// the suite's hand on the read clock: while a "hold" file is here, a PR list call says so ("held") and waits for it to go, so no read
+// can finish (and move githubAt) while the suite reads the City, and that read's lists see only the answers written while it was held.
+// Only the lists: a read with both lists good sets githubAt even when its last call (api rate_limit) fails, so holding that call
+// would let a read that already had good lists finish after the switch.
+if (args[0] === 'pr' && fs.existsSync(path.join(here, 'hold'))) { fs.writeFileSync(path.join(here, 'held'), ''); while (fs.existsSync(path.join(here, 'hold'))) await new Promise((r) => setTimeout(r, 25)); }
+const a = JSON.parse(fs.readFileSync(path.join(here, 'answers.json'), 'utf8'));
 if (a.fail) { process.stderr.write('To get started with GitHub CLI, please run:  gh auth login'); process.exit(4); }
 if (args[0] === 'api') { process.stdout.write(JSON.stringify({ resources: { graphql: { remaining: 4999 } } })); process.exit(0); }
 process.stdout.write(JSON.stringify(a[args[args.indexOf('--state') + 1]] || []));
 '@ -Encoding utf8
 function Set-GhAnswers($fail) {
     @{ fail = $fail; merged = @(@{ number = 5; title = 'City floor from GitHub'; mergedAt = [DateTime]::UtcNow.AddHours(-1).ToString('o'); mergeCommit = @{ oid = ('5' * 40) }; headRefName = 'hand-branch' })
-        open = @(@{ number = 6; title = 'City crane from GitHub'; isDraft = $false; createdAt = [DateTime]::UtcNow.ToString('o'); headRefName = 'kitchen/J952'; statusCheckRollup = @(@{ status = 'COMPLETED'; conclusion = 'FAILURE' }) }) } | ConvertTo-Json -Depth 6 | Set-Content "$ghFake\answers.json" -Encoding utf8
+        open = @(@{ number = 6; title = 'City crane from GitHub'; isDraft = $false; createdAt = [DateTime]::UtcNow.ToString('o'); headRefName = 'kitchen/J952'; statusCheckRollup = @(@{ status = 'COMPLETED'; conclusion = 'FAILURE' }) }) } | ConvertTo-Json -Depth 6 | Set-Content "$ghFake\answers.tmp" -Encoding utf8
+    Move-Item -LiteralPath "$ghFake\answers.tmp" -Destination "$ghFake\answers.json" -Force   # whole, never a half-written file to a read
 }
+# holds the fake gh (above) and returns once a read is waiting on it: from then until Release-GhRead, githubAt cannot move
+function Hold-GhRead {
+    Remove-Item -LiteralPath "$ghFake\held" -Force -ErrorAction SilentlyContinue; Set-Content "$ghFake\hold" ''
+    for ($i = 0; $i -lt 80 -and -not (Test-Path -LiteralPath "$ghFake\held"); $i++) { Start-Sleep -Milliseconds 250 }
+    Test-Path -LiteralPath "$ghFake\held"
+}
+function Release-GhRead { Remove-Item -LiteralPath "$ghFake\hold", "$ghFake\held" -Force -ErrorAction SilentlyContinue }
 Set-GhAnswers $false
 $env:PASS_GITHUB = $null; $env:PASS_GH = "$ghFake\gh.mjs"; $env:PASS_GITHUB_MS = '5000'
 $career = "$root-career"; $env:PASS_CAREER_DIR = $career; $env:PASS_APPLY_FILL = "$root-fill\apply-fill.mjs"; $env:KITCHEN_NOTIFY_LOG = "$root-notify.txt"; $env:KITCHEN_NO_DIAGNOSE = '1'; $env:PASS_STALL_CHECK_MS = '500'
@@ -1069,22 +1083,29 @@ console.log(JSON.stringify({ undo: undoPushBanners(v.undo, { when }), none: undo
     Check 'City_TowersV_InState: the state carries towersV, the same as /api/towers v' ((Invoke-RestMethod "$base/api/state" -Headers $auth).towersV -eq $tw.v)
     $citySlug = [string](Get-Content (Join-Path $repo 'kitchen.repo.json') -Raw | ConvertFrom-Json).github
     Add-Content -LiteralPath (Join-Path $root 'merges.jsonl') -Value (@{ pr = 77; repo = $citySlug; sha = ('7' * 40); actor = 'claude-session'; why = 'batch-run integrate-city: test'; at = [DateTime]::UtcNow.ToString('o'); ok = $true } | ConvertTo-Json -Compress) -Encoding utf8
-    Start-Sleep -Milliseconds 3500   # towers.mjs looks at its inputs at most every 3 s
-    $tw2 = Invoke-RestMethod "$base/api/towers" -Headers $auth; $fl77 = @(@($tw2.towers)[0].floors | Where-Object { $_.pr -eq 77 })
+    # towers.mjs looks at its inputs at most every 3 s: wait for the floor, then check all of it
+    for ($i = 0; $i -lt 60; $i++) { $tw2 = Invoke-RestMethod "$base/api/towers" -Headers $auth; if (@(@($tw2.towers)[0].floors | Where-Object { $_.pr -eq 77 }).Count) { break }; Start-Sleep -Milliseconds 250 }
+    $fl77 = @(@($tw2.towers)[0].floors | Where-Object { $_.pr -eq 77 })
     Check 'City_TowersV_MovesOnMerge: a merge line raises a floor (pr, sha, by session, its Pour) and moves towersV' ($tw2.v -ne $tw.v -and $fl77.Count -eq 1 -and $fl77[0].by -eq 'session' -and $fl77[0].pour -eq 'city' -and @($tw2.towers)[0].kind -eq 'tower' -and (Invoke-RestMethod "$base/api/state" -Headers $auth).towersV -eq $tw2.v)
     @{ id = 'J950'; name = 'improve: city tower probe'; status = 'pending'; cursor = 0; attempt = 0; created = [DateTime]::UtcNow.ToString('o'); history = @(); steps = @(@{ script = 'agent-step.ps1'; args = @{} }, @{ script = 'merge.ps1'; args = @{ Repo = $repo } }) } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $root 'jobs\J950.json') -Encoding utf8
     @{ id = 'J951'; name = 'research: city yard probe'; status = 'pending'; cursor = 0; attempt = 0; created = [DateTime]::UtcNow.ToString('o'); history = @(); steps = @(@{ script = 'agent-step.ps1'; args = @{} }) } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $root 'jobs\J951.json') -Encoding utf8
     $sJT = Invoke-RestMethod "$base/api/state" -Headers $auth
     Check 'City_JobViewTower: a work order with a merge Repo carries its Tower key; one with no Repo carries none (the Yard lot)' (@($sJT.jobs | Where-Object id -eq 'J950')[0].tower -eq @($tw2.towers)[0].key -and $null -eq @($sJT.jobs | Where-Object id -eq 'J951')[0].tower)
     Remove-Item (Join-Path $root 'jobs\J950.json'), (Join-Path $root 'jobs\J951.json') -Force
-    # G2: GitHub (the fake gh above, read every 5 s): every merged and open PR, CI from the checks, the last good read kept on a failure
+    # G2: GitHub (the fake gh above, read every 5 s): every merged and open PR, CI from the checks, the last good read kept on a failure.
+    # The reads are held (Hold-GhRead) while the City is read and the answers turn to a failure: a read used to finish between the
+    # suite's look at githubAt and the switch, so the failed read kept a later good read's githubAt than the one the suite saw
+    # (City_GitHubFail; a harness on towers.mjs and this fake gh: 8 of 40 failed reading every 1 s, 28 of 40 every 0.3 s; 0 of 80 held)
     for ($i = 0; $i -lt 60 -and -not (Invoke-RestMethod "$base/api/state" -Headers $auth).githubAt; $i++) { Start-Sleep -Milliseconds 250 }
-    Start-Sleep -Milliseconds 3500
-    $twG = Invoke-RestMethod "$base/api/towers" -Headers $auth; $tG = @($twG.towers)[0]; $sG = Invoke-RestMethod "$base/api/state" -Headers $auth
+    $ghHeld = Hold-GhRead
+    Check 'City_GitHubHold: the suite holds the next GitHub read (the fake gh waits for it)' $ghHeld
+    # towers.mjs looks at its inputs at most every 3 s: wait for GitHub's floor and crane, then check all of it
+    for ($i = 0; $i -lt 60; $i++) { $twG = Invoke-RestMethod "$base/api/towers" -Headers $auth; $tG = @($twG.towers)[0]; if (@($tG.floors | Where-Object { $_.pr -eq 5 }).Count -and @($tG.open | Where-Object { $_.pr -eq 6 }).Count) { break }; Start-Sleep -Milliseconds 250 }
+    $sG = Invoke-RestMethod "$base/api/state" -Headers $auth
     $fl5 = @($tG.floors | Where-Object { $_.pr -eq 5 }); $cr6 = @($tG.open | Where-Object { $_.pr -eq 6 })
     Check 'City_GitHubRead: a merged PR from GitHub is a floor with its title; an open PR is a crane with its CI (red) and work order (its file is not found, so no title); the state carries githubAt' ($fl5.Count -eq 1 -and $fl5[0].title -eq 'City floor from GitHub' -and $fl5[0].by -eq 'github' -and $cr6.Count -eq 1 -and $cr6[0].ci -eq 'red' -and $cr6[0].job -eq 'J952' -and $null -eq $cr6[0].title -and $sG.githubAt -and $twG.githubAt -eq $sG.githubAt -and $null -eq $twG.githubError)
     Check 'City_GitHubCache: the last good read is kept in the state folder (towers-github.json)' ((Test-Path (Join-Path $root 'towers-github.json')) -and (Get-Content (Join-Path $root 'towers-github.json') -Raw) -match 'City floor from GitHub')
-    Set-GhAnswers $true
+    Set-GhAnswers $true; Release-GhRead   # the held read goes on and sees only the failure
     for ($i = 0; $i -lt 60 -and -not (Invoke-RestMethod "$base/api/towers" -Headers $auth).githubError; $i++) { Start-Sleep -Milliseconds 250 }
     $twF = Invoke-RestMethod "$base/api/towers" -Headers $auth; $tF = @($twF.towers)[0]
     Check 'City_GitHubFail: a failed read says so in plain words, keeps githubAt at the last good read and drops no floor or crane' ($twF.githubError -match 'gh is not signed in$' -and $twF.githubAt -eq $sG.githubAt -and @($tF.floors | Where-Object { $_.pr -eq 5 }).Count -eq 1 -and @($tF.open | Where-Object { $_.pr -eq 6 }).Count -eq 1 -and $twF.v -ne $twG.v)
