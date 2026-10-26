@@ -757,6 +757,8 @@ body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;bac
 .order-btn svg{transition:transform .5s var(--spring)}.order-btn:active svg{transform:rotate(90deg)}
 @keyframes order-glow{50%{box-shadow:0 12px 34px -6px color-mix(in srgb,var(--ember) 75%,transparent)}}
 @media (min-width:760px){.bar{left:50%;right:auto;width:560px;transform:translateX(-50%);bottom:16px}}
+/* a phone (rename S6b): New work order stacks like the tabs, the icon over at most two lines of words, instead of wrapping onto three beside it */
+@media (max-width:440px){.order-btn{flex-direction:column;gap:2px;height:auto;min-height:54px;padding:4px 2px;font-size:11px;line-height:1.1;letter-spacing:-.03em;text-align:center}.order-btn span{text-wrap:balance}}
 
 /* sheets: glass backdrop, a springy rise, rounder corners */
 dialog::backdrop{background:rgba(10,8,6,.5);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
@@ -1286,6 +1288,22 @@ html.px .btn.primary:active{transform:translateY(2px);box-shadow:inset 0 2px 0 v
 html.px .job-progress i{border-radius:0;height:8px;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--px-ol) 25%,transparent)}
 html.px :focus-visible:not(.px-a,.px-info){outline:3px solid var(--px-focus);outline-offset:2px;border-radius:0}
 @media (prefers-reduced-motion:reduce){html.px .top h1::before,html.px .sec.hot .sec-head::after,html.px .sec.hot .sec-head>span::before{animation:none}}
+/* the icons (rename S6b): the tabs are site things (the site board, a walkie-talkie, the pulse, a hard hat, the ledger), drawn at a
+   whole 2x so they stay crisp (no scale on the current tab). The tab you land on hops once; the Live hard hat nods while a crew is at
+   work; New work order is a clipboard on a button with hazard tape along its top. Motion is stepped and stops under reduced motion. */
+html.px .bar a svg,html.px .bar a[aria-current="page"] svg{transform:none;transition:none}
+html.px .bar a:active svg{transform:translateY(2px)}
+html.px .bar a[aria-current="page"] svg{animation:px-hop .36s steps(1) 1}
+html.px .bar a[data-view=cooks]:has(.live-count:not([hidden])) svg{animation:px-nod 2.4s steps(1) infinite}
+@keyframes px-hop{0%{transform:translateY(-4px)}33%{transform:translateY(-2px)}66%{transform:translateY(-2px)}100%{transform:none}}
+@keyframes px-nod{0%,64%,100%{transform:none}68%{transform:translateY(2px)}76%{transform:none}80%{transform:translateY(2px)}}
+html.px .bar .dot-count{font-family:var(--mono);box-shadow:inset 0 0 0 1px var(--px-ember-lo)}
+html.px .order-btn{position:relative;overflow:hidden;font-family:var(--mono);font-weight:700}
+html.px .order-btn::after{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:var(--px-hazard);pointer-events:none}
+html.px .order-btn:active svg{transform:none}
+html.px .order-btn:hover svg,html.px .order-btn:focus-visible svg{animation:px-hop .36s steps(1) 1}
+html.px .order-btn:focus-visible{outline:3px solid var(--px-focus);outline-offset:2px;box-shadow:inset 0 0 0 3px var(--on-ember),inset 0 -3px 0 var(--px-ember-lo)}
+@media (prefers-reduced-motion:reduce){html.px .bar a svg,html.px .order-btn svg{animation:none!important}}
 
 /* the world (plans/chef-art-2.md wave 1): the room's (i) chip, 44 px to tap, and the legend sheet "What am I looking at?" (scene.js legendRows) */
 .px-info{position:absolute;top:0;left:0;width:44px;height:44px;padding:0;border:0;background:none;color:transparent;font-size:0;cursor:pointer;-webkit-tap-highlight-color:transparent;outline-offset:-2px}

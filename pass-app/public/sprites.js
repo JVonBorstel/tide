@@ -125,18 +125,18 @@ const MOON = ['.II..', 'II...', 'II...', 'II...', '.II..'];
 const DIGITS = strip(['aaa .a. aaa aaa a.a aaa aaa aaa aaa aaa', 'a.a aa. ..a ..a a.a a.. a.. ..a a.a a.a', 'a.a .a. aaa aaa aaa aaa aaa ..a aaa aaa',
   'a.a .a. a.. ..a ..a ..a a.a ..a a.a ..a', 'aaa aaa aaa aaa ..a aaa aaa ..a aaa aaa'], 10);
 const ICONS = strip([
-  '.....aa..... ............ ............ ...aaaaaa... .aaaaaaaa... ............',
-  '....a66a.... .aaaaaaaaaa. ..........a. ..aappppaa.. .a6pppppa... .aaaaaaaaaa.',
-  '...aaaaaa... a6pppppppppa .........a5a .apppppppoa. .apaaaaapa.. .appppppppa.',
-  '..a665555a.. apppppppppoa ........a5a. .appopppppa. .apppppppa.. .appp55pppa.',
-  '.a66555555a. apaaaaaaaapa a......a5a.. ..aooooona.. .apaaaaapa.. .appp55pppa.',
-  '.a65555555a. apppppppppoa 5a....a5a... ..a655554a.. .apppppppa.. .ap555555pa.',
-  '.a55555554a. apaaaaaapppa .5a..a5a.... ..a555554a.. .apaaaapna.. .ap555555pa.',
-  'aaaaaaaaaaaa apppppppppoa ..5aa5a..... ..a555554a.. .apppppppa.. .appp55pppa.',
-  'a4444444444a .aaaaaaaoaa. ...55a...... ..a444444a.. .apaaapppa.. .appp44pppa.',
-  '.aaaaaaaaaa. .....a.oa... ............ ..aaaaaaaa.. .apppppnna.. .appppppppa.',
-  '............ ......aaa... ............ ............ .aaaaaaaaa.. .aaaaaaaaaa.',
-  '............ ............ ............ ............ ............ ............'], 6);
+  '............ ...a....5... ............ ............ .aaaaaaaa... ....aaaa....',
+  'aaaaaaaaaaaa ...a..5..5.. ..........a. ....aaaa.... .a6ppppoa... .aaaa65aaaa.',
+  'a6655555554a ..aaaaaaaa.. .........a5a ...a66a5a... .a6aaapoa... .appaaaappa.',
+  'aaaaaaaaaaaa ..a665555a.. ........a5a. ..a665a55a.. .a6ppppoa... .apppppppoa.',
+  'apppppppppoa ..a6pppo5a.. a......a5a.. .a6655a555a. .a6aaaaoa... .appp55ppoa.',
+  'apaaaapaaaoa ..a6onno5a.. 5a....a5a... .a6555a554a. .a6ppppoa... .ap555555oa.',
+  'apppppppppoa ..a555555a.. .5a..a5a.... .a5555a554a. .a6aaapoa... .ap555555oa.',
+  'apaaaaapppoa ..a5a5a54a.. ..5aa5a..... aaaaaaaaaaaa .a6ppppaaa.. .appp55ppoa.',
+  'aonnnnnnnnna ..a55a5a4a.. ...55a...... a6555555554a .a6pppa665a. .appp44ppoa.',
+  'aaaaaaaaaaaa ..a5a5a54a.. ............ aaaaaaaaaaaa .a6pppa654a. .apppppppoa.',
+  '.a4a....a4a. ..a444444a.. a.a.a.a.a.a. ............ .aaaaaa554a. .aonnnnnnna.',
+  '.aaa....aaa. ..aaaaaaaa.. ............ ............ .......aaa.. .aaaaaaaaaa.'], 6);
 const PARTICLE = {
   steam: strip(['..... ..... .o... o.o..', '..... .po.. pop.. ...o.', '..p.. .ppo. .pop. o..o.', '.ppo. ..p.. ..o.. .....', '..... ..... ..... .....'], 4),
   sparkle: strip(['..... ..t.. ..W.. .....', '..... ..t.. .tWt. ..t..', '..W.. ttWtt WWWWW .tWt.', '..... ..t.. .tWt. ..t..', '..... ..t.. ..W.. .....'], 4),
@@ -306,8 +306,7 @@ export function buildAtlas(mk, pal = PALETTE) {
 }
 
 // ---- interface chrome sprites (scene.js turns them into CSS variables: --px-<name>) ----
-// tabs in the bar order of index.html: pass, talk, activity, cooks (Live), ledger, order; each plain and lit (the ember), and a
-// -dark pair for the dark bar: the near-black outline would vanish there, so it turns cream and the paper turns the dark card
+// tabs in bar order (S6b: site board, walkie-talkie, pulse, hard hat, ledger, clipboard); plain, lit, and -dark with a cream outline
 export const TAB_ICONS = ['pass', 'talk', 'activity', 'cooks', 'ledger', 'order'];
 const INK = ['#5c5953', '#8a857c', '#b5afa5'], INK_DARK = ['#8a857c', '#b5afa5', '#d6c3a8'], EMBER = ['#7a1f12', '#c2410c', '#f08a24'];
 export const TAB_DARK = { a: PALETTE.o, p: PALETTE.Q, o: PALETTE.F, n: PALETTE.k };   // outline, paper, paper shade, paper shadow
