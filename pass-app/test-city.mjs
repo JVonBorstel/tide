@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { makeTowers, sitesOf, localRecords, buildTowers, versionOf, slugOf, repoArgOf, pourOf, ciOfRollup, githubTargets, ghCall } from './towers.mjs';
+import { cityOf, scaleOf, bandOf, beaconOf, needsYou, sentence, momentsDue } from './public/city.js';
 
 for (const k of ['PASS_GH', 'PASS_GITHUB', 'PASS_GITHUB_MS', 'PASS_TOWERS_GIT_MS']) delete process.env[k];   // the suite's fake gh is for its server, not these checks
 const out = [];
@@ -218,6 +219,74 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
     JSON.stringify(githubTargets([{ key: 'a', slug: 'o/a' }, { key: 'b', slug: '' }, { key: 'c', slug: 'o/c', office: true }, { key: 'd', slug: 'o/a', history: { slug: 'o/old' } }], new Map([['b', { remoteSlug: 'o/b' }]]))) === JSON.stringify([{ slug: 'o/a', past: false }, { slug: 'o/b', past: false }, { slug: 'o/old', past: true }]));
   check('GitHub_PlainErrors: gh\'s failures are said in plain words, never its raw output', (await ghCall(async () => ({ err: Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }), out: '' }), ['pr'])).error === 'gh is not installed' && (await ghCall(async () => ({ err: new Error('x'), out: 'HTTP 404: Not Found (https://api.github.com/x)' }), ['pr'])).error === 'the repo is not on GitHub');
   check('Config_KeyFallback: shown names and history are found by key, else GitHub name, else folder name (so they hold when a Site code arrives)', td.floors.some((x) => x.past) && td.publicFrom === undefined);
+}
+
+// ---- G3: the model (public/city.js cityOf): one truth test per row of the design's section 4.1 ----
+{
+  const NOW = Date.parse('2026-10-26T20:00:00Z'); const ago = (ms) => new Date(NOW - ms).toISOString(); const H = 36e5, M = 6e4;
+  const fl = (n, o = {}) => Array.from({ length: n }, (_, i) => ({ pr: i + 1, at: ago((n - i) * 2 * 864e5), by: 'github', ...o }));
+  const tide = { key: 'td', name: 'Tide', kind: 'tower', folder: 'brain-monitor', repo: 'demo-owner/tide-demo', publicFrom: ago(H), plinth: { commits: 306, before: ago(3 * 864e5) },
+    floors: [...fl(10, { past: true }), { pr: 11, at: ago(2 * H), by: 'session' }, { pr: 12, at: ago(30 * M), by: 'yard', job: 'J1' }, { pr: 13, at: ago(5 * H), undone: ago(H), job: 'J9' }],
+    open: [{ pr: 20, ci: 'red', draft: false, createdAt: ago(H) }, { pr: 21, ci: null, draft: true, createdAt: ago(2 * H) }, { pr: 22, ci: 'green', draft: false, createdAt: ago(3 * H), job: 'J5' },
+      { pr: 23, ci: 'pending', draft: false, createdAt: ago(10 * M), job: 'J6' }, { pr: 24, ci: 'green', createdAt: ago(M) }] };
+  const gw = { key: 'demo-project', name: 'Demo', kind: 'tower', folder: 'demo-project', repo: 'demo-owner/demo-project', floors: fl(40), open: [], blueprint: { total: 98, shipped: 62 } };
+  const lot = { key: 'side-app', name: 'Side app', kind: 'lot', folder: 'side-app', floors: [], open: [], plinth: { commits: 28 } };
+  const office = { key: 'gemini-brain', name: 'gemini-brain', kind: 'office', folder: 'gemini-brain', floors: [], open: [], commits: 145, lastCommit: ago(3 * H) };
+  const TW = { ok: true, githubAt: ago(2 * M), githubError: null, towers: [tide, gw, lot, office] };
+  const job = (id, o) => ({ id, status: 'running', step: 2, steps: 4, station: 'agent', role: 'do', cook: 'claude sonnet', updated: ago(M), ...o });
+  const S = { paused: true, live: true, breaker: false, stalled: false, spent: 5, budget: 20, githubAt: ago(2 * M),
+    jobs: [job('J5', { tower: 'td' }), job('J6', { tower: 'td', status: 'waiting-approval' }), job('J7', { tower: 'td' }), job('J8', { tower: 'td', role: 'plan', private: true }),
+      job('J10', { tower: 'td', station: 'tests', role: '' }), job('J11', { tower: 'td', step: 4 }), ...Array.from({ length: 7 }, (_, i) => job('J3' + i, { tower: 'td', status: 'pending' })),
+      job('J40', { tower: 'td', status: 'needs-human', updated: ago(5 * H) }), job('J50', {}), job('J51', { status: 'pending' }), job('J52', { status: 'waiting-approval', private: true })],
+    mainStatus: [{ tower: 'brain-monitor', state: 'red' }, { tower: 'demo-project', state: 'unreadable' }],
+    freeze: { repos: [{ name: 'demo-project', windows: [{ from: ago(H), to: new Date(NOW + H).toISOString() }] }, { name: 'brain-monitor', windows: [{ from: new Date(NOW + 5 * H).toISOString(), to: new Date(NOW + 9 * H).toISOString(), fromText: '10-27 00:00' }] }] },
+    undoUnpushed: [{ job: 'J9', state: 'unpushed' }], automergePause: { until: new Date(NOW + H).toISOString() } };
+  const EV = [{ type: 'approval.requested', job: 'J6', ts: ago(90 * M) }, { type: 'approval.requested', job: 'J52', ts: ago(30 * M) }, { type: 'budget.stop', ts: ago(H) }];
+  const C = cityOf(TW, S, EV, NOW, { lastSeen: ago(H) }); const L = (k) => C.lots.find((l) => l.key === k);
+  const td = L('td');
+  check('Model_Kinds: towers, a lot and the Office from /api/towers; orders with no Tower (research, career, private) go to the Yard lot', C.lots.map((l) => l.kind).join() === 'tower,tower,lot,office' && C.yard.running === 1 && C.yard.queued === 1 && C.yard.waiting === 1 && C.yard.private === true);
+  check('Model_Floors: one floor per merged PR; a taken-down floor is not counted', td.floors === 12 && L('demo-project').floors === 40);
+  check('Model_SharedScale: one k for every tower (the smallest of 1, 2, 5 ... that fits 80 art px), heights in rows of k', C.k === 1 && td.rows === 12 && scaleOf([{ kind: 'tower', floors: fl(129) }]) === 5 && scaleOf([{ kind: 'tower', floors: fl(40) }, { kind: 'tower', floors: fl(3) }]) === 1 && scaleOf([{ kind: 'tower', floors: fl(41) }]) === 2);
+  check('Model_TowerBands: a Tower level keeps the newest 22 floors whole and bands older ones in k (at most 20 bands)', bandOf([{ kind: 'tower', floors: fl(129) }]) === 10 && bandOf([{ kind: 'tower', floors: fl(122) }]) === 5);
+  check('Model_StoneBase: drawn iff the commit count is known; a lot is all stone base', td.plinth === 306 && L('demo-project').plinth === 0 && L('side-app').plinth === 28);
+  check('Model_PublicLine: the "public from" line sits above the old floors, only when publicFrom is sent', td.publicAt === 10 && L('demo-project').publicAt === null);
+  check('Model_LitWindows: lit iff the floor merged in the last 24 h', td.lit === 2 && L('demo-project').lit === 0);
+  check('Model_NewFlag: floors since the phone\'s last look are new; with no last look, none is', td.fresh === 1 && cityOf(TW, S, EV, NOW).lots[0].fresh === 0);
+  check('Model_Blueprint: the planned outline iff the Tower has a Blueprint', L('demo-project').blueprint?.total === 98 && td.blueprint === null);
+  check('Model_Cranes: one per open PR; 3 shown, sign-off first, then a crew on it, then red CI, then the newest; the rest are "+N"', td.cranes.map((c) => c.pr).join() === '23,22,20' && td.craneMore === 2, td.cranes.map((c) => c.pr).join());
+  check('Model_CraneTag: red, pending or green from CI; none when unknown; a draft carries no load', td.cranes.find((c) => c.pr === 20).ci === 'red' && td.cranes.find((c) => c.pr === 23).ci === 'pending' && cityOf({ towers: [{ ...tide, open: [tide.open[1]] }] }, {}, [], NOW).lots[0].cranes[0].ci === null && cityOf({ towers: [{ ...tide, open: [tide.open[1]] }] }, {}, [], NOW).lots[0].cranes[0].draft === true);
+  check('Model_Crews: a running order on the Tower is a crew (its crew colour, its station\'s tool, its height = step/steps); 3, then "+N"; a private one shows a lock', td.crews.length === 3 && td.crewMore === 1 && td.crews[0].cook === 'claude' && td.crews[0].tool === 'build' && td.crews[0].lift === 0.5 && td.crews.find((c) => c.id === 'J8').private && td.crews.find((c) => c.id === 'J8').tool === 'survey' && td.crews.find((c) => c.id === 'J10').tool === 'test' && td.cranes.find((c) => c.pr === 22).crew?.id === 'J5');
+  check('Model_Pallets: queued orders on the Tower are pallets at the base: 5, then "+N"', td.pallets === 5 && td.palletMore === 2);
+  check('Model_Beacon: a sign-off waiting on the Tower lights a beacon; its colour from when it was asked: warm, amber at 1 h, red at 4 h', td.beacon === 'red' && td.cranes.find((c) => c.pr === 23).beacon === 'amber' && beaconOf(NOW - 10 * M, NOW) === 'warm' && td.waiting === 2 && C.yard.beacon === 'warm');
+  check('Model_Scaffold: red main puts up scaffolding, matched by folder name or GitHub name; unreadable shows "?"; no record draws nothing', td.scaffold === 'red' && L('demo-project').scaffold === '?' && cityOf(TW, { ...S, mainStatus: [{ tower: 'tide-demo', state: 'red' }] }, [], NOW).lots[0].scaffold === 'red' && cityOf(TW, { ...S, mainStatus: [] }, [], NOW).lots[0].scaffold === null);
+  check('Model_Freeze: barrier tape while a window is on now; a "closes" sign for one still ahead', L('demo-project').tape === 'now' && td.tape === null && td.closes === '10-27 00:00');
+  check('Model_Skip: a floor taken down in the last 24 h sits in the skip; "?" iff its undo is not on GitHub yet', td.skip.length === 1 && td.skip[0].unknown === true && cityOf(TW, { ...S, undoUnpushed: [] }, [], NOW).lots[0].skip[0].unknown === false && cityOf(TW, S, [], NOW + 864e5).lots[0].skip.length === 0);
+  check('Model_ManualHandover: the "manual handover" tag on the cranes while auto-merge is paused', td.manual === true && cityOf(TW, { ...S, automergePause: null }, [], NOW).lots[0].manual === false && L('side-app').manual === false);
+  check('Model_Gate: PAUSED (never CLOSED), OPEN lit with AI crews on, the STOP tag for a stop-work order, the clock stopped when stalled', C.gate.paused === true && C.gate.live === true && C.gate.breaker === false && C.gate.stalled === false && cityOf(TW, { breaker: true, stalled: true }, [], NOW).gate.breaker && cityOf(TW, {}, [], NOW).gate.paused === null);
+  check('Model_Budget: 8 segments, floor(8 x spent / budget) clamped; the padlock iff the cap stopped work today; nothing without a budget', C.gate.budget.level === 2 && C.gate.budget.stop === true && cityOf(TW, { spent: 99, budget: 20 }, [], NOW).gate.budget.level === 8 && cityOf(TW, { spent: 5 }, [], NOW).gate.budget === null);
+  check('Model_GithubSign: shown iff the last good read is over 10 min old or the read failed', C.gate.github === null && cityOf({ ...TW, githubAt: ago(12 * M) }, {}, [], NOW).gate.github.text === 'GitHub read 12 min ago' && cityOf({ ...TW, githubError: 'gh is not signed in' }, S, [], NOW).gate.github.err === true);
+  check('Model_Sky: the sky is the real hour (dawn, day, dusk, night), never the weather', C.sky === cityOf(TW, S, [], NOW).sky && ['dawn', 'day', 'dusk', 'night'].includes(C.sky));
+  check('Model_Office: its windows are lit iff a commit in the last 24 h', L('gemini-brain').lit === 1 && cityOf({ towers: [{ ...office, lastCommit: ago(30 * H) }] }, {}, [], NOW).lots[0].lit === 0);
+  const bare = cityOf({ ok: true, towers: [{ key: 'x', name: 'x', kind: 'tower', floors: [{ at: ago(30 * H) }], open: [] }] }, {}, [], NOW).lots[0];
+  check('Model_TruthRule: a tower with no state and no records draws no crane, crew, pallet, beacon, scaffold, tape, skip, stone base or line', bare.cranes.length + bare.crews.length + bare.pallets + bare.lit === 0 && bare.beacon === null && bare.scaffold === null && bare.tape === null && bare.closes === null && bare.skip.length === 0 && bare.plinth === 0 && bare.publicAt === null && bare.blueprint === null);
+  check('Model_States: loading (no answer yet) and error ({ok:false}) are said, never drawn as an empty City', cityOf(null, S, [], NOW).loading === true && cityOf({ ok: false, error: 'boom' }, S, [], NOW).error === 'boom' && cityOf(TW, S, [], NOW).error === null);
+  check('Strip_QuietUnlessNeeded: the horizon strip calls out a beacon, a red main or PAUSED, and is quiet otherwise', needsYou(C) === true && needsYou(cityOf({ towers: [gw] }, { paused: false }, [], NOW)) === false && needsYou(cityOf({ towers: [] }, { paused: true }, [], NOW)) === true);
+  check('TextTwin_Sentences: each building in words, numbers only (no titles)', sentence(td) === 'Tide: 12 floors, 5 under construction, 2 new today, 5 crews at work, 2 sign-offs waiting, main is red, closes 10-27 00:00' && sentence(L('side-app')) === 'Side app: a lot of 28 commits, no floors yet' && sentence(L('gemini-brain')) === 'gemini-brain: the Office, a commit in the last day', sentence(td));
+  const before = cityOf({ towers: [{ ...tide, open: tide.open.slice(0, 1) }] }, {}, [], NOW); const after = cityOf({ towers: [{ ...tide, floors: [...tide.floors, { pr: 30, at: ago(M) }, { pr: 31, at: ago(M) }], open: tide.open.slice(0, 2) }] }, { mainStatus: [{ tower: 'td', state: 'red' }] }, [], NOW);
+  const due = momentsDue(before, after, [{ type: 'approval.requested', job: 'J6', ts: ago(M) }, { type: 'step.started', job: 'J5', ts: ago(5 * M) }, { type: 'merge.undone', job: 'J50', ts: ago(M) }], NOW, S.jobs);
+  check('Moments_Due: a Pour of 2 floors, a new crane and red scaffolding from what changed; a beacon from a fresh event; events over 2 min old and orders with no Tower play nothing', due.map((m) => m.type).join() === 'pour,crane,scaffold-up,beacon-on' && due[0].say === 'Tide: Pour: 2 floors' && due[3].key === 'td', due.map((m) => m.type).join());
+}
+
+// ---- the City's seams with S7 (read-only imports) and its byte budget ----
+{
+  const sp = await import('./public/sprites.js'); const sc = await import('./public/scene.js');
+  const need = { 'sprites.js': [sp, ['PALETTE', 'paletteFor', 'toRGBA', 'SKIES', 'GLYPHS', 'mix', 'EMISSIVE']], 'scene.js': [sc, ['skyAt', 'cookOf', 'stationFor', 'COOK_COLORS', 'ticket', 'esc', 'applyCss', 'stepWord', 'mountScene', 'makeLoop']] };
+  const moved = Object.entries(need).flatMap(([f, [mod, names]]) => names.filter((n) => mod[n] === undefined).map((n) => `${f} no longer exports ${n}`));
+  check(`Seams_S7Exports: every sprites.js and scene.js export the City reads is still there${moved.length ? ' (MOVED: ' + moved.join('; ') + ')' : ''}`, moved.length === 0);
+  const zl = await import('node:zlib');
+  const files = ['city.js', 'city-art.js', 'city-nav.js'].filter((f) => fs.existsSync(new URL('./public/' + f, import.meta.url)));
+  const br = files.reduce((n, f) => n + zl.brotliCompressSync(fs.readFileSync(new URL('./public/' + f, import.meta.url))).length, 0);
+  check(`Budget_CityBytes: city.js + city-art.js + city-nav.js are at most 16,000 bytes brotli (${br} B in ${files.join(', ')})`, files.includes('city.js') && br <= 16000);
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

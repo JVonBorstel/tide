@@ -279,7 +279,7 @@ export function buildTowers({ sites, errors = [] }, rec, gitBy = new Map(), extr
   for (const s of sites) {
     const g = gitBy.get(s.key) || {}; const floors = (rec.floors.get(s.key) || []).map((f) => scrub(f, priv)); const open = (rec.open.get(s.key) || []).map((o) => scrub(o, priv));
     const kind = s.office ? 'office' : floors.length || open.length ? 'tower' : 'lot';
-    const t = { key: s.key, name: s.name, kind, repo: s.slug || g.remoteSlug || null, floors: kind === 'office' ? [] : floors, open: kind === 'office' ? [] : open };
+    const t = { key: s.key, name: s.name, kind, folder: s.folder, repo: s.slug || g.remoteSlug || null, floors: kind === 'office' ? [] : floors, open: kind === 'office' ? [] : open };
     if (kind === 'tower' && g.plinth) t.plinth = g.plinth;
     if (kind === 'lot' && g.commits !== null && g.commits !== undefined) t.plinth = { commits: g.commits, before: g.lastCommit || null };
     if (kind === 'office') { if (g.commits !== null && g.commits !== undefined) t.commits = g.commits; if (g.lastCommit) t.lastCommit = g.lastCommit; }

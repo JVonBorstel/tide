@@ -73,9 +73,10 @@ after an event line 20 -> 10 ms; a stream message after the first 182 KB -> abou
   files in ember, and the lines with `textContent`, wrapped (no sideways scroll at 375 px). The yes carries the listed sha, and the server
   still measures the diff fresh before granting. A private work order lists file names only: no counts, no lines (`?file=` is 403), and its
   work order page no longer carries the worktree diff. Not at a merge gate: 409; git failed: 503.
-### The City's data (G1, G2)
+### The City (G1-G3)
 - **`GET /api/towers`** (`towers.mjs`, signed in like every `/api/*`): `{ ok, at, gitAt, githubAt, githubError, v, towers, errors }`. One row per repo on
   this PC, left to right: Towers by their first floor (a Tower never moves), then Lots, then the Office.
+  - `folder`: the repo folder's name (never its path), so main-status, freeze and undo records, which name a folder, find their Tower.
   - `kind`: `tower` (it has a floor or a crane), `lot` (commits only: a stone base of `plinth.commits`) or `office` (the repo named
     `city.office`, default gemini-brain: `commits`, `lastCommit`, never floors).
   - `floors[]` `{pr?, sha?, at, by, job?, pour?, title?, undone?, past?}`, oldest first, one per merge commit: every merged PR on GitHub
@@ -102,6 +103,17 @@ after an event line 20 -> 10 ms; a stream message after the first 182 KB -> abou
   state field, so the phone's "GitHub read N min ago" sign stays true without a refetch) is the last read that fully worked. Each read
   logs one line: lists read, milliseconds, GraphQL points left. `towersV` leaves out `gitAt` and `githubAt`: a read that found nothing
   new does not make the phone fetch again.
+- **The model** (`public/city.js` `cityOf(towers, state, events, now, { lastSeen })`, pure, tested in node): what each building
+  shows, one field per mark (plans/city-god-mode section 4.1): one shared height scale (`k` floors per 2 px row, the smallest of 1, 2,
+  5 ... that keeps the tallest within 80 art px; a Tower level draws its newest 22 floors whole and older ones in bands), lit windows for
+  floors merged in the last 24 h, new floors since the phone's last look, cranes (3 shown: a sign-off first, then a crew on it, then red
+  CI, then the newest; then "+N"), crews (the crew's colour, its station's tool, its height = step/steps; 3 then "+N"; a lock for a
+  private order), pallets (queued: 5 then "+N"), the beacon (warm, amber at 1 h, red at 4 h, from `approval.requested`), scaffolding
+  (red main; "?" when unreadable), barrier tape (a freeze now) or a "closes" sign, the skip (a floor taken down in the last 24 h; "?"
+  until the undo is on GitHub), the "manual handover" tag, the gate (PAUSED, never CLOSED; OPEN lit; STOP; the clock), the budget meter
+  (8 segments, a padlock after a cap stop today), the GitHub sign (over 10 min old, or failed), the real hour's sky, the Office's
+  windows, and the Yard lot (orders with no Tower: counts only). `needsYou` drives the horizon strip; `sentence` is each building's text
+  twin (numbers only); `momentsDue` lists the moments real changes and events under 2 minutes old call for.
 - **`tower`** on each work order in the state: the key of the Tower its merge step's `Repo` is, or `null` (research, career, scouts:
   the Yard lot).
 - **Which repos, and their names** come from the state folder's `kitchen.json` only (personal values never sit in this repo):
