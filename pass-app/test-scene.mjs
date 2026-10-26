@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import { layoutScene, sceneHtml, stationFor, cookOf, lookOf, skyAt, hashId, activityWord, STATIONS, COOK_COLORS,
   STAGE, pixelScale, stageNew, stageSync, stageTick, drawStage, makeKit, makeLoop, hitItems, hitHtml,
-  stageCalm, frameStats, stepWord } from './public/scene.js';
+  stageCalm, frameStats, stepWord, writeHits, dropStage } from './public/scene.js';
 import { stageOk, stageFps, stageWalking, frameKey } from './public/frame.js';
 import { WORLD, worldOf, worldWords, worldKey, legendRows, legendHtml, PLACE, HANG, bakeWorld } from './public/world.js';
 import zlib from 'node:zlib';
@@ -532,6 +532,12 @@ check(`GantryHang: a gantry beam spans the sky (${fullBake.filter((r) => r === '
   && PLACE.fuse[1] <= 3 && !drawnW({ jobs: [] }).includes('chain:0'));
 check('WorkLightTruth: the work light is drawn only with its field (breaker): none without it, lit when false, out when true',
   !drawnW({ jobs: [] }).some((r) => /^lamp/.test(r)) && drawnW({ jobs: [], breaker: false }).includes('lamp:0') && drawnW({ jobs: [], breaker: true }).includes('lamp-off:0') && !drawnW({ jobs: [], breaker: true }).includes('lamp:0'));
+// no lost taps: the link layer is written only when its markup changes; a replaced stage lets go of its observers
+let hitWrites = 0; const fakeSc = { hit: { set innerHTML(v) { hitWrites++; } } }, sameHtml = hitItems(layoutScene(busy, [], {}, T0), 0, { P }).map((it) => hitHtml(it)).join('');
+const w1 = writeHits(fakeSc, sameHtml), w2 = writeHits(fakeSc, sameHtml), w3 = writeHits(fakeSc, sameHtml + ' ');
+let disc = 0; const obs = () => ({ disconnect: () => disc++ }), oldSc = { io: obs(), ro: obs() }; dropStage(oldSc); dropStage(oldSc); dropStage(null);
+check(`HitsStable: the same links twice write the layer once (${hitWrites} writes for 3 renders, 2 different); a dropped stage disconnects both observers once (${disc})`,
+  w1 && !w2 && w3 && hitWrites === 2 && disc === 2 && oldSc.io === null && /dropStage\(sc\);\s*el\.innerHTML/.test(fs.readFileSync(new URL('./public/scene.js', import.meta.url), 'utf8')));
 const siteChrome = P.chromeSprites(mk);
 check('SiteChrome: loading, offline and empty are drawn as site art (32x32: 4, 2 and 2 frames) and the empty one holds no clipboard or cloche (a shovel and an empty pallet)',
   siteChrome.load.width === 128 && siteChrome.off.width === 64 && siteChrome.empty.width === 64 && !/cloche/.test(fs.readFileSync(new URL('./public/sprites.js', import.meta.url), 'utf8').match(/one\('empty'[^\n]*/)[0]));

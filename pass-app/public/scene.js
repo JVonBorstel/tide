@@ -121,11 +121,11 @@ export function sceneHtml(s, events, opts = {}, now = Date.now()) { return s ? c
 // the pixel stage once sprites.js has loaded; the still card until then (rebuilt only when its words change: nothing in it moves)
 export function mountScene(el, s, events, opts = {}) {
   if (!el) return;
-  if (!s) { el.innerHTML = ''; el._card = null; el._px = null; return; }
+  if (!s) { dropStage(el._px); el.innerHTML = ''; el._card = null; el._px = null; return; }
   const L = layoutScene(s, events, opts);
   el._args = [s, events, opts]; mounted.add(el);
   if (PX && canvasOk()) { el._card = null; mountPixel(el, L); return; }
-  const html = cardHtml(L); el._px = null;
+  const html = cardHtml(L); dropStage(el._px); el._px = null;
   if (el._card !== html || !el.firstElementChild) { el._card = html; el.innerHTML = html; applyCss(el); }
 }
 
@@ -348,11 +348,17 @@ function paint(sc) {
 // the links and bubbles over the canvas (again when a tapped crew member's wave starts or ends); a moment's line goes to #announce
 function hits(sc) {
   sc.wave = sc.st.fx?.wave?.key; const fx = sc.st.fx, a = fx?.line && document.getElementById('announce'); if (a) a.textContent = fx.line; if (fx) fx.line = null;
-  sc.hit.innerHTML = hitItems(sc.st.L, (sc.st.W - STAGE.w) >> 1, { P: KIT.P, k: sc.k, W: sc.st.W, wave: sc.wave }).map((it) => hitHtml(it, sc.st.W)).join(''); applyCss(sc.hit);
+  writeHits(sc, hitItems(sc.st.L, (sc.st.W - STAGE.w) >> 1, { P: KIT.P, k: sc.k, W: sc.st.W, wave: sc.wave }).map((it) => hitHtml(it, sc.st.W)).join(''));
 }
+// the link layer is written only when its markup changes: a state render that changes nothing never replaces the link under a finger
+// mid-tap (a lost tap); returns whether it wrote (tested)
+export function writeHits(sc, html) { if (sc.hitHtml === html) return false; sc.hitHtml = html; sc.hit.innerHTML = html; applyCss(sc.hit); return true; }
+// a stage that is replaced or leaves the page lets go of its observers (they held the old stage alive for as long as the page was open)
+export function dropStage(sc) { if (!sc) return; sc.io?.disconnect?.(); sc.ro?.disconnect?.(); sc.io = sc.ro = null; }
 function mountPixel(el, L) {
   let sc = el._px;
   if (!sc || !el.contains(sc.root) || sc.compact !== L.compact) {
+    dropStage(sc);
     el.innerHTML = `<div class="px-stage${L.compact ? ' compact' : ''}" role="group"><canvas class="px-canvas" width="${STAGE.w}" height="${STAGE.h}" aria-hidden="true"></canvas><div class="px-hit"></div>`
       + '<button class="px-info" type="button" aria-haspopup="dialog" aria-label="What am I looking at?">i</button></div>';
     const root = el.firstElementChild, canvas = root.querySelector('canvas');
@@ -367,7 +373,8 @@ function mountPixel(el, L) {
     sc.loop = makeLoop({ raf: (f) => requestAnimationFrame(f), ok: () => stageOk(sc, document, reduced()), fps: () => stageFps(sc.st),
       frame: (dt) => { const t0 = FPS_ON ? performance.now() : 0; stageTick(sc.st, dt); const k = frameKey(sc.st, KIT); if (sc.st.fx?.line || sc.st.fx?.wave?.key !== sc.wave) hits(sc);
         if (k !== sc.key) { sc.key = k; drawStage(sc.ctx, sc.st, KIT); } if (FPS_ON) frameNote(performance.now() - t0); } });   // the same picture is not drawn again
-    if (typeof IntersectionObserver === 'function') new IntersectionObserver((es) => { const v = es.some((e) => e.isIntersecting); sc.visible = v; if (v) sc.loop.start(); }).observe(root); if (typeof ResizeObserver === 'function') new ResizeObserver(() => { fit(sc); paint(sc); }).observe(el);
+    if (typeof IntersectionObserver === 'function') (sc.io = new IntersectionObserver((es) => { const v = es.some((e) => e.isIntersecting); sc.visible = v; if (v) sc.loop.start(); })).observe(root);
+    if (typeof ResizeObserver === 'function') (sc.ro = new ResizeObserver(() => { fit(sc); paint(sc); })).observe(el);
     fit(sc);
   }
   sc.root.setAttribute('aria-label', L.summary);
@@ -396,5 +403,5 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     PX = P; KIT = makeKit(P, mkCanvas); installChrome(P);
     for (const el of mounted) if (el.isConnected && el._args) mountScene(el, ...el._args);
   }).catch(() => { /* no sprites (offline before the first load): the still card stays */ });
-  document.addEventListener('visibilitychange', () => { for (const el of mounted) if (!el.isConnected) mounted.delete(el); else el._px?.loop.start(); });
+  document.addEventListener('visibilitychange', () => { for (const el of mounted) if (!el.isConnected) { dropStage(el._px); mounted.delete(el); } else el._px?.loop.start(); });
 }
