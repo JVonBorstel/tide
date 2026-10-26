@@ -16,7 +16,8 @@ const a = process.argv.slice(2), d = process.env.FAKE_GH_DIR, f = (n) => path.jo
 const s = JSON.parse(fs.readFileSync(f('scenario.json'), 'utf8').replace(/^\uFEFF/, ''));
 fs.appendFileSync(f('calls.log'), a.join(' ') + '\n');
 const heads = [].concat(s.heads), out = (x) => process.stdout.write(typeof x === 'string' ? x : JSON.stringify(x)), err = (m, c) => { process.stderr.write(m + '\n'); process.exitCode = c; };
-if (a[0] === 'api') {
+if (a[0] === 'api' && a[1] === 'user') { if (s.noUser) err('gh: Requires authentication (HTTP 401)', 1); else out({ id: 1001, login: 'fake-owner' }); }
+else if (a[0] === 'api') {
   const ep = a.find((x) => x.startsWith('repos/')) || '';
   if (/\/pulls\/\d+$/.test(ep)) {
     let n = 0; try { n = Number(fs.readFileSync(f('pulls.count'), 'utf8')); } catch {} fs.writeFileSync(f('pulls.count'), String(n + 1));
@@ -53,6 +54,10 @@ try {
     Check 'all checks green: merges' ($r.Code -eq 0 -and $r.Merged -and $r.Out -match 'MERGED JVonBorstel/demo#7' -and $r.Out -match 'all 3 check')
     Check 'all checks green: pinned to the head sha, labelled a Claude session merge' ($call -match "--match-head-commit $A" -and $call -match '--merge' -and $call -match '\(Claude session\)' -and $call -match 'Merged by a Claude session')
     Check 'all checks green: logs pr, repo, sha, actor claude-session, why, at' ($r.Log.Count -eq 1 -and $r.Log[0].pr -eq 7 -and $r.Log[0].repo -eq 'JVonBorstel/demo' -and $r.Log[0].sha -eq $A -and $r.Log[0].actor -eq 'claude-session' -and $r.Log[0].why -eq 'CI green, Jordan asked for it' -and $r.Log[0].at -and $r.Log[0].ok -eq $true)
+
+    Check "all checks green: the merge commit's author is the account's noreply address, never its primary email" ($call -match '--author-email 1001\+fake-owner@users\.noreply\.github\.com')
+    Scenario @{ noUser = $true }; $r = Run
+    Check 'gh cannot say who is signed in: refuses (author email unknown), nothing merged' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'REFUSED' -and $r.Out -match 'noreply')
 
     Scenario @{ checks = @($green[0], @{ name = 'windows-suite'; status = 'in_progress'; conclusion = $null }) }; $r = Run
     Check 'a running check refuses' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'REFUSED' -and $r.Out -match 'still running.*windows-suite \(in_progress\)' -and $r.Log.Count -eq 0)

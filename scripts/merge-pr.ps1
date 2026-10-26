@@ -95,7 +95,10 @@ if ($DryRun) { Write-Output "merge-pr: DRY RUN $Repo#${Pr}: would merge at $shor
 
 # 5. merge, pinned to the checked commit, labelled as a session merge, and logged either way
 $body = "Merged by a Claude session (scripts/merge-pr.ps1), not by Jordan's tap, after $green$fixNote.$(if ($Why) { " Why: $Why" })"
-$m = Invoke-Gh @('pr', 'merge', "$Pr", '-R', $Repo, '--merge', '--match-head-commit', $sha, '--subject', "Merge pull request #$Pr from $($p.head.ref) (Claude session)", '--body', $body)
+# the merge commit's author is the account's noreply address, never its primary email (github-lib.ps1 Get-MergeAuthorEmail)
+$who = Get-MergeAuthorEmail
+if (-not $who) { Refuse "gh could not say which account is signed in, so the merge commit's author email is unknown (it must be the noreply address)" }
+$m = Invoke-Gh @('pr', 'merge', "$Pr", '-R', $Repo, '--merge', '--match-head-commit', $sha, '--author-email', $who, '--subject', "Merge pull request #$Pr from $($p.head.ref) (Claude session)", '--body', $body)
 if (-not $m.ok) { $e = Get-GhWhy $m; Log-Merge $sha $false $e; Write-Output "merge-pr: FAILED $Repo#${Pr}: GitHub did not merge it ($e); logged"; exit 1 }
 Log-Merge $sha $true ''
 Write-Output "merge-pr: MERGED $Repo#$Pr at $short ($green)$fixNote; logged as claude-session$(if ($FixesRed) { ', fixesRed' })"
