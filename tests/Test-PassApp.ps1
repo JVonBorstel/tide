@@ -873,11 +873,17 @@ setTimeout(() => console.log(JSON.stringify(mode === 'submit' ? { result: 'appli
     # TD-11: the chores' CI count (<kitchen>\ci-budget.json) reaches the state; an unknown count stays null (never 0); last month's file is not shown
     $cbP = Join-Path $root 'ci-budget.json'; $cbM = [DateTime]::UtcNow.ToString('yyyy-MM')
     @{ month = $cbM; at = [DateTime]::UtcNow.ToString('o'); monthEnds = [DateTime]::UtcNow.AddDays(5).ToString('o'); poolLimit = 2000; pool = @{ state = 'unknown'; minutesAtLeast = 1200 }; problems = @(); sites = @(@{ code = 'TD'; state = 'ok'; runs = 300; minutes = 1200; minutesAtLeast = 1200; budget = 1000; over = $true }, @{ code = 'GW'; state = 'unknown'; why = 'gh is not signed in'; runs = $null; minutes = $null; minutesAtLeast = $null; budget = 'unlimited'; over = $false }) } | ConvertTo-Json -Depth 5 | Set-Content $cbP -Encoding utf8
+    # review #11 F2: no Sites registry = no "CI this month" banner, even with a file of this month on disk
+    $cbKj = Join-Path $root 'kitchen.json'; $cbKj0 = if (Test-Path $cbKj) { Get-Content $cbKj -Raw } else { $null }
+    $cbNoReg = Invoke-RestMethod "$base/api/state" -Headers $auth
+    Check 'CiBudget_NoRegistry: no Sites registry = no CI count in the state (no banner), though ci-budget.json is this month''s' ($cbNoReg.PSObject.Properties.Name -contains 'ciBudget' -and $null -eq $cbNoReg.ciBudget)
+    $cbH = if ($cbKj0) { $cbKj0 | ConvertFrom-Json -AsHashtable } else { @{} }; $cbH.sites = @{ GW = @{}; TD = @{} }; $cbH | ConvertTo-Json -Depth 10 | Set-Content $cbKj -Encoding utf8
     $cbS = (Invoke-RestMethod "$base/api/state" -Headers $auth).ciBudget; $cbGw = @($cbS.sites | Where-Object { $_.code -eq 'GW' })[0]
     Check 'TD-11 state: per-Site runs, minutes, budget and over come through; unknown stays null with its reason' ($cbS.month -eq $cbM -and @($cbS.sites | Where-Object { $_.code -eq 'TD' -and $_.runs -eq 300 -and $_.minutes -eq 1200 -and $_.budget -eq 1000 -and $_.over }).Count -eq 1 -and $cbGw.state -eq 'unknown' -and $null -eq $cbGw.runs -and $null -eq $cbGw.minutes -and $cbGw.why -eq 'gh is not signed in' -and $cbGw.budget -eq 'unlimited')
     (Get-Content $cbP -Raw) -replace $cbM, '1999-01' | Set-Content $cbP -Encoding utf8
     Check 'TD-11 state: a count from another month is not shown' ($null -eq (Invoke-RestMethod "$base/api/state" -Headers $auth).ciBudget)
     Remove-Item $cbP
+    if ($null -ne $cbKj0) { Set-Content $cbKj $cbKj0 -Encoding utf8 } else { Remove-Item $cbKj -Force }
     # the banner words (public/undo-pause.js, pure, run in node)
     $eIn = Join-Path $root 'eh1011-in.json'; @{ undo = @($stE.undoUnpushed); pause = $stE.automergePause } | ConvertTo-Json -Depth 6 | Set-Content $eIn -Encoding utf8
     $eMjs = Join-Path $root 'eh1011-banner.mjs'
@@ -905,14 +911,17 @@ console.log(JSON.stringify({ undo: undoPushBanners(v.undo, { when }), none: undo
     # resume -Site (same sign-in as every action) and the state says which Sites are stopped and whose Stop-work order is open.
     $kjP = Join-Path $root 'kitchen.json'; $kj0 = if (Test-Path $kjP) { Get-Content $kjP -Raw } else { $null }
     $smP = Join-Path $root 'supervisor.json'; $sm0 = if (Test-Path $smP) { Get-Content $smP -Raw } else { $null }
+    $smH = if ($sm0) { $sm0 | ConvertFrom-Json -AsHashtable } else { @{} }; $smH.siteBreakers = @{ TD = @{ tripped = $true; n = 1; openUntil = [DateTime]::UtcNow.AddMinutes(5).ToString('o') }; '?' = @{ tripped = $true; n = 1; openUntil = [DateTime]::UtcNow.AddMinutes(5).ToString('o') } }; $smH | ConvertTo-Json -Depth 10 | Set-Content $smP -Encoding utf8
     $ss0 = Invoke-RestMethod "$base/api/state" -Headers $auth
     $sp0 = Act @{ op = 'site-pause'; site = 'GW' }
-    Check 'TD-8 state: no Sites registered = no Site stops, and a Site tap is refused' ($ss0.PSObject.Properties.Name -contains 'siteStops' -and @($ss0.siteStops).Count -eq 0 -and -not $sp0.ok -and -not (Test-Path (Join-Path $root 'PAUSED-GW')))
+    Check 'TD-8 state: no Sites registered = no Site stops (not even a left-over Unassigned one), and a Site tap is refused' ($ss0.PSObject.Properties.Name -contains 'siteStops' -and @($ss0.siteStops).Count -eq 0 -and -not $sp0.ok -and -not (Test-Path (Join-Path $root 'PAUSED-GW')))
     $kjH = if ($kj0) { $kj0 | ConvertFrom-Json -AsHashtable } else { @{} }; $kjH.sites = @{ GW = @{}; TD = @{} }; $kjH | ConvertTo-Json -Depth 10 | Set-Content $kjP -Encoding utf8
-    $smH = if ($sm0) { $sm0 | ConvertFrom-Json -AsHashtable } else { @{} }; $smH.siteBreakers = @{ TD = @{ tripped = $true; n = 1; openUntil = [DateTime]::UtcNow.AddMinutes(5).ToString('o') } }; $smH | ConvertTo-Json -Depth 10 | Set-Content $smP -Encoding utf8
     $sp1 = Act @{ op = 'site-pause'; site = 'GW' }
     $ss1 = Invoke-RestMethod "$base/api/state" -Headers $auth
-    $gw1 = @($ss1.siteStops | Where-Object code -eq 'GW')[0]; $td1 = @($ss1.siteStops | Where-Object code -eq 'TD')[0]
+    $gw1 = @($ss1.siteStops | Where-Object code -eq 'GW')[0]; $td1 = @($ss1.siteStops | Where-Object code -eq 'TD')[0]; $un1 = @($ss1.siteStops | Where-Object code -eq '?')[0]
+    Check 'SiteStop_Unassigned_State: with a registry, the open Stop-work order of work with no Site comes through as code ? (last, stopWork, until)' ($un1 -and $un1.stopWork -eq $true -and $un1.stopped -eq $false -and $null -ne $un1.stopWorkUntil -and @($ss1.siteStops)[-1].code -eq '?') { $ss1.siteStops | ConvertTo-Json -Compress }
+    $spQ = Act @{ op = 'site-pause'; site = '?' }
+    Check 'SiteStop_Unassigned_NoTap: ? is not a Site code a tap can stop' (-not $spQ.ok -and -not (Test-Path (Join-Path $root 'PAUSED-?')))
     Check 'TD-8 tap: Stop work on a Site writes PAUSED-<code> through kitchen.ps1 and logs it' ($sp1.ok -and (Test-Path (Join-Path $root 'PAUSED-GW')) -and -not (Test-Path (Join-Path $root 'PAUSED')) -and $sp1.data -match 'Site GW stopped' -and (Get-Content (Join-Path $root 'events.jsonl') -Raw) -match '"type":"site\.paused"[^\n]*"site":"GW"') { $sp1 | ConvertTo-Json -Compress }
     Check "TD-8 state: the stopped Site and the other Site's own Stop-work order come through" ($gw1.stopped -eq $true -and $gw1.stopWork -eq $false -and $td1.stopped -eq $false -and $td1.stopWork -eq $true -and $null -ne $td1.stopWorkUntil -and $ss1.paused -eq $false) { $ss1.siteStops | ConvertTo-Json -Compress }
     $spBad = Act @{ op = 'site-pause'; site = '-Action' }; $spUnk = Act @{ op = 'site-pause'; site = 'ZG' }
@@ -926,10 +935,14 @@ console.log(JSON.stringify({ undo: undoPushBanners(v.undo, { when }), none: undo
 import { siteStopBanners, siteStopRows } from '$(([Uri](Join-Path $repo 'pass-app\public\site-stop.js')).AbsoluteUri)';
 const when = () => '1:14 PM';
 const items = [{ code: 'GW', stopped: true, stopWork: false }, { code: 'TD', stopped: false, stopWork: true, stopWorkUntil: '2026-10-24T20:14:00Z' }, { code: '<x>', stopped: true }];
-console.log(JSON.stringify({ banners: siteStopBanners(items, { when }), rows: siteStopRows(items), none: siteStopBanners(undefined), norows: siteStopRows([]) }));
+const un = [{ code: 'GW', stopped: false, stopWork: false }, { code: '?', stopped: true, stopWork: true, stopWorkUntil: '2026-10-24T20:14:00Z' }];
+console.log(JSON.stringify({ banners: siteStopBanners(items, { when }), rows: siteStopRows(items), none: siteStopBanners(undefined), norows: siteStopRows([]),
+  un: siteStopBanners(un, { when }), unrows: siteStopRows(un), unclosed: siteStopBanners([{ code: '?', stopWork: false }]) }));
 "@ -Encoding utf8
     $sOut = (& node $sMjs 2>$null | Out-String) | ConvertFrom-Json
     Check 'TD-8 banner: a Site stopped by you is a calm line with Resume; a Site''s Stop-work order says the other Sites carry on' (@($sOut.banners).Count -eq 2 -and @($sOut.banners)[0] -eq '<div class="banner calm" data-site-stop="GW">Site GW stopped by you: none of its new work starts. Its running work, the watchers and the other Sites carry on.<button class="btn" data-set="site-resume" data-site="GW">Resume GW</button></div>' -and @($sOut.banners)[1] -eq '<div class="banner" data-site-breaker="TD">Stop-work order on TD: most of its recent steps failed, so its new work waits until about 1:14 PM, then one trial step runs first. The other Sites carry on.</div>') { $sOut | ConvertTo-Json -Compress }
+    Check 'SiteStop_Unassigned_Banner: an open Stop-work order on work with no Site is a banner (no tap); closed = nothing' (@($sOut.un).Count -eq 1 -and @($sOut.un)[0] -eq '<div class="banner" data-site-breaker="unassigned">Stop-work order on work with no Site: most of its recent steps failed, so new work with no Site waits until about 1:14 PM, then one trial step runs first. The Sites carry on.</div>' -and @($sOut.unclosed).Count -eq 0) { $sOut.un | ConvertTo-Json -Compress }
+    Check 'SiteStop_Unassigned_Rows: no Stop or Resume row for work with no Site' ($sOut.unrows -match 'data-site="GW"' -and $sOut.unrows -notmatch 'data-site="\?"|Site \?') { $sOut.unrows }
     Check 'TD-8 rows: one tap per Site (Resume when stopped, else Stop work); none = nothing; a bad code is dropped' ($sOut.rows -match 'data-set="site-resume" data-site="GW"' -and $sOut.rows -match 'data-set="site-pause" data-site="TD"[^>]*>.*Stop work on Site TD' -and $sOut.rows -notmatch '&lt;x&gt;|<x>' -and $sOut.rows -match '<h3 class="set-label">Sites</h3>' -and @($sOut.none).Count -eq 0 -and $sOut.norows -eq '') { $sOut.rows }
     $ssSrc = Get-Content (Join-Path $repo 'pass-app\public\site-stop.js') -Raw; $swSrc = Get-Content (Join-Path $repo 'pass-app\public\sw.js') -Raw
     Check 'TD-8 wiring: app.js shows the Site banners after the global pause, the Sites rows in settings, both taps; cached offline; no new style' ($app -match "import \{ siteStopBanners, siteStopRows \} from './site-stop\.js'" -and $app -match '(?s)data-set="kitchen-resume">Resume</button></div>`\);.*?b\.push\(\.\.\.siteStopBanners\(s\?\.siteStops\)\);' -and $app -match '\$\{siteStopRows\(s\.siteStops\)\}' -and $app -match "a === 'site-pause'\) \{ const c = b\.dataset\.site; if \(await confirmBox" -and $app -match "a === 'site-resume'\) \{ const r = await act\(\{ op: 'site-resume', site: b\.dataset\.site \}" -and $swSrc -match "'/site-stop\.js'" -and $ssSrc -notmatch 'style=|data-css|<style' -and @([regex]::Matches($ssSrc, 'class="([^"]+)"') | ForEach-Object { $_.Groups[1].Value } | Where-Object { $_ -notin 'banner', 'banner calm', 'btn', 'set-row', 'set-ic', 'set-label', 'set-group' }).Count -eq 0)

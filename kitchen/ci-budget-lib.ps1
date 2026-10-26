@@ -90,12 +90,13 @@ function Get-CiMonthRuns([string]$Slug, [string]$Month, [hashtable]$Cache) {
 
 # The Towers to count, as {path; slug; site}: the registry's "towers" (named by Site), then the given ones (the orders' Towers) and the
 # ones the last file of this month had, each with its kitchen.repo.json "site" and "github". A Tower with no GitHub home is left out.
+# A path may say %USERPROFILE%\... (the registry's documented form): it is expanded before it is looked up or compared (review #11 F5).
 function Get-CiTowers($Registry, [string[]]$Towers) {
     $seen = @{}; $out = [Collections.Generic.List[object]]::new()
     $named = @(); if ($Registry.sites -is [Collections.IDictionary]) { foreach ($c in $Registry.sites.Keys) { $e = $Registry.sites[$c]; if ($e -is [Collections.IDictionary] -and $e['towers']) { foreach ($p in @($e['towers'])) { $named += , @([string]$p, [string]$c) } } } }
     $all = @($named) + @(@($Towers | Where-Object { $_ }) | ForEach-Object { , @([string]$_, '') })
     foreach ($pair in $all) {
-        $path = $pair[0]; $key = $path.TrimEnd('\', '/').ToLowerInvariant(); if (-not $path -or $seen.ContainsKey($key)) { continue }
+        $path = Expand-SitePath ([string]$pair[0]); $key = $path.TrimEnd('\', '/').ToLowerInvariant(); if (-not $path -or $seen.ContainsKey($key)) { continue }
         $seen[$key] = $true; $slug = Get-CiTowerSlug $path; if (-not $slug) { continue }
         $site = if ($pair[1]) { $pair[1] } else { Get-TowerSite $path }
         $out.Add([pscustomobject]@{ path = $path; slug = $slug; site = $site })

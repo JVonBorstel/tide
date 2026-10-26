@@ -26,6 +26,11 @@ with the Owner's answers Q1 = A (`sites` in `kitchen.json`) and Q4 = A (equal sh
 `Get-AdmitSite` returns '' without looking anything up when the registry is empty, so `Test-KitchenAdmit` gets no Site and skips
 the Site check; `Sort-ForStart` with no weights is the TD-6 order. Proof in the tests below.
 
+**Amended after review #11 (F3):** "the TD-6 order" with no weights turned out to be a change for tide, whose own
+`kitchen.repo.json` names Site TD: fair share was on with no registry. Now no weights (no registry, or an empty one) = no fair share
+at all, the order from before TD-6. The start loop also passes the running heavy steps per Site
+(`Sort-ForStart $jobs $adm.shares $adm.siteLoad`); see `TD-6.md`.
+
 ## The block Jordan would add (live kitchen.json, his edit; not done by this PR)
 
 In `%LOCALAPPDATA%\brain-kitchen\kitchen.json`, one new top-level key:

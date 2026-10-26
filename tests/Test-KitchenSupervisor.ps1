@@ -497,6 +497,28 @@ if ($Supplier -eq $restWho) { Set-Content -LiteralPath "$($env:KITCHEN_RUN).wait
     Check 'TD-8 in status: the Site under its own Stop-work order is listed, the other Site is not' ($sbs -match 'SITE GW: Stop-work order on: no new work for' -and $sbs -notmatch 'SITE TD: (Stop-work|stopped)') { $sbs }
     & $k kill -All | Out-Null
 
+    # review #11 F2: the CI-count chore (TD-11, Invoke-ChoreCiBudget) counts only with a Sites registry. KITCHEN_CI_COUNT=1 opts this test
+    # Yard in (as the real Yard is by default), so only the registry gate can stop it; the fake gh notes every call it gets.
+    $env:BRAIN_KITCHEN = "$root-cic"; New-Item -ItemType Directory -Force "$root-cic" | Out-Null
+    $cicGh = "$root-cic\fake-gh.ps1"; $cicLog = "$root-cic\gh-calls.log"
+    Set-Content $cicGh "Add-Content -LiteralPath '$cicLog' -Value (`$args -join ' '); exit 1" -Encoding utf8
+    $cicSaved = @{}; foreach ($v in 'KITCHEN_GH', 'KITCHEN_CI_COUNT', 'KITCHEN_CI_COUNT_EVERY_MIN') { $cicSaved[$v] = [Environment]::GetEnvironmentVariable($v) }
+    $env:KITCHEN_GH = $cicGh; $env:KITCHEN_CI_COUNT = '1'; $env:KITCHEN_CI_COUNT_EVERY_MIN = '0'
+    try {
+        & $k chores -Quiet | Out-Null
+        $cicMeta = Get-Content "$root-cic\supervisor.json" -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json -AsHashtable
+        Check 'CiCount_NoRegistry: no Sites registry = no ci-budget.json, no cache, no GitHub call, no lastCiCount stamp (even with KITCHEN_CI_COUNT=1)' (-not (Test-Path "$root-cic\ci-budget.json") -and -not (Test-Path "$root-cic\ci-budget-cache.json") -and -not (Test-Path $cicLog) -and -not ($cicMeta -and $cicMeta.lastCiCount))
+        Set-Content "$root-cic\kitchen.json" '{"sites":{}}' -Encoding utf8
+        & $k chores -Quiet | Out-Null
+        Check 'CiCount_EmptyRegistry: an empty "sites" is no registry: still nothing written' (-not (Test-Path "$root-cic\ci-budget.json") -and -not (Test-Path $cicLog))
+        Set-Content "$root-cic\kitchen.json" '{"sites":{"TD":{"ciMinutesPerMonth":100}}}' -Encoding utf8
+        & $k chores -Quiet | Out-Null
+        $cicDoc = Get-Content "$root-cic\ci-budget.json" -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json
+        Check 'CiCount_Registry: with a registry the chore writes ci-budget.json (Site TD with its budget)' ($cicDoc -and @($cicDoc.sites | Where-Object { $_.code -eq 'TD' -and $_.budget -eq 100 }).Count -eq 1) { Get-Content "$root-cic\ci-budget.json" -Raw -ErrorAction SilentlyContinue }
+        $cicSrc = Get-Content $k -Raw
+        Check 'CiCount_Gate: Invoke-ChoreCiBudget asks Test-CiCountOn before it stamps lastCiCount' ($cicSrc -match '(?s)function Invoke-ChoreCiBudget \{.{0,400}if \(-not \(Test-CiCountOn\)\) \{ return \}.{0,400}lastCiCount = Iso')
+    } finally { foreach ($v in $cicSaved.Keys) { [Environment]::SetEnvironmentVariable($v, $cicSaved[$v]) } }
+
     # TD-EH-06: a hold's reason is whole. kitchen-step.ps1 keeps the held step's last line in <run>.hold; a step may write its own;
     # an empty one falls back to the log line, cut on a word boundary. The Sign-off text fits 300 characters and is never cut mid-word.
     $env:BRAIN_KITCHEN = "$root-hold"; New-Item -ItemType Directory -Force -Path "$root-hold" | Out-Null

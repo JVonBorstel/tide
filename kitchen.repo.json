@@ -9,6 +9,6 @@
   "inspector": {
     "local": "full",
     "ci": "quick",
-    "_why": "private Tower (TD-12 default): every suite runs sandboxed on this PC, CI is ci.yml's quick checks; public later = local impacted, ci full"
+    "_why": "tide is a public Tower, but keeps this plan for now: every suite runs sandboxed on this PC before a PR, and CI is ci.yml's quick checks (the full Windows suite is windows-suite.yml, weekly). The design's public default (TD-12: local impacted, ci full) is the Owner's call"
   }
 }

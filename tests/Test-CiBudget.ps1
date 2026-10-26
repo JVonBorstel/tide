@@ -3,7 +3,7 @@
 $ErrorActionPreference = 'Stop'
 $kd = (Resolve-Path (Join-Path $PSScriptRoot '..\kitchen')).Path
 $root = Join-Path ([IO.Path]::GetTempPath()) ('kcib-' + [guid]::NewGuid().ToString('N'))
-$kr = Join-Path $root 'kitchen'; $gh = Join-Path $root 'gh'; $tower = Join-Path $root 'brain-monitor'; $pubTower = Join-Path $root 'open-repo'
+$kr = Join-Path $root 'kitchen'; $gh = Join-Path $root 'gh'; $tower = Join-Path $root 'private-app'; $pubTower = Join-Path $root 'open-repo'
 $script:pass = 0; $script:fail = 0
 function Check($n, $c) { if ($c) { $script:pass++ } else { $script:fail++; Write-Host "FAIL: $n" } }
 $saved = @{}; foreach ($v in 'BRAIN_KITCHEN', 'KITCHEN_GH', 'FAKE_CI_DIR', 'KITCHEN_CI_NOW', 'KITCHEN_GITHUB_OWNER') { $saved[$v] = [Environment]::GetEnvironmentVariable($v) }
@@ -25,7 +25,7 @@ try {
     New-Item -ItemType Directory -Force -Path $kr, (Join-Path $gh 'api'), $tower, $pubTower | Out-Null
     Set-Content (Join-Path $root 'fake-gh.ps1') $fake -Encoding utf8
     $env:BRAIN_KITCHEN = $kr; $env:KITCHEN_GH = Join-Path $root 'fake-gh.ps1'; $env:FAKE_CI_DIR = $gh; $env:KITCHEN_CI_NOW = '2026-10-20T12:00:00Z'; $env:KITCHEN_GITHUB_OWNER = $null
-    foreach ($t in @(@($tower, 'JVonBorstel/brain-monitor', 'TD'), @($pubTower, 'JVonBorstel/open-repo', 'ZG'))) {
+    foreach ($t in @(@($tower, 'JVonBorstel/private-app', 'TD'), @($pubTower, 'JVonBorstel/open-repo', 'ZG'))) {
         & git -C $t[0] init -q -b main 2>&1 | Out-Null
         @{ github = $t[1]; site = $t[2] } | ConvertTo-Json | Set-Content (Join-Path $t[0] 'kitchen.repo.json')
         & git -C $t[0] -c user.name=t -c user.email=t@localhost add -A 2>&1 | Out-Null; & git -C $t[0] -c user.name=t -c user.email=t@localhost commit -q -m base 2>&1 | Out-Null
@@ -39,7 +39,7 @@ try {
     Check 'month: calendar month in UTC, ends on the 1st' ((Get-CiMonth) -eq '2026-10' -and (Get-CiMonthEnd).ToString('o') -eq '2026-11-01T00:00:00.0000000Z')
 
     # ---- 2. a private Tower over budget: counted, measured, held; raised budget lets go
-    $bm = 'JVonBorstel/brain-monitor'; $runsPath = "repos/$bm/actions/runs?created=%3E%3D2026-10-01&per_page=100&page=1"
+    $bm = 'JVonBorstel/private-app'; $runsPath = "repos/$bm/actions/runs?created=%3E%3D2026-10-01&per_page=100&page=1"
     Answer "repos/$bm" @{ private = $true }
     Answer $runsPath @{ total_count = 3; workflow_runs = @(@{ id = 11; status = 'in_progress' }, @{ id = 12; status = 'completed' }, @{ id = 13; status = 'completed' }) }
     Answer "repos/$bm/actions/runs/12/jobs?per_page=100" @{ jobs = @((New-CiJob 'ubuntu-latest' 300), (New-CiJob 'ubuntu-latest' 59)) }
@@ -89,6 +89,15 @@ try {
     $d = Update-CiBudget $kr @($pubTower) 20; $zg = @($d.sites | Where-Object { $_.code -eq 'ZG' })[0]; $jh = @($d.sites | Where-Object { $_.code -eq 'JH' })[0]
     Check 'public: 2 runs counted, 0 billed minutes, not over a budget of 1, no job lists asked' ($zg.runs -eq 2 -and $zg.minutes -eq 0 -and -not $zg.over -and $zg.towers[0].public -and -not @(Calls | Where-Object { $_ -match "$op/actions/runs/\d+/jobs" }).Count)
     Check 'no Tower: a budgeted Site with no Tower on GitHub is "none", no numbers' ($jh.state -eq 'none' -and $null -eq $jh.runs -and $jh.budget -eq 'unlimited')
+    # ---- 6b. review #11 F5: a registry Tower written with an environment variable (the documented %USERPROFILE%\... form) is counted
+    $env:KCIB_F5_ROOT = $root
+    try {
+        $ct = @(Get-CiTowers @{ sites = @{ ZG = @{ towers = @('%KCIB_F5_ROOT%\open-repo') } } } @($pubTower))
+        Check 'EnvTower: a %VAR% registry Tower is expanded, found on disk (its GitHub slug read), and the same Tower given by path is not counted twice' ($ct.Count -eq 1 -and $ct[0].slug -eq $op -and $ct[0].site -eq 'ZG' -and $ct[0].path -eq $pubTower)
+        Registry @{ ZG = @{ ciMinutesPerMonth = 1; towers = @('%KCIB_F5_ROOT%\open-repo') } }
+        $d = Update-CiBudget $kr @() 20; $zg = @($d.sites | Where-Object { $_.code -eq 'ZG' })[0]
+        Check 'EnvTower: its Site gets its runs (not "no Tower of this Site is on GitHub")' ($zg.state -eq 'ok' -and $zg.runs -eq 2 -and $zg.why -notmatch 'no Tower')
+    } finally { $env:KCIB_F5_ROOT = $null }
     Registry @{ TD = @{ ciMinutesPerMonth = 'lots' } }
     $d = Update-CiBudget $kr @($tower) 20
     Check 'settings: a wrong budget is named in problems and holds nothing' (@($d.problems | Where-Object { $_ -match 'sites\.TD' }).Count -eq 1 -and -not (Get-CiBudgetHold $kr 'TD').hold)

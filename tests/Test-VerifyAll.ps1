@@ -81,6 +81,20 @@ Set-Content "$gw\tests\Test-Gw.ps1" 'Write-Host "Gw tests: 1 passed, 1 failed"; 
 Set-Content (Join-Path $kroot 'kitchen.json') (@{ sites = @{ GW = @{ towers = @($gw) } } } | ConvertTo-Json -Depth 5)
 Va $scfg
 Check 'TD5 registry: GW (no name) shows its code, its failing suite counted on its header, the rest UNASSIGNED' ($ec -eq 1 -and $o -match '(?m)^SITE GW: 1 suites, 1 not passing\r?$' -and $o -match '(?m)^UNASSIGNED: 2 suites, 0 not passing\r?$' -and $o -match 'OVERALL: FAIL \(3 suites, 1 not passing\)')
+# review #11 F5: a registry Tower and a config dir written with an environment variable (the documented %USERPROFILE%\... form) match
+$env:VA_F5_ROOT = $root
+try {
+    $ecfg = Cfg 'envsites' @(@{ name = 'lone'; dir = $lone; glob = 'tests\Test-Lone.ps1'; timeoutSeconds = 60; maxMB = 1000 }, @{ name = 'fix-good'; dir = '%VA_F5_ROOT%'; glob = 'tests\Test-Good.ps1'; timeoutSeconds = 60; maxMB = 1000 })
+    Set-Content (Join-Path $kroot 'kitchen.json') (@{ sites = @{ TD = @{ name = 'Tide'; towers = @('%VA_F5_ROOT%\') } } } | ConvertTo-Json -Depth 5)
+    Va $ecfg; $el = @($o.Trim() -split "`r?`n")
+    $ewant = @('^SITE TD Tide: 1 suites, 0 not passing$', '^PASS\s+fix-good\s+Test-Good\s', '^UNASSIGNED: 1 suites, 0 not passing$', '^PASS\s+lone\s+Test-Lone\s', '^OVERALL: PASS \(2 suites, 0 not passing\)$')
+    $eok = $el.Count -eq $ewant.Count; for ($i = 0; $eok -and $i -lt $ewant.Count; $i++) { $eok = $el[$i] -match $ewant[$i] }
+    Check 'EnvTower: a %VAR% registry Tower matches its %VAR% config entry (one run under its Site, no "dir missing" row, not again under UNASSIGNED)' ($ec -eq 0 -and $eok -and $o -notmatch 'dir missing')
+    if (-not $eok) { Write-Host $o }
+    . (Join-Path $PSScriptRoot '..\kitchen\site-registry.ps1')
+    $ereg = Get-SiteList @{ sites = @{ TD = @{ towers = @('%VA_F5_ROOT%\gw') } } }
+    Check 'EnvTower_Find: Find-RegistrySite finds the Site of the real path for a %VAR% registry Tower' ((Find-RegistrySite $ereg $gw) -ceq 'TD' -and $ereg[0].towers[0] -eq (Join-Path $root 'gw'))
+} finally { $env:VA_F5_ROOT = $null }
 # a damaged registry is a bad config (exit 2), never a guess
 Set-Content (Join-Path $kroot 'kitchen.json') '{ "sites": { "tide": { "towers": [] } } }'
 Va $scfg; Check 'TD5 a malformed registry: exit 2, named' ($ec -eq 2 -and $o -match 'bad Sites registry')

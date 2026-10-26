@@ -43,3 +43,22 @@ Not in this Floor: per-Site `share` weights and `maxHeavy` (TD-7 registry), coun
   order; every order comes back once; hashtable orders; a throwing Site lookup; 1,000 orders over 3 Sites; with `jobs-lib.ps1`
   loaded; the start loop still checks the holds in turn.
 - Broke the code 3 ways, each caught: no fair share (8 checks fail), fairness above priority (3), running orders ignored (2).
+
+## Amended after review #11 (2026-10-26, F3): registry only, and fairness before priority as the design says
+
+- **Only with a Sites registry.** The review showed tide's own `kitchen.repo.json` `"site": "TD"` turned fair share on with no
+  registry at all (pending J10, J11, J12 of a TD Tower and J13 with no Tower started J10 J13 J11 J12 instead of J10 J11 J12 J13).
+  Now `Sort-ForStart` shares only when the start loop passes the registry's weights (`Get-KitchenSiteShares`, which gives every
+  registered Site one). No registry = no weights = exactly the order from before TD-6, whatever a Tower's own `site` says.
+- **Fairness before priority.** Design section 2.3 puts fairness between "under way" and priority ("`urgent` still beats
+  everything inside its Site; across Sites fairness wins"). This note's first version put it after priority, with no recorded
+  decision. The code now follows the design: inside one band of equal "under way", the next place goes to the Site with the lowest
+  load / share; inside a Site, priority then oldest; a tie goes to the Site whose next order ranks first (priority, then oldest).
+  Under way still comes first. If the Owner prefers priority over fairness across Sites, that is a one-line change back
+  (the band key in `Sort-ForStart`) plus the `FairBeforePriority` tests.
+- **Load = running heavy steps.** As the design says ("running heavy steps for the Site divided by `share`"): the start loop counts
+  each Site's running heavy steps with the scaler's weights (light steps left out, as admission does) and passes them as
+  `-HeavyLoad`. Without `-HeavyLoad` (tests, other callers) the load is still the Site's running orders.
+- Tests (`tests/Test-StartOrder.ps1`, 53 checks): `NoRegistry_J10_J13` and `NoRegistry_Mixed` (no registry = the old order),
+  `Registry_J10_J13`, `FairBeforePriority`, `PriorityInsideSite`, `PriorityOnTie`, `Load_*`; the TD-6/TD-7 checks now pass
+  registry weights.

@@ -99,7 +99,7 @@ try {
     $m = Throws { Cfg '{"inspector":{"local":"impacted","ci":"quick"}}' }
     Check 'inspector: impacted with ci quick is refused, naming the file and why' ($m -match [regex]::Escape((Join-Path $cfgDir 'kitchen.repo.json')) -and $m -match 'needs ''inspector.ci'' "full"')
     $bmI = (Read-RepoConfig (Join-Path $PSScriptRoot '..')).Inspector
-    Check "inspector: brain-monitor's own block is the private plan (local full, ci quick)" ($bmI.Given -and $bmI.Local -eq 'full' -and $bmI.Ci -eq 'quick')
+    Check "inspector: tide's own block is local full, ci quick (ci.yml's quick checks; the public default is the Owner's call)" ($bmI.Given -and $bmI.Local -eq 'full' -and $bmI.Ci -eq 'quick')
     $c = Cfg '{"commitBudget":{"files":12,"lines":700}}'
     Check 'commitBudget: files and lines read' ($c.CommitFiles -eq 12 -and $c.CommitLines -eq 700)
     Check 'commitBudget: exclude read, backslashes become /, absent = none' (((Cfg '{"commitBudget":{"exclude":["fixtures","evals\\cases","fixtures"]}}').CommitExclude -join '|') -eq 'fixtures|evals/cases' -and (Cfg '{"commitBudget":{"files":6}}').CommitExclude.Count -eq 0)

@@ -1083,7 +1083,11 @@ function Get-Admission($jobs, $meta) {
     $res = if ($config.admission -is [hashtable] -and $null -ne $config.admission.reserveMB) { [int]$config.admission.reserveMB } else { 1024 }
     $meta.admission = @{ limit = $sc.limit; ceiling = $ceil; maxConcurrent = $MaxConcurrent; running = $run.Count; freeMB = $script:freeMB; at = Iso (Now) }
     if ($reg.problems.Count) { $meta.admission.siteProblems = @($reg.problems) }
-    @{ limit = $sc.limit; weights = (Read-KitchenWeights $root); running = $run; free = $script:freeMB; reserve = $res; sites = $reg.sites; shares = (Get-KitchenSiteShares $reg.sites) }
+    $w = Read-KitchenWeights $root
+    # the fair share's load (multi-site design 2.3): running heavy steps per Site ('' = no Site), light steps left out as admission does;
+    # only with a registry (no registry: Sort-ForStart gets no weights and keeps the old order)
+    $siteLoad = @{}; if ($reg.sites.Count) { foreach ($r in $run) { if (-not (Get-StationWeight $w ([string]$r.station) ([string]$r.tower)).light) { $siteLoad[[string]$r.site] = 1 + [int]$siteLoad[[string]$r.site] } } }
+    @{ limit = $sc.limit; weights = $w; running = $run; free = $script:freeMB; reserve = $res; sites = $reg.sites; shares = (Get-KitchenSiteShares $reg.sites); siteLoad = $siteLoad }
 }
 # The order's Site for a per-Site limit: '' when the registry is empty (no lookup at all: exactly as before TD-7) or the lookup fails
 function Get-AdmitSite($j, $Sites) { if (-not $Sites.Count) { return '' }; try { [string](Get-KitchenJobSite $j) } catch { '' } }
@@ -1143,7 +1147,7 @@ function Invoke-TickLocked([bool]$lowRam, [bool]$paused = $false) {
         # admission (TARGET W2, kitchen/scaler.ps1): light steps start outside the slots; heavy ones up to the RAM-scaled limit when their
         # weight is measured and fits the free RAM, else up to maxConcurrent as before
         $adm = Get-Admission $jobs $meta
-        foreach ($j in (Sort-ForStart $jobs $adm.shares)) {
+        foreach ($j in (Sort-ForStart $jobs $adm.shares $adm.siteLoad)) {
             if ($j.status -ne 'pending') { continue }
             if ($open -or $broke -or $lowRam) { break }
             if ([int]$j.cursor -eq 0 -and $underWay -ge $MaxLive) { continue }
@@ -1642,9 +1646,17 @@ function Invoke-ChoreFoldPending {
 # TD-11 CI budgets (kitchen/ci-budget-lib.ps1): every KITCHEN_CI_COUNT_EVERY_MIN (10) minutes, within KITCHEN_CI_COUNT_BUDGET_SEC (20 s),
 # count this month's CI runs and billed minutes of every Tower the orders and the Sites registry name. Only the real Yard asks GitHub;
 # a test Yard opts in with KITCHEN_CI_COUNT=1 (and a fake gh), so no test reaches the network. A failure is logged, never a stop.
+# Only with a Sites registry (kitchen.json "sites" with at least one Site; review #11 F2): no registry = no count, no GitHub call, no
+# ci-budget.json and so no Board banner, whatever KITCHEN_CI_COUNT says. A registry that cannot be read goes on to Update-CiBudget, which
+# writes only the problem (no GitHub call), so the Board names it.
+function Test-CiCountOn {
+    try { $r = Read-SiteRegistry $root } catch { return $true }
+    [bool]($r.sites -is [Collections.IDictionary] -and $r.sites.Count)
+}
 function Invoke-ChoreCiBudget {
     $realRoot = $root -eq [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'brain-kitchen'))
     if ($env:KITCHEN_CI_COUNT -ne '1' -and -not ($realRoot -and $env:KITCHEN_CI_COUNT -ne '0')) { return }
+    if (-not (Test-CiCountOn)) { return }
     $every = if ($env:KITCHEN_CI_COUNT_EVERY_MIN -match '^\d+$') { [int]$env:KITCHEN_CI_COUNT_EVERY_MIN } else { 10 }
     $m = Load-Meta; if ($m.lastCiCount -and ((Now) - (ToUtc $m.lastCiCount)).TotalMinutes -lt $every) { return }
     Enter-State; try { $m = Load-Meta; $m.lastCiCount = Iso (Now); Save-Meta $m } finally { Exit-State }

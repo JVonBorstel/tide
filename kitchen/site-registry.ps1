@@ -31,9 +31,14 @@ function Read-SiteRegistry([string]$KitchenRoot) {
 }
 
 # ---- name and towers: status, the Ledger, verify-all (TD-5) -------------------------------------------------------------------------------
-# One spelling of a Tower path for comparing: full, no trailing slash. A path that cannot be made full is compared as written.
+# %VAR% expanded; a path with a NUL is left as written (ExpandEnvironmentVariables cuts a string at its first NUL, which would turn a
+# broken path into a different, real one)
+function Expand-SitePath([string]$Path) { if ($Path -and $Path.Contains('%') -and -not $Path.Contains([char]0)) { [Environment]::ExpandEnvironmentVariables($Path) } else { $Path } }
+# One spelling of a Tower path for comparing: environment variables expanded (the registry and verify-all.json may say
+# %USERPROFILE%\..., review #11 F5), full, no trailing slash. A path that cannot be made full is compared as written (expanded).
 function ConvertTo-SiteTowerKey([string]$Path) {
     if (-not $Path) { return '' }
+    $Path = Expand-SitePath $Path
     $p = try { [IO.Path]::GetFullPath($Path) } catch { $Path }
     $p.TrimEnd('\', '/')
 }

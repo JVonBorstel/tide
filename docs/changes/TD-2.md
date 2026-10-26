@@ -15,7 +15,8 @@ Merges after #118.
   is added to the registry first)`. A number, a list, an object, an empty string, `td` and `" TD"` are all refused.
 - No `site` key = Unassigned and works exactly as today. A test reads one config with every key, with and without `site`, and
   checks that only `Site` differs.
-- brain-monitor's own `kitchen.repo.json` now says `"site": "TD"` (a test checks it).
+- tide's own `kitchen.repo.json` now says `"site": "TD"` (a test checks it). Since review #11 (F3) this key alone only tags tide's
+  orders (the Board chip, status groups): fair share, per-Site Stop-work and the CI count all need a Sites registry too.
 
 Nothing reads `Site` yet. TD-3 uses it to set `vars.site` when an order is added.
 

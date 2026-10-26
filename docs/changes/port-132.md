@@ -8,7 +8,7 @@ Ported on 2026-10-26 by `scripts/port-private.ps1` from JVonBorstel/brain-monito
 
 This is the whole multi-site stack, TD-2 to TD-12, merged into one PR and made to fit together. You can approve it once instead of eleven times.
 
-What it adds: every work order and the Board show their Site. The Yard takes turns between Sites. Each Site can have its own heavy-step limit, Stop-work order, pause, closed windows and CI budget. Each Tower can set how its Inspector runs. With no `sites` in your kitchen.json, the Yard behaves exactly as it does today.
+What it adds: every work order and the Board show their Site. The Yard takes turns between Sites. Each Site can have its own heavy-step limit, Stop-work order, pause, closed windows and CI budget. Each Tower can set how its Inspector runs. With no `sites` in your kitchen.json, the Yard behaves exactly as it does today (true since the review #11 fixes below: before them, tide's own `site` key turned fair share on and the CI count ran on the live Yard).
 
 It **supersedes #120, #122, #123, #124, #125, #126, #127, #128, #129, #130 and #131**. They are left open. Close them once this one merges.
 
@@ -16,7 +16,7 @@ It **supersedes #120, #122, #123, #124, #125, #126, #127, #128, #129, #130 and #
 
 | File | Why it changes |
 |---|---|
-| `kitchen.repo.json` | brain-monitor names its Site (`"site": "TD"`, TD-2) and its Inspector plan (`local: full, ci: quick`, the same as today, TD-12) |
+| `kitchen.repo.json` | tide names its Site (`"site": "TD"`, TD-2) and its Inspector plan (`local: full, ci: quick`, the same as today, TD-12) |
 | `scripts/merge-pr.ps1` | a session merge now also respects the Tower's Site-closed windows from the registry (reconcile c). With no `site` or no registry, nothing changes |
 | `scripts/verify-all.ps1` | runs the suites Site by Site when there is a registry (TD-5). It reads the registry through the one shared reader (reconcile a) |
 | `kitchen/kitchen.ps1` | Site at add (TD-3), status grouped by Site plus stopped/paused Sites (TD-5, reconcile b), per-Site maxHeavy (TD-7), per-Site Stop-work and `pause -Site` (TD-8), weights per Tower (TD-10), CI-count chore (TD-11) |
@@ -69,8 +69,6 @@ The PRs were merged onto main with `--no-ff` in this order: 120, 122, 124, 125, 
 
 `scripts/check-standards.ps1 -Root <worktree>`: **0 new** (24 baselined, 6 grew, all already baselined). Quality ratchet against main: 0 new. Names: 0 new.
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
 ## How it was ported
 
 The private branch's changes since its merge-base `d37031d` with the old private main, with the public cleaning (R1-R10) applied to both sides, applied with `git apply -3`. Only those changes are applied, so tide-only commits stay. The changed files, the commit message and the PR text passed the privacy scan (no live hit; any other new hit needs a person's -Allow, named in the PR).
@@ -82,3 +80,30 @@ Done with -AcceptRejects -NoCommit, then by hand in the worktree before the comm
 ## L1-L4
 
 The effects are the private PR's own (its description above). The port itself only moves finished work to the public home: nothing changes for a person, the business, an MSP or the community beyond that.
+## Review #11 fixes (2026-10-26)
+
+The independent review (`SHIP AFTER FIXES`) found F1-F10. What changed, per finding:
+
+- **F1 (conflicts with main):** `origin/main` merged into this branch (a merge commit, no rebase). `pass-app/server.mjs` keeps both
+  sides: main's `towersV` and `githubAt` (City G1/G2) and this PR's `ciBudget` and `siteStops`. `sw.js` caches main's `city.js`
+  and this PR's `site-stop.js`, `ci-budget.js`, `sites.js`. `kitchen/MAP.md` regenerated with `scripts/make-map.ps1`.
+- **F2 (CI count ran with no registry):** `Invoke-ChoreCiBudget` returns before anything (no GitHub call, no `lastCiCount` stamp, no
+  `ci-budget.json`) unless the Sites registry has at least one Site (`Test-CiCountOn`); an unreadable registry still writes its
+  problem line, with no GitHub call. The Board's `ciBudget` is `null` with no registry, so no "CI this month" banner from an old
+  file. Tests: KitchenSupervisor `CiCount_*`, PassApp `CiBudget_NoRegistry`.
+- **F3 (fair share on with no registry):** fair share needs the registry's weights; none = the old order exactly. Fairness now sits
+  before priority and counts running heavy steps, as design section 2.3 says (details in `TD-6.md`). Tests: StartOrder
+  `NoRegistry_J10_J13` and others.
+- **F4 (Unassigned Stop-work order invisible):** with a registry, an open `?` Stop-work order comes through `siteStops` as code
+  `?` and shows a banner (no tap). Tests: PassApp `SiteStop_Unassigned_*`.
+- **F5 (`%USERPROFILE%` Towers never matched):** `ConvertTo-SiteTowerKey` (status, the Ledger, verify-all, `Find-RegistrySite`) and
+  `Get-CiTowers` expand environment variables first. Tests: VerifyAll `EnvTower*`, CiBudget `EnvTower`.
+- **F6:** tide's `inspector._why` and the RepoConfig check no longer call tide private.
+- **F8:** `ciPrivatePoolMinutes` and the `KITCHEN_CI_COUNT*` switches are in the `kitchen/kitchen.json` template; `PAUSED-<code>` is
+  in `TD-8.md`; change notes added for TD-4, TD-5, TD-8 and TD-12.
+- **F9:** the fake slug in `Test-CiBudget.ps1` is `JVonBorstel/private-app`; this note's and `TD-2.md`'s "brain-monitor" wording
+  for tide's own file is fixed; the stray "Generated with" line in the middle of this note is gone.
+- **Not changed, follow-ups:** F7's silent end of an open Yard-wide Stop-work order when a registry is added, and the code check
+  mismatch between `Get-SiteList` (any 2-3 capitals) and `Get-KitchenSites` (`RepoSiteCodes` only). F10: weights and
+  `sandboxMedium` blocks are keyed by the main checkout's folder name (two Towers with one folder name would share them); keying by
+  full path changes `weights.json` and the `sandboxMedium` format, so it is not a small, safe change for this PR.

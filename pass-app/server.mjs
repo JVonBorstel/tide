@@ -564,7 +564,8 @@ function stateParts() {
     freeze: memo('freeze', sigOf(path.join(root, 'freeze.json')) + '|' + Math.floor(Date.now() / 60000), freezeView),
     towersV: towers.v(),   // the City: /api/towers changed (a merge, a git count, a GitHub read that found something); the phone fetches it again
     githubAt: towers.githubAt(),   // the City's "GitHub read N min ago" sign: the last good GitHub read (every 5 min), null before one
-    ciBudget: memo('ci-budget', sigOf(path.join(root, 'ci-budget.json')) + '|' + new Date().toISOString().slice(0, 7), ciBudgetView),   // TD-11 (public/ci-budget.js)
+    // TD-11 (public/ci-budget.js); review #11 F2: only with a Sites registry (the chores count nothing without one, and an old file says nothing)
+    ciBudget: siteCodes().length ? memo('ci-budget', sigOf(path.join(root, 'ci-budget.json')) + '|' + new Date().toISOString().slice(0, 7), ciBudgetView) : null,
     mainStatus: mainStatusView(),   // TD-EH-03a: each Tower's main, green or red (the Board's main-is-red banner, public/main-status.js)
     undoUnpushed: undoUnpushedView(), automergePause: automergePauseView(),   // TD-EH-10/11: banners in public/undo-pause.js
     siteStops: siteStopsView(meta),   // TD-8: each Site's stop (by the Owner) and Stop-work order (public/site-stop.js); [] with no Sites
@@ -592,7 +593,8 @@ function state() { const p = stateParts(); return { ...p.top, jobs: p.jobs.map((
 // read is shown as such (state 'unreadable'), never dropped: a red main must not vanish behind a torn file.
 // ---- TD-8: Sites the Owner stopped and Sites whose own Stop-work order is open. The registry is kitchen.json "sites" (the state copy wins
 // over the repo copy, as kitchen.ps1 reads it); PAUSED-<code> is written by kitchen.ps1 pause -Site; supervisor.json siteBreakers by the
-// tick. No registry: [] (the Board shows nothing new and has no Site taps).
+// tick. No registry: [] (the Board shows nothing new and has no Site taps). Orders with no Site have their own Stop-work order (key '?',
+// kitchen.ps1 Get-SiteStopKey; review #11 F4): it comes through as code '?' while open, a banner only (no Site tap stops or resumes it).
 const SITE_CODE = /^[A-Z]{2,3}$/;
 function siteCodes() {
   const s = fileJson(path.join(root, 'kitchen.json'))?.sites ?? fileJson(path.join(kitchenDir, 'kitchen.json'))?.sites;
@@ -600,10 +602,13 @@ function siteCodes() {
 }
 function siteStopsView(meta) {
   const sb = meta?.siteBreakers && typeof meta.siteBreakers === 'object' ? meta.siteBreakers : {};
-  return siteCodes().map((code) => {
+  const codes = siteCodes(); if (!codes.length) return [];
+  const out = codes.map((code) => {
     const b = sb[code]; const open = !!(b && b.tripped);
     return { code, stopped: fs.existsSync(path.join(root, 'PAUSED-' + code)), stopWork: open, stopWorkUntil: open ? b.openUntil || null : null };
   });
+  const u = sb['?']; if (u && u.tripped) out.push({ code: '?', stopped: false, stopWork: true, stopWorkUntil: u.openUntil || null });
+  return out;
 }
 function mainStatusView() {
   const dir = path.join(root, 'main-status'); let files = [];
