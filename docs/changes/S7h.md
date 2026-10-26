@@ -51,7 +51,7 @@ On this Windows PC the test prints the bytes of the files as checked out (CRLF):
   - SiteSlab: both floor tiles one colour with a few specks, no seam row or column.
   Against S7g's sprites these checks fail (the `pallet` sprite does not exist there and the cabinets are 100 % filled).
 - `node pass-app/test-live.mjs`: 63 checks, 0 failed.
-- `tests/Test-PassApp.ps1` (bounded, 1200 s): see the PR.
+- `tests/Test-PassApp.ps1` (bounded, 1200 s): 1044 passed, 0 failed (1038 before: the 6 new scene checks).
 
 ## Seen in a browser
 A look-only harness (made-up work orders, never the live Board) at 375 and 411 px, light and dark, before and after. The shots are in
