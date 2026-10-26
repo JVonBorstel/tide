@@ -352,8 +352,8 @@ function run(file, args, opts) {
 // No branch, a git error or no protect list all count as needing Jordan's own look.
 const repoOfJob = (j) => { const m = (j?.steps || []).find((s) => /merge\.ps1$/.test(String(s.script || '')) && s.args?.Repo); return m ? String(m.args.Repo) : path.resolve(kitchenDir, '..'); };
 function repoOf(id) { return repoOfJob(readJson(path.join(root, 'jobs', id + '.json'))); }
-// the City (GET /api/towers, towersV, jobView.tower): towers.mjs reads the Yard's records and git, off this thread through run()
-const towers = makeTowers({ root, repoHome: path.resolve(kitchenDir, '..'), run, jobs: () => loadJobs({ watched: true }), isPrivate: isJobPrivate });
+// the City (GET /api/towers, towersV, githubAt, jobView.tower): towers.mjs reads the Yard's records, git and GitHub (gh, read-only), off this thread through run()
+const towers = makeTowers({ root, repoHome: path.resolve(kitchenDir, '..'), run, jobs: () => loadJobs({ watched: true }), isPrivate: isJobPrivate, github: { log: (l) => console.log(l) } });
 const unknownChange = () => ({ files: 0, add: 0, del: 0, protected: [], unknown: true });
 const gitOpts = { encoding: 'utf8', timeout: 10000, windowsHide: true, maxBuffer: 16 << 20 };
 const gitRun = (repo, a) => run('git', ['-C', repo, '-c', 'core.quotepath=off', ...a], gitOpts).then(({ err, out }) => { if (err) throw err; return out; });
@@ -521,6 +521,7 @@ function stateParts() {
     ideas: memo('ideas', sigOf(ip), () => (readJson(ip)?.items || []).filter((x) => x.status === 'new').length), leads: memo('leads', sigOf(leadsPath), clientsNew),
     freeze: memo('freeze', sigOf(path.join(root, 'freeze.json')) + '|' + Math.floor(Date.now() / 60000), freezeView),
     towersV: towers.v(),   // the City: /api/towers changed (a merge, a git count, a GitHub read that found something); the phone fetches it again
+    githubAt: towers.githubAt(),   // the City's "GitHub read N min ago" sign: the last good GitHub read (every 5 min), null before one
     mainStatus: mainStatusView(),   // TD-EH-03a: each Tower's main, green or red (the Board's main-is-red banner, public/main-status.js)
     undoUnpushed: undoUnpushedView(), automergePause: automergePauseView(),   // TD-EH-10/11: banners in public/undo-pause.js
     lead: leadView(), lobe: lobeView(), lobeOwner: lobeOwnerView(), lobeGlass: lobeGlass(), alerts: memo('alerts', sigOf(ap), () => tailLines(ap, 8).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean)) };

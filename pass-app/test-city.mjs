@@ -3,8 +3,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { makeTowers, sitesOf, localRecords, buildTowers, versionOf, slugOf, repoArgOf, pourOf } from './towers.mjs';
+import { makeTowers, sitesOf, localRecords, buildTowers, versionOf, slugOf, repoArgOf, pourOf, ciOfRollup, githubTargets, ghCall } from './towers.mjs';
 
+for (const k of ['PASS_GH', 'PASS_GITHUB', 'PASS_GITHUB_MS', 'PASS_TOWERS_GIT_MS']) delete process.env[k];   // the suite's fake gh is for its server, not these checks
 const out = [];
 const check = (name, pass, detail = '') => out.push({ name: detail ? `${name} (${detail})` : name, pass: !!pass });
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'city-test-'));
@@ -141,11 +142,82 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   check('Privacy_PrivateTitle: a floor or crane of a private work order carries no title', (() => {
     const s = { sites: [{ key: 'x', name: 'x', n: 'x', folder: 'x', slug: 'o/x', office: false }] };
     const r = { floors: new Map([['x', [{ pr: 1, at: '2026-10-01T00:00:00Z', title: 'my secret plan', job: 'J1' }, { pr: 2, at: '2026-10-02T00:00:00Z', title: 'public words', job: 'J2' }]]]), open: new Map([['x', [{ pr: 3, title: 'secret crane', job: 'J1' }]]]) };
-    const b = JSON.stringify(buildTowers(s, r, new Map(), { privateJobs: new Set(['J1']) }));
+    const b = JSON.stringify(buildTowers(s, r, new Map(), { isPrivateJob: (id) => id === 'J1' }));
     return !b.includes('secret') && b.includes('public words');
   })());
   check('Slug_AnyForm: owner/name from owner/name, https and ssh URLs; junk is none', slugOf('a/b') === 'a/b' && slugOf('https://github.com/a/b.git') === 'a/b' && slugOf('git@github.com:a/b.git') === 'a/b' && slugOf('C:\\x\\y') === '' && slugOf('a/../b') === '');
   check('Version_Stable: the same view gives the same version, a different one a new version', versionOf({ a: 1 }) === versionOf({ a: 1 }) && versionOf({ a: 1 }) !== versionOf({ a: 2 }));
+}
+
+// ---- G2: GitHub (a fake gh through the same runner; nothing leaves this PC) ----
+{
+  const F = fixture('github', {
+    kitchen: (r) => ({ bootRepos: [path.join(r, 'demo-project'), path.join(r, 'old-name')], city: { history: { 'tide-demo': { github: 'demo-owner/old-private', ref: 'old-main' } } } }),
+    merges: [{ pr: 2, repo: 'demo-owner/demo-project', sha: sha('b'), actor: 'claude-session', why: '', at: '2026-10-21T10:00:30Z', ok: true }],
+    results: {
+      'J30.pr.json': { job: 'J30', repo: 'demo-owner/demo-project', number: 9, url: 'https://github.com/demo-owner/demo-project/pull/9', pushedAt: '2026-10-23T09:00:00Z' },
+      'J31.ci.json': { state: 'red' },
+    },
+  });
+  W(path.join(F.root, 'jobs', 'archive', '2026-10', 'J33.json'), { id: 'J33', status: 'closed', vars: { private: 'yes' }, steps: [] });
+  W(path.join(F.root, 'jobs', 'archive', '2026-10', 'J11.json'), { id: 'J11', status: 'closed', steps: [] });
+  const jobs = [{ id: 'J30', status: 'running', steps: [mergeStep(F.dir('demo-project'))] }, { id: 'J31', status: 'running', steps: [mergeStep(F.dir('demo-project'))] }, { id: 'J32', status: 'running', vars: { private: 'yes' }, steps: [] }];
+  const isPrivate = (j) => ['yes', 'true'].includes(String(j?.vars?.private || ''));
+  const gh = { calls: [], fail: false, merged: {}, open: {} };
+  gh.merged['demo-owner/demo-project'] = [
+    { number: 1, title: 'First floor', mergedAt: '2026-10-20T09:00:00Z', mergeCommit: { oid: sha('a') }, headRefName: 'feature-a' },
+    { number: 2, title: 'Second floor', mergedAt: '2026-10-21T10:00:00Z', mergeCommit: { oid: sha('b') }, headRefName: 'kitchen/J11' },
+    { number: 3, title: 'my secret plan', mergedAt: '2026-10-22T10:00:00Z', mergeCommit: { oid: sha('c') }, headRefName: 'kitchen/J33' },
+    { number: 4, title: 'ghost order words', mergedAt: '2026-10-22T11:00:00Z', mergeCommit: { oid: sha('d') }, headRefName: 'kitchen/J99' },
+  ];
+  gh.open['demo-owner/demo-project'] = [
+    { number: 10, title: 'Crane with red CI', isDraft: false, createdAt: '2026-10-24T09:00:00Z', headRefName: 'kitchen/J31', statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'SUCCESS' }, { status: 'COMPLETED', conclusion: 'FAILURE' }] },
+    { number: 11, title: 'Draft crane', isDraft: true, createdAt: '2026-10-24T10:00:00Z', headRefName: 'hand-branch', statusCheckRollup: [] },
+    { number: 12, title: 'secret crane words', isDraft: false, createdAt: '2026-10-24T11:00:00Z', headRefName: 'kitchen/J32', statusCheckRollup: [{ status: 'IN_PROGRESS', conclusion: '' }] },
+  ];
+  gh.merged['demo-owner/old-private'] = [{ number: 2, title: 'Old floor two', mergedAt: '2026-10-19T10:00:00Z', mergeCommit: { oid: sha('9') }, headRefName: 'x' }];
+  gh.merged['demo-owner/tide-demo'] = []; gh.open['demo-owner/tide-demo'] = [];
+  const git = fakeGit({ 'demo-project': { commits: 40, last: '2026-10-23T08:00:00Z', before: 7 }, 'old-name': { commits: 3, last: '2026-10-27T00:00:00Z', ref: 306 } });
+  const run = async (file, args, opts) => {
+    if (file === 'git') return git(file, args, opts);
+    gh.calls.push(args.join(' '));
+    if (gh.fail) return { err: Object.assign(new Error('exit 4'), { code: 4 }), out: 'To get started with GitHub CLI, please run:  gh auth login' };
+    if (args[0] === 'api') return { err: null, out: JSON.stringify({ resources: { graphql: { remaining: 4321 } } }) };
+    const slug = args[args.indexOf('-R') + 1]; const state = args[args.indexOf('--state') + 1];
+    return { err: null, out: JSON.stringify((state === 'merged' ? gh.merged : gh.open)[slug] || []) };
+  };
+  const logs = [];
+  const T = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run, jobs: () => jobs, isPrivate, sigEveryMs: 0, gitEveryMs: 3600e3, github: { everyMs: 3600e3, off: false, log: (l) => logs.push(l) } });
+  await T.refreshGit(); const before = T.view();
+  check('GitHub_Loading: before the first read githubAt is null and the City shows the local records (the session merge, the Yard\'s crane)', before.githubAt === null && !before.githubError && before.towers.find((t) => t.key === 'demo-project').floors.some((f) => f.pr === 2) && before.towers.find((t) => t.key === 'demo-project').open.some((o) => o.pr === 9));
+  await T.refreshGithub(); await new Promise((r) => setTimeout(r, 0)); await T.refreshGit();   // the stone base is counted again from GitHub's first floor
+  const v = T.view(); const dp = v.towers.find((t) => t.key === 'demo-project'); const td = v.towers.find((t) => t.key === 'td');
+  const f = (n) => dp.floors.find((x) => x.pr === n);
+  check('GitHub_MergedFloors: every merged PR is a floor with its title and merge commit; one merged by a session keeps by session', dp.floors.length === 4 && f(1).by === 'github' && f(1).title === 'First floor' && f(1).sha === sha('a') && f(2).by === 'session' && f(2).title === 'Second floor' && f(2).job === 'J11', JSON.stringify(dp.floors));
+  check('GitHub_Privacy: a private work order\'s floor and crane carry no title; an order whose file cannot be found counts as private', !('title' in f(3)) && f(3).job === 'J33' && !('title' in f(4)) && !JSON.stringify(v).includes('secret') && !JSON.stringify(v).includes('ghost order words'));
+  const o = (n) => dp.open.find((x) => x.pr === n);
+  check('GitHub_Cranes: GitHub\'s open PRs replace the Yard\'s own crane list: CI from the checks (a failure is red, unfinished is pending), a draft carries no load, none is unknown', dp.open.length === 3 && !o(9) && o(10).ci === 'red' && o(10).job === 'J31' && o(10).title === 'Crane with red CI' && o(11).draft === true && o(11).ci === null && o(12).ci === 'pending');
+  check('GitHub_History: the old repo is read for merged PRs only (no open list), under the line', gh.calls.some((c) => c.includes('-R demo-owner/old-private --state merged')) && !gh.calls.some((c) => c.includes('-R demo-owner/old-private --state open')) && td.floors.some((x) => x.past && x.pr === 2 && x.title === 'Old floor two'));
+  check('GitHub_FullThenIncremental: the first read takes every merged PR (limit 1000)', gh.calls.filter((c) => c.includes('-R demo-owner/demo-project --state merged'))[0].includes('--limit 1000'), gh.calls[0]);
+  const at1 = v.githubAt; const v1 = v.v; gh.calls.length = 0; await new Promise((r) => setTimeout(r, 5)); await T.refreshGithub(); const v2 = T.view();
+  check('GitHub_FullThenIncremental: the next read searches merged:>= a day before the newest (limit 200), and the old repo is not read again the same day', gh.calls.some((c) => c.includes('-R demo-owner/demo-project --state merged') && c.includes('--search merged:>=2026-10-21') && c.includes('--limit 200')) && !gh.calls.some((c) => c.includes('old-private')), gh.calls.join(' | '));
+  check('GitHub_VersionStill: a read that found nothing new moves githubAt but not towersV', v2.v === v1 && v2.githubAt > at1 && T.githubAt() === v2.githubAt, JSON.stringify(v2.towers) === JSON.stringify(v.towers) ? 'same towers' : 'towers moved');
+  check('GitHub_Measured: each read records its time, the lists read and the GraphQL points left', T.githubStats().reads === 4 && T.githubStats().left === 4321 && Number.isFinite(T.githubStats().ms) && /GitHub read 4 lists in \d+ ms; 4321 GraphQL points left/.test(logs.at(-1)), logs.at(-1));
+  gh.fail = true; await T.refreshGithub(); const v3 = T.view(); const dp3 = v3.towers.find((t) => t.key === 'demo-project');
+  check('GitHub_FailKeepsLastGood: a failed read says why in plain words, keeps githubAt at the last good read and drops no floor or crane', v3.githubError === 'demo-owner/demo-project: gh is not signed in' && v3.githubAt === v2.githubAt && dp3.floors.length === 4 && dp3.open.length === 3 && v3.v !== v2.v, String(v3.githubError));
+  T.stop();
+  const T2 = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run: async () => ({ err: new Error('offline'), out: '' }), jobs: () => jobs, isPrivate, sigEveryMs: 0, gitEveryMs: 3600e3, github: { everyMs: 3600e3, off: true } });
+  const v4 = T2.view();
+  check('GitHub_LastGoodAfterRestart: a new server shows the last good read from towers-github.json before it reads again', v4.githubAt === v2.githubAt && v4.towers.find((t) => t.key === 'demo-project').floors.length === 4 && fs.existsSync(path.join(F.root, 'towers-github.json')));
+  const calls0 = gh.calls.length; await T2.refreshGithub();
+  check('GitHub_Off: with PASS_GITHUB=off (here off: true) nothing is read', gh.calls.length === calls0);
+  T2.stop();
+  check('CI_Rollup: no checks is unknown; all passed (or skipped) is green; a cancelled or errored one is red; a queued commit status is pending',
+    ciOfRollup([]) === null && ciOfRollup(null) === null && ciOfRollup([{ status: 'COMPLETED', conclusion: 'SUCCESS' }, { status: 'COMPLETED', conclusion: 'SKIPPED' }]) === 'green' && ciOfRollup([{ conclusion: 'CANCELLED', status: 'COMPLETED' }]) === 'red' && ciOfRollup([{ state: 'ERROR' }]) === 'red' && ciOfRollup([{ state: 'PENDING' }]) === 'pending' && ciOfRollup([{ state: 'SUCCESS' }]) === 'green');
+  check('GitHub_Targets: each repo\'s GitHub home (kitchen.repo.json, else its origin remote) once, plus the old history repo; never the Office',
+    JSON.stringify(githubTargets([{ key: 'a', slug: 'o/a' }, { key: 'b', slug: '' }, { key: 'c', slug: 'o/c', office: true }, { key: 'd', slug: 'o/a', history: { slug: 'o/old' } }], new Map([['b', { remoteSlug: 'o/b' }]]))) === JSON.stringify([{ slug: 'o/a', past: false }, { slug: 'o/b', past: false }, { slug: 'o/old', past: true }]));
+  check('GitHub_PlainErrors: gh\'s failures are said in plain words, never its raw output', (await ghCall(async () => ({ err: Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }), out: '' }), ['pr'])).error === 'gh is not installed' && (await ghCall(async () => ({ err: new Error('x'), out: 'HTTP 404: Not Found (https://api.github.com/x)' }), ['pr'])).error === 'the repo is not on GitHub');
+  check('Config_KeyFallback: shown names and history are found by key, else GitHub name, else folder name (so they hold when a Site code arrives)', td.floors.some((x) => x.past) && td.publicFrom === undefined);
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
