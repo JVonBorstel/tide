@@ -1030,6 +1030,29 @@ console.log(JSON.stringify({ undo: undoPushBanners(v.undo, { when }), none: undo
     }
     $appCss = Get-Content (Join-Path $repo 'pass-app\public\app.css') -Raw
 
+    # the City (plans/city-god-mode-2026-10-26.md): pass-app/test-city.mjs (towers.mjs on throwaway state folders and a fake git), then the live route
+    $cityOut = & node (Join-Path $repo 'pass-app\test-city.mjs') 2>$null
+    $cityExit = $LASTEXITCODE; $cityTest = $null
+    try { $cityTest = ($cityOut -join "`n") | ConvertFrom-Json } catch { $cityTest = $null }
+    Check 'city: test-city.mjs exits 0 (a node crash is a failure, not silence)' ($cityExit -eq 0)
+    Check 'city: test-city.mjs reported at least 25 checks' (@($cityTest).Count -ge 25)
+    foreach ($t in @($cityTest)) { if ($t) { Check "city: $($t.name)" ($t.pass -eq $true) } }
+    Check 'City_TowersNeedsKey: /api/towers needs the key' ((Get-Code "$base/api/towers") -eq 401)
+    $twRaw = (Invoke-WebRequest "$base/api/towers" -Headers $auth).Content; $tw = $twRaw | ConvertFrom-Json
+    Check 'City_TowersRoute: ok, this repo as its one building (no bootRepos here), with a 12-hex version' ($tw.ok -and @($tw.towers).Count -eq 1 -and $tw.v -match '^[0-9a-f]{12}$' -and @($tw.towers)[0].kind -in @('tower', 'lot'))
+    Check 'City_NoLocalPaths: /api/towers carries no folder path from this PC' ($twRaw -notmatch [regex]::Escape(($repo -replace '\\', '\\')) -and $twRaw -notmatch [regex]::Escape(($root -replace '\\', '\\')))
+    Check 'City_TowersV_InState: the state carries towersV, the same as /api/towers v' ((Invoke-RestMethod "$base/api/state" -Headers $auth).towersV -eq $tw.v)
+    $citySlug = [string](Get-Content (Join-Path $repo 'kitchen.repo.json') -Raw | ConvertFrom-Json).github
+    Add-Content -LiteralPath (Join-Path $root 'merges.jsonl') -Value (@{ pr = 77; repo = $citySlug; sha = ('7' * 40); actor = 'claude-session'; why = 'batch-run integrate-city: test'; at = [DateTime]::UtcNow.ToString('o'); ok = $true } | ConvertTo-Json -Compress) -Encoding utf8
+    Start-Sleep -Milliseconds 3500   # towers.mjs looks at its inputs at most every 3 s
+    $tw2 = Invoke-RestMethod "$base/api/towers" -Headers $auth; $fl77 = @(@($tw2.towers)[0].floors | Where-Object { $_.pr -eq 77 })
+    Check 'City_TowersV_MovesOnMerge: a merge line raises a floor (pr, sha, by session, its Pour) and moves towersV' ($tw2.v -ne $tw.v -and $fl77.Count -eq 1 -and $fl77[0].by -eq 'session' -and $fl77[0].pour -eq 'city' -and @($tw2.towers)[0].kind -eq 'tower' -and (Invoke-RestMethod "$base/api/state" -Headers $auth).towersV -eq $tw2.v)
+    @{ id = 'J950'; name = 'improve: city tower probe'; status = 'pending'; cursor = 0; attempt = 0; created = [DateTime]::UtcNow.ToString('o'); history = @(); steps = @(@{ script = 'agent-step.ps1'; args = @{} }, @{ script = 'merge.ps1'; args = @{ Repo = $repo } }) } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $root 'jobs\J950.json') -Encoding utf8
+    @{ id = 'J951'; name = 'research: city yard probe'; status = 'pending'; cursor = 0; attempt = 0; created = [DateTime]::UtcNow.ToString('o'); history = @(); steps = @(@{ script = 'agent-step.ps1'; args = @{} }) } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $root 'jobs\J951.json') -Encoding utf8
+    $sJT = Invoke-RestMethod "$base/api/state" -Headers $auth
+    Check 'City_JobViewTower: a work order with a merge Repo carries its Tower key; one with no Repo carries none (the Yard lot)' (@($sJT.jobs | Where-Object id -eq 'J950')[0].tower -eq @($tw2.towers)[0].key -and $null -eq @($sJT.jobs | Where-Object id -eq 'J951')[0].tower)
+    Remove-Item (Join-Path $root 'jobs\J950.json'), (Join-Path $root 'jobs\J951.json') -Force
+
     # listen (I40): the spoken-text builder and speaker live between the speak:start/speak:end markers in app.js; run them in node
     $speakBlock = [regex]::Match($appJs, '(?s)// speak:start\r?\n(.*?)// speak:end').Groups[1].Value
     Check 'listen: app.js has the speak block, Listen buttons and speaker icon' ($speakBlock.Length -gt 200 -and $appJs -match 'data-listen="brief"' -and $appJs -match 'job-listen' -and (Get-Content (Join-Path $repo 'pass-app\public\index.html') -Raw) -match 'id="i-speaker"[\s\S]*id="job-listen"')

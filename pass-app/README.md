@@ -73,6 +73,31 @@ after an event line 20 -> 10 ms; a stream message after the first 182 KB -> abou
   files in ember, and the lines with `textContent`, wrapped (no sideways scroll at 375 px). The yes carries the listed sha, and the server
   still measures the diff fresh before granting. A private work order lists file names only: no counts, no lines (`?file=` is 403), and its
   work order page no longer carries the worktree diff. Not at a merge gate: 409; git failed: 503.
+### The City's data (G1)
+- **`GET /api/towers`** (`towers.mjs`, signed in like every `/api/*`): `{ ok, at, gitAt, v, towers, errors }`. One row per repo on
+  this PC, left to right: Towers by their first floor (a Tower never moves), then Lots, then the Office.
+  - `kind`: `tower` (it has a floor or a crane), `lot` (commits only: a stone base of `plinth.commits`) or `office` (the repo named
+    `city.office`, default gemini-brain: `commits`, `lastCommit`, never floors).
+  - `floors[]` `{pr?, sha?, at, by, job?, pour?, undone?, past?}`, oldest first, one per merge commit: every ok line of `merges.jsonl`
+    (`by: 'session'`; `pour` from "batch-run integrate-<name>") and every `results\J*.merge.json` (`by: 'yard'`, or `'auto'` when
+    `automerged.jsonl` lists it; `undone` when it was taken down). The same PR in both is one floor.
+  - `open[]` `{pr, draft, ci, job, createdAt}`: an active work order with a `J*.pr.json` and no merge yet; `ci` is red, pending or green
+    from `J*.ci.json`, else `null` (unknown).
+  - `plinth {commits, before}`: a Tower's first-parent commits before its first floor; `blueprint {total, shipped}` from `ledger.json`.
+  - A field with no record is left out (the phone draws nothing for it); before the first git read `gitAt` is `null` and no stone base
+    is sent. No folder path from this PC is sent. `errors[]` names an unreadable state `kitchen.json` or a `bootRepos` folder that is
+    not on this PC (folder name only).
+- **`towersV`** in the state: the version of that answer. It moves only when the answer would (a merge, a git count); the phone fetches
+  `/api/towers` again then. The inputs are looked at at most every 3 s; git runs every 10 min off the main thread
+  (`PASS_TOWERS_GIT_MS`).
+- **`tower`** on each work order in the state: the key of the Tower its merge step's `Repo` is, or `null` (research, career, scouts:
+  the Yard lot).
+- **Which repos, and their names** come from the state folder's `kitchen.json` only (personal values never sit in this repo):
+  `bootRepos` (folders under the profile, or absolute; with none, this repo alone) and an optional `city` key:
+  `names { <key>: 'Shown name' }`, `office '<folder>'`, and `history { <key>: { github: 'owner/name', ref: '<branch>' } }`, an older
+  repo whose merged PRs sit under the "public from" line (`past: true`, `publicFrom` = the public repo's first merged PR) on a stone base
+  of that branch's first-parent commits. A key is the repo's Site code in lower case (`kitchen.repo.json` `site`), else its GitHub name,
+  else its folder name.
 
 ## Run
 - Starts at sign-in (scheduled task `Kitchen-Pass`, hidden via `start-hidden.vbs`); the Walkround's (code: supervisor's) watchdog restarts it if it stops. Manual: `node pass-app/server.mjs`.

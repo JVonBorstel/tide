@@ -16,6 +16,7 @@ import { execFile, execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
+import { makeTowers } from './towers.mjs';
 
 const VERSION = '2.10.0';
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -263,7 +264,7 @@ function jobView(j) {
     worker: path.basename(s.script || ''), station: stationOf(s), role: s.args?.Role || '', supplier: s.args?.Supplier || '',
     approval: j.approval && !j.approval.granted ? { id: j.approval.id, text: j.approval.text, kind: j.approval.kind || 'gate' } : null,
     created: j.created || null, updated: last?.at || j.created || null, parent: j.parent || '', depth: j.depth || 0, notBefore: j.notBefore || null,
-    recipe: j.recipe || null, label: labelOf(j), stuck: stuckOf(j), retryWhy: retryWhyOf(j),
+    recipe: j.recipe || null, label: labelOf(j), stuck: stuckOf(j), retryWhy: retryWhyOf(j), tower: towers.towerOf(j),
     // TD-EH-08: a pending order waiting out its back-off before a retry ('wait' = it waited on CI, the network or GitHub; 'code' = the rest)
     retry: j.status === 'pending' && j.retryWait && j.notBefore ? { cls: j.retryWait.class === 'wait' ? 'wait' : 'code' } : null };   // the order's words (vars) stay out of the live stream; the job sheet shows them on request
   if (v.approval) {   // what the gate is: a merge of a code change (with its size and whether it touches a protected file) or another step
@@ -351,6 +352,8 @@ function run(file, args, opts) {
 // No branch, a git error or no protect list all count as needing Jordan's own look.
 const repoOfJob = (j) => { const m = (j?.steps || []).find((s) => /merge\.ps1$/.test(String(s.script || '')) && s.args?.Repo); return m ? String(m.args.Repo) : path.resolve(kitchenDir, '..'); };
 function repoOf(id) { return repoOfJob(readJson(path.join(root, 'jobs', id + '.json'))); }
+// the City (GET /api/towers, towersV, jobView.tower): towers.mjs reads the Yard's records and git, off this thread through run()
+const towers = makeTowers({ root, repoHome: path.resolve(kitchenDir, '..'), run, jobs: () => loadJobs({ watched: true }), isPrivate: isJobPrivate });
 const unknownChange = () => ({ files: 0, add: 0, del: 0, protected: [], unknown: true });
 const gitOpts = { encoding: 'utf8', timeout: 10000, windowsHide: true, maxBuffer: 16 << 20 };
 const gitRun = (repo, a) => run('git', ['-C', repo, '-c', 'core.quotepath=off', ...a], gitOpts).then(({ err, out }) => { if (err) throw err; return out; });
@@ -517,6 +520,7 @@ function stateParts() {
     due: memo('due', sigOf(trackerPath) + '|' + today(), () => dueItems().length), push: pushOn(),
     ideas: memo('ideas', sigOf(ip), () => (readJson(ip)?.items || []).filter((x) => x.status === 'new').length), leads: memo('leads', sigOf(leadsPath), clientsNew),
     freeze: memo('freeze', sigOf(path.join(root, 'freeze.json')) + '|' + Math.floor(Date.now() / 60000), freezeView),
+    towersV: towers.v(),   // the City: /api/towers changed (a merge, a git count, a GitHub read that found something); the phone fetches it again
     mainStatus: mainStatusView(),   // TD-EH-03a: each Tower's main, green or red (the Board's main-is-red banner, public/main-status.js)
     undoUnpushed: undoUnpushedView(), automergePause: automergePauseView(),   // TD-EH-10/11: banners in public/undo-pause.js
     lead: leadView(), lobe: lobeView(), lobeOwner: lobeOwnerView(), lobeGlass: lobeGlass(), alerts: memo('alerts', sigOf(ap), () => tailLines(ap, 8).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean)) };
@@ -2299,6 +2303,7 @@ async function handle(req, res) {
     if (req.method !== 'POST' || !keyOk((req.headers.authorization || '').slice(7))) return send(res, 403, { ok: false, error: 'pass key only' });
     broadcast('bye', { reason: 'restart' }); return send(res, 200, { ok: true, clients: clients.size });
   }
+  if (url.pathname === '/api/towers') return send(res, 200, towers.view());   // the City (pass-app/towers.mjs); read-only
   if (url.pathname === '/api/recipes') return send(res, 200, { ok: true, data: recipes() });
   if (url.pathname === '/api/cooks') return send(res, 200, { ok: true, data: cookHistory() });
   if (url.pathname === '/api/whoami') return send(res, 200, { ok: true, who: tailscaleUser(req) || 'pass key', version: VERSION });
