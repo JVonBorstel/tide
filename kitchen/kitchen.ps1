@@ -21,6 +21,9 @@
 #   kitchen.ps1 pause | resume        Jordan stops the supervisor on purpose (a PAUSED file: every tick starts nothing new and only minds
 #                                     the running steps and runs the watchers (TD-EH-26), and Chef and
 #                                     kitchen-check show 'paused by you' instead of the stopped-ticking alarm) / starts it again
+#   kitchen.ps1 pause -Site GW | resume -Site GW   the Owner stops one Site (TD-8, a PAUSED-GW file): only that Site's new starts wait;
+#                                     its running work, the watchers and every other Site carry on. Needs the Sites registry (kitchen.json
+#                                     "sites"). The global pause above is unchanged and still wins.
 # Safety caps (swarm behaviours): concurrent workers, orders under way (maxLive) and waiting (maxQueued), children per job, agent depth (BRAIN_AGENT_DEPTH; workers get depth+1, depth>=2
 # may not add jobs), per-step timeout / memory (whole process tree) / log size / heartbeat, retries with backoff, quarantine, unsafe-replay
 # needs a human, and a circuit breaker that stops new starts when most recent steps fail.
@@ -33,6 +36,7 @@ param(
     [string]$Id = '', [switch]$All, [switch]$Json, [int]$Seconds = 120, [string]$HtmlPath = '',
     [string]$Why = '',   # close: why a set-aside order is closed for good
     [switch]$FindOnly,   # doctor: findings only (TD-EH-26; always so while paused): nothing reset, pruned, archived or moved
+    [string]$Site = '',   # pause / resume: one Site's code (TD-8), for that Site only
     [string]$ReplacedBy = '', [string]$Proof = '',   # close: the order that replaces it, or proof it was done another way (no silent endings)
     [string]$ApprovalId = '',   # approve: sign off only if this is still the job's ask (Chef sends the one Jordan was shown)
     [int]$MaxConcurrent = 4, [int]$MaxLive = 100, [int]$MaxQueued = 2000, [int]$MaxJobs = 0, [int]$MaxChildren = 5, [int]$BackoffBaseSec = 2,
@@ -55,6 +59,7 @@ $terminal = 'done', 'failed', 'quarantined', 'killed', 'closed'
 . (Join-Path $PSScriptRoot 'start-order.ps1')   # which pending order starts first (Sort-ForStart): under way, then priority, then oldest
 . (Join-Path $PSScriptRoot 'clash.ps1')   # the clash rule: an order naming a file a started order names waits (Hold-ForClash)
 . (Join-Path $PSScriptRoot 'jobs-lib.ps1')   # the job store's live set: jobs-index.json, the archive, the only listing of jobs\
+. (Join-Path $PSScriptRoot 'site-registry.ps1')   # the one Sites registry reader (kitchen.json "sites"): admission, Stop-work and pause per Site, status, doctor
 . (Join-Path $PSScriptRoot 'freeze-lib.ps1')   # merge freeze windows per repo (kitchen.repo.json "freeze"): status lines and Chef's freeze.json
 . (Join-Path $PSScriptRoot 'scaler.ps1')   # admission: the RAM-scaled limit (scaler.json) and each station's measured weight (weights.json)
 . (Join-Path $PSScriptRoot 'backoff-lib.ps1')   # the Stop-work order's hysteresis and retry back-off (TD-EH-07/08), pure functions
@@ -371,21 +376,122 @@ function Step-Breaker($meta, $jobs) {
     if ($st.probe) { $pj = @($jobs | Where-Object { [string]$_.id -eq [string]$st.probe.job -and $_.status -eq 'running' }); $live = $pj.Count -gt 0 }
     $r = Update-BreakerState $st $b.outcomes (Now) $cfg $live
     $meta.breakerEpisode = $r.st; $meta.breakerTripped = [bool]$r.st.tripped; $meta.breakerOpenUntil = $r.st.openUntil
+    Send-BreakerNews $r ''
+    $r
+}
+# The events and alerts of one Stop-work order's look. $Site '' = the whole Yard (the words as before TD-8); a code (or '?', Unassigned)
+# = that Site's own order: the events carry site and the alert names the Site and says the other Sites carry on.
+function Send-BreakerNews($r, [string]$Site) {
     $mins = Format-WaitMinutes ([double]$r.st.coolSec)
+    $tag = @{}; $who = 'No new work'; $other = ''
+    if ($Site) { $tag = @{ site = $Site }; $nm = if ($Site -eq '?') { 'Unassigned' } else { $Site }; $who = "No new work of $nm"; $other = ' Other Sites carry on.' }
+    $news = { param($t, $d) foreach ($k in $tag.Keys) { $d[$k] = $tag[$k] }; Emit $t '' $d }
     switch ($r.did) {
         'open' {
-            Emit 'breaker.open' '' @{ failRate = [math]::Round($r.rate, 2); window = $r.n; coolSec = [int]$r.st.coolSec; episode = [int]$r.st.n; note = "new work waits $mins" }
-            if ($r.alert) { Alert 'HIGH' ("Stop-work order: {0:P0} of the last {1} steps failed. No new work starts for {2}; then one trial step runs first." -f $r.rate, $r.n, $mins) }
+            & $news 'breaker.open' @{ failRate = [math]::Round($r.rate, 2); window = $r.n; coolSec = [int]$r.st.coolSec; episode = [int]$r.st.n; note = "new work waits $mins" }
+            if ($r.alert) { Alert 'HIGH' ("Stop-work order{3}: {0:P0} of the last {1} steps failed. $who starts for {2}; then one trial step runs first.$other" -f $r.rate, $r.n, $mins, $(if ($Site) { " on $nm" } else { '' })) }
         }
-        'reopen' { Emit 'breaker.reopen' '' @{ coolSec = [int]$r.st.coolSec; episode = [int]$r.st.n; reopens = [int]$r.st.reopens; note = "the trial step failed; new work waits $mins" } }
-        'probe-lost' { Emit 'breaker.probe' '' @{ episode = [int]$r.st.n; note = 'the trial step stopped without a result; another may try' } }
+        'reopen' { & $news 'breaker.reopen' @{ coolSec = [int]$r.st.coolSec; episode = [int]$r.st.n; reopens = [int]$r.st.reopens; note = "the trial step failed; new work waits $mins" } }
+        'probe-lost' { & $news 'breaker.probe' @{ episode = [int]$r.st.n; note = 'the trial step stopped without a result; another may try' } }
         'closed' {
             $openMin = try { [int][math]::Round(((Now) - (ToUtc $r.st.openedAt)).TotalMinutes) } catch { 0 }
-            Emit 'breaker.closed' '' @{ why = [string]$r.st.closeWhy; episode = [int]$r.st.n; failRate = [math]::Round($r.rate, 2); openMin = $openMin; note = $r.why }
-            Alert 'INFO' "Stop-work order lifted after $openMin min: $($r.why). New work starts again."
+            & $news 'breaker.closed' @{ why = [string]$r.st.closeWhy; episode = [int]$r.st.n; failRate = [math]::Round($r.rate, 2); openMin = $openMin; note = $r.why }
+            Alert 'INFO' "Stop-work order$(if ($Site) { " on $nm" }) lifted after $openMin min: $($r.why). New work starts again."
         }
     }
-    $r
+}
+# ---- TD-8: Stop-work and pause per Site (multi-site design section 5). Only with a Sites registry (kitchen.json "sites"); none = the one
+# Yard-wide Stop-work order above and no Site pauses, exactly as before TD-8. Machine-level stops (the global PAUSED, the RAM guard, the
+# daily budget) stay global and still win.
+function Get-SiteStopKey([string]$Site) { if ($Site) { $Site } else { '?' } }   # '?' = orders with no Site (Unassigned)
+# The Sites the Owner stopped (kitchen.ps1 pause -Site X wrote PAUSED-X); a file for a code not in the registry is not read
+function Get-SitePauseCodes($Sites) {
+    if (-not $Sites.Count) { return @() }
+    @(Get-ChildItem -LiteralPath $root -Filter 'PAUSED-*' -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name.Substring(7).ToUpperInvariant() } | Where-Object { $Sites.ContainsKey($_) })
+}
+# Each step outcome's Site: live orders by their Site (Get-AdmitSite), finished ones by jobs-index.json si (read once, only when needed)
+function Get-OutcomeSites($outcomes, $jobs, $Sites) {
+    $map = @{}; foreach ($j in $jobs) { $map[[string]$j.id] = Get-AdmitSite $j $Sites }
+    $idx = $null
+    foreach ($o in $outcomes) {
+        $id = [string]$o.job; if ($map.ContainsKey($id)) { continue }
+        if ($null -eq $idx) { $ix = Read-JobsIndexFile $root; $idx = if ($ix.ok) { $ix.jobs } else { @{} } }
+        $map[$id] = if ($idx[$id] -and $idx[$id].si) { [string]$idx[$id].si } else { '' }
+    }
+    $map
+}
+# One Stop-work order per Site, with the same hysteresis as the Yard-wide one (TD-EH-07, backoff-lib.ps1): the outcomes are bucketed by
+# the order's Site, so one Site's failures never stop another. State: supervisor.json siteBreakers.<code> (an episode each); the Yard-wide
+# breakerTripped is cleared (no Yard-wide order while Sites are on). Returns key -> @{ open; probe } for this pass's starts.
+function Step-SiteBreakers($meta, $jobs, $Sites) {
+    $b = Breaker-State; $cfg = $script:breakerCfg
+    $map = Get-OutcomeSites $b.outcomes $jobs $Sites
+    $prev = if ($meta.siteBreakers -is [Collections.IDictionary]) { $meta.siteBreakers } else { @{} }
+    $keys = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($c in @($Sites.Keys) + @($prev.Keys) + @($map.Values | ForEach-Object { Get-SiteStopKey $_ })) { [void]$keys.Add([string]$c) }
+    $states = @{}; $out = @{}
+    foreach ($k in $keys) {
+        $st = Get-BreakerEpisode @{ breakerEpisode = $prev[$k] } $cfg
+        $live = $false
+        if ($st.probe) { $live = @($jobs | Where-Object { [string]$_.id -eq [string]$st.probe.job -and $_.status -eq 'running' }).Count -gt 0 }
+        $mine = @($b.outcomes | Where-Object { (Get-SiteStopKey $map[[string]$_.job]) -eq $k })
+        $r = Update-BreakerState $st $mine (Now) $cfg $live
+        Send-BreakerNews $r $k
+        if ($r.st.tripped -or $r.st.n) { $states[$k] = $r.st }   # (a Site that never tripped keeps no record)
+        $out[$k] = @{ open = [bool]$r.open; probe = [bool]$r.probe }
+    }
+    $meta.siteBreakers = $states; $meta.breakerTripped = $false; $meta.breakerOpenUntil = $null
+    $out
+}
+# This pass's stop rules: Sites registered = per-Site Stop-work orders (siteBk) and the Sites the Owner stopped (held); none = the
+# Yard-wide order (open, probe), exactly as before TD-8
+function Get-StopWorkPlan($meta, $jobs) {
+    $reg = (Get-YardSites $root).sites
+    if ($reg.Count) { return @{ open = $false; probe = $false; siteBk = (Step-SiteBreakers $meta $jobs $reg); held = @(Get-SitePauseCodes $reg) } }
+    $bk = Step-Breaker $meta $jobs; @{ open = [bool]$bk.open; probe = [bool]$bk.probe; siteBk = $null; held = @() }
+}
+# an order's Site is stopped by the Owner, or that Site's own Stop-work order is open (or its one trial step already started)
+function Test-SiteHeld($plan, [string]$Site) {
+    if (-not $plan.siteBk) { return $false }
+    if ($Site -and $plan.held -contains $Site) { return $true }
+    $sb = $plan.siteBk[(Get-SiteStopKey $Site)]; [bool]($sb -and $sb.open)
+}
+# a step just started while its Site's Stop-work order is cooling: it is that Site's one trial step; its other orders wait for it
+function Set-SiteProbe($plan, $meta, [string]$Site, $j) {
+    if (-not $plan.siteBk) { return }
+    $sk = Get-SiteStopKey $Site; $sb = $plan.siteBk[$sk]
+    if (-not ($sb -and $sb.probe -and $meta.siteBreakers[$sk])) { return }
+    $meta.siteBreakers[$sk].probe = @{ job = [string]$j.id; at = Iso (Now) }; $sb.open = $true
+    Emit 'breaker.probe' $j.id @{ step = $j.cursor; site = $sk; episode = [int]$meta.siteBreakers[$sk].n; note = "one trial step runs before $sk's new work starts again" }
+}
+# pause / resume -Site: the code checked (2-3 letters); pause also needs it in the registry, so a typo never stops nothing quietly
+function Resolve-PauseSite([string]$Code, [bool]$MustBeListed) {
+    $c = $Code.Trim().ToUpperInvariant()
+    if ($c -notmatch '^[A-Z]{2,3}$') { Die "'$Code' is not a Site code (2-3 letters, like GW)" }
+    if ($MustBeListed) {
+        $reg = (Get-YardSites $root).sites
+        if (-not $reg.Count) { Die "no Sites are registered (kitchen.json `"sites`"), so there is no Site to stop; kitchen.ps1 pause stops the whole Yard" }
+        if (-not $reg.ContainsKey($c)) { Die "Site $c is not in the Sites registry (kitchen.json `"sites`": $(@($reg.Keys | Sort-Object) -join ', '))" }
+    }
+    $c
+}
+# kitchen.ps1 status: each Site stopped by the Owner (PAUSED-<code>) or under its own Stop-work order (supervisor.json siteBreakers),
+# as @{ site; paused; stopWork; until }, Sites by code ('?' = Unassigned). @() with no registry: status then prints what it did before TD-8.
+function Get-SiteStopState($meta) {
+    $reg = (Get-YardSites $root).sites
+    if (-not $reg.Count) { return @() }
+    $held = @(Get-SitePauseCodes $reg); $sb = if ($meta.siteBreakers -is [Collections.IDictionary]) { $meta.siteBreakers } else { @{} }
+    @(foreach ($k in @(@($reg.Keys) + @($sb.Keys) | Sort-Object -Unique)) {
+            $e = $sb[$k]; $open = [bool]($e -is [Collections.IDictionary] -and $e.tripped); $paused = $held -contains $k
+            if ($paused -or $open) { [ordered]@{ site = [string]$k; paused = $paused; stopWork = $open; until = $(if ($open -and $e.openUntil) { [string]$e.openUntil } else { $null }) } }
+        })
+}
+function Format-SiteStopLine($x) {
+    $name = if ($x.site -eq '?') { 'UNASSIGNED' } else { "SITE $($x.site)" }
+    $bits = @()
+    if ($x.paused) { $bits += "stopped by you: none of its new work starts until 'kitchen.ps1 resume -Site $($x.site)'" }
+    if ($x.stopWork) { $u = if ($x.until) { ToUtc $x.until } else { $null }; $bits += "Stop-work order on: $(if ($u -and $u -gt (Now)) { "no new work for $(Format-WaitMinutes ($u - (Now)).TotalSeconds) more" } else { 'one trial step runs before new work starts again' })" }
+    "  $($name): $($bits -join '; '). The other Sites carry on"
 }
 function Save-Meta($meta) { $t = "$metaPath.tmp-$PID"; $meta | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $t -Encoding utf8; Move-Into $t $metaPath }   # atomic, like jobs
 
@@ -951,7 +1057,7 @@ function Resume-AfterSleep($meta) {
     }
 }
 # Check-Running, and when that run ended with real work (done or failed, not a wait or a hold for Jordan) its peak MB and seconds go to
-# weights.json: what admission learns each station's weight from
+# weights.json: what admission learns each station's weight from (TD-10: also under station@Tower when the order has one)
 function Check-RunningWeighed($j, $procs) {
     $r = $j.run; $st = Station-Name $j.steps[$j.cursor]
     Check-Running $j $procs
@@ -962,7 +1068,7 @@ function Check-RunningWeighed($j, $procs) {
     # three runs and slip past the -MaxConcurrent its test sets)
     $real = [IO.Path]::GetFullPath($root) -eq [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'brain-kitchen'))
     if (-not $real -and -not (Test-Path -LiteralPath (Join-Path $root 'weights.json'))) { return }
-    try { Add-KitchenWeight $root $st $r.peakMB ((Now) - (ToUtc $r.startedAt)).TotalSeconds } catch { Emit 'tick.error' $j.id @{ detail = "weights: $($_.Exception.Message)" } }
+    try { Add-KitchenWeight $root $st $r.peakMB ((Now) - (ToUtc $r.startedAt)).TotalSeconds (Get-JobTower $j) } catch { Emit 'tick.error' $j.id @{ detail = "weights: $($_.Exception.Message)" } }
 }
 # This pass's admission inputs: the scaled limit (a new free-RAM reading moves it; a change is a 'scaler' event), the weights, and the
 # running steps with what their trees use now. The summary goes to supervisor.json for the doctor line.
@@ -972,11 +1078,17 @@ function Get-Admission($jobs, $meta) {
     $ceil = Get-ScalerCeiling
     $sc = if ($null -ne $script:freeMB) { Update-KitchenScaler $root $script:freeMB $MaxConcurrent $ceil } else { @{ limit = (Get-KitchenScalerLimit $root $MaxConcurrent $ceil); changed = $false } }
     if ($sc.changed) { Emit 'scaler' '' @{ old = $sc.old; new = $sc.limit; freeMB = $sc.reading; why = $sc.why } }
-    $run = @(foreach ($x in $jobs) { if ($x.status -eq 'running' -and $x.run) { @{ station = (Station-Name $x.steps[$x.cursor]); mb = [double]$x.run.mb } } })
+    $reg = Get-YardSites $root   # TD-7: kitchen.json "sites" (per-Site maxHeavy and share); none = no Site limits, equal shares
+    $run = @(foreach ($x in $jobs) { if ($x.status -eq 'running' -and $x.run) { @{ station = (Station-Name $x.steps[$x.cursor]); mb = [double]$x.run.mb; site = (Get-AdmitSite $x $reg.sites); tower = (Get-JobTower $x) } } })
     $res = if ($config.admission -is [hashtable] -and $null -ne $config.admission.reserveMB) { [int]$config.admission.reserveMB } else { 1024 }
     $meta.admission = @{ limit = $sc.limit; ceiling = $ceil; maxConcurrent = $MaxConcurrent; running = $run.Count; freeMB = $script:freeMB; at = Iso (Now) }
-    @{ limit = $sc.limit; weights = (Read-KitchenWeights $root); running = $run; free = $script:freeMB; reserve = $res }
+    if ($reg.problems.Count) { $meta.admission.siteProblems = @($reg.problems) }
+    @{ limit = $sc.limit; weights = (Read-KitchenWeights $root); running = $run; free = $script:freeMB; reserve = $res; sites = $reg.sites; shares = (Get-KitchenSiteShares $reg.sites) }
 }
+# The order's Site for a per-Site limit: '' when the registry is empty (no lookup at all: exactly as before TD-7) or the lookup fails
+function Get-AdmitSite($j, $Sites) { if (-not $Sites.Count) { return '' }; try { [string](Get-KitchenJobSite $j) } catch { '' } }
+# That Site's maxHeavy, $null for no Site or no limit (Test-KitchenAdmit then skips the Site check)
+function Get-AdmitSiteMax([string]$Site, $Sites) { if ($Site -and $Sites.ContainsKey($Site)) { $Sites[$Site].maxHeavy } else { $null } }
 function Invoke-TickLocked([bool]$lowRam, [bool]$paused = $false) {
     Enter-State
     try {
@@ -1017,7 +1129,8 @@ function Invoke-TickLocked([bool]$lowRam, [bool]$paused = $false) {
             catch { Emit 'tick.error' $j.id @{ detail = "$($_.Exception.Message)" } }
         }
         # the Stop-work order (TD-EH-07): open = no new work; probe = cooled down but not yet clear, so one trial step may start
-        $bk = Step-Breaker $meta $jobs; $open = [bool]$bk.open; $probeOnly = [bool]$bk.probe
+        # TD-8: with a Sites registry the order is per Site and the Owner may have stopped some Sites (Get-StopWorkPlan); without one, as before
+        $plan = Get-StopWorkPlan $meta $jobs; $open = $plan.open; $probeOnly = $plan.probe
         # start work (never past the daily budget)
         $spent = Spend-Today; $broke = $spent -ge $DailyBudgetUsd
         if ($broke -and $meta.budgetAlertDay -ne (Get-Date -Format 'yyyy-MM-dd')) {
@@ -1030,22 +1143,24 @@ function Invoke-TickLocked([bool]$lowRam, [bool]$paused = $false) {
         # admission (TARGET W2, kitchen/scaler.ps1): light steps start outside the slots; heavy ones up to the RAM-scaled limit when their
         # weight is measured and fits the free RAM, else up to maxConcurrent as before
         $adm = Get-Admission $jobs $meta
-        foreach ($j in (Sort-ForStart $jobs)) {
+        foreach ($j in (Sort-ForStart $jobs $adm.shares)) {
             if ($j.status -ne 'pending') { continue }
             if ($open -or $broke -or $lowRam) { break }
             if ([int]$j.cursor -eq 0 -and $underWay -ge $MaxLive) { continue }
             if ($j.notBefore -and (Now) -lt (ToUtc $j.notBefore)) { continue }
-            $st = Station-Name $j.steps[$j.cursor]
-            if (-not (Test-KitchenAdmit $st $adm.weights $adm.running $adm.limit $MaxConcurrent $adm.free $adm.reserve).ok) { continue }
+            $st = Station-Name $j.steps[$j.cursor]; $si = Get-AdmitSite $j $adm.sites; $tw = Get-JobTower $j
+            if (Test-SiteHeld $plan $si) { continue }   # TD-8: this Site stopped by the Owner, or its own Stop-work order open
+            if (-not (Test-KitchenAdmit $st $adm.weights $adm.running $adm.limit $MaxConcurrent $adm.free $adm.reserve $si (Get-AdmitSiteMax $si $adm.sites) $tw).ok) { continue }
             try { if (Hold-ForClash $j $jobs $terminal) { continue } } catch { Emit 'tick.error' $j.id @{ detail = "clash check: $($_.Exception.Message)" } }
             try {
                 $wasNew = [int]$j.cursor -eq 0
                 if (Start-Job-Or-Gate $j) {
-                    $adm.running += @{ station = $st; mb = 0 }
+                    $adm.running += @{ station = $st; mb = 0; site = $si; tower = $tw }
                     if ($probeOnly) {   # the one trial step while the Stop-work order is cooling: nothing else starts until it ends
                         $meta.breakerEpisode.probe = @{ job = [string]$j.id; at = Iso (Now) }; $open = $true
                         Emit 'breaker.probe' $j.id @{ step = $j.cursor; episode = [int]$meta.breakerEpisode.n; note = 'one trial step runs before new work starts again' }
                     }
+                    Set-SiteProbe $plan $meta $si $j   # TD-8: that Site's one trial step, if its Stop-work order is cooling
                 }
                 if ($wasNew -and $j.status -ne 'pending') { $underWay++ }
             } catch { Emit 'tick.error' $j.id @{ detail = "$($_.Exception.Message)" } }
@@ -1111,9 +1226,17 @@ function Wait-ForTrain($j, $s) {
 function Job-Repo($j, [string]$wt = '') {
     $rf = if ($wt) { Join-Path $wt '.kitchen\REPO' } else { '' }
     if ($rf -and (Test-Path -LiteralPath $rf)) { return ([string](Get-Content -LiteralPath $rf -Raw)).Trim() }
-    if ($j.vars -and $j.vars.repo -and [string]$j.vars.repo -notmatch '\{\{') { return [string]$j.vars.repo }
-    foreach ($s in @($j.steps)) { if ($s.args -and $s.args.Repo -and [string]$s.args.Repo -notmatch '\{\{') { return [string]$s.args.Repo } }
-    ''
+    Get-JobTower $j   # vars.repo, else a step's Repo (jobs-lib.ps1)
+}
+# add: the order's Site (multi-site design TD-3). Its Tower's kitchen.repo.json "site" (read from the main checkout) becomes vars.site.
+# A Tower that names no Site, or no Tower: the order is saved exactly as given (a vars.site passed with it stays; nothing is added).
+# A config that will not load: logged (job.site.unread) and the order is added Unassigned; the merge station holds that Tower anyway.
+function Set-NewJobSite($j) {
+    $tower = Get-JobTower $j; if (-not $tower) { return }
+    $site = try { Read-TowerSite $tower } catch { Emit 'job.site.unread' $j.id @{ repo = $tower; detail = (Cut-Words "$($_.Exception.Message)" 200) }; '' }
+    if (-not $site) { return }
+    if ($null -eq $j.vars) { $j.vars = @{} } elseif ($j.vars -isnot [Collections.IDictionary]) { return }   # (vars of another shape: left as given)
+    $j.vars['site'] = $site
 }
 # git's first output line (its error), cut to 160 characters; its exit code when it printed nothing
 function Get-GitNote($out, [int]$code) {
@@ -1229,6 +1352,8 @@ function Invoke-Chores {
         Tick-Phase 'freeze'
         Invoke-ChoreCiLooks   # the CI looks the supervisor's pre-scan reads (it never takes one itself)
         Tick-Phase 'ci'
+        Invoke-ChoreCiBudget   # TD-11: CI runs and minutes per Site this month (ci-budget.json; the pr station's hold reads it)
+        Tick-Phase 'ci-budget'
         try { & (Join-Path $PSScriptRoot 'sous-chef.ps1') board -Write | Out-Null } catch { }   # the cooks' state for the board and the Chef app
         Tick-Phase 'board'
         & $PSCommandPath report -HtmlPath (Join-Path $root 'board.html') | Out-Null   # the live board: refreshed every tick, page reloads itself
@@ -1514,6 +1639,22 @@ function Invoke-ChoreFoldPending {
         if ($files) { Enter-State; try { Emit 'events.folded' '' @{ files = $files; lines = $lines } } finally { Exit-State } }
     } finally { try { $lk.ReleaseMutex() } catch { }; $lk.Dispose() }
 }
+# TD-11 CI budgets (kitchen/ci-budget-lib.ps1): every KITCHEN_CI_COUNT_EVERY_MIN (10) minutes, within KITCHEN_CI_COUNT_BUDGET_SEC (20 s),
+# count this month's CI runs and billed minutes of every Tower the orders and the Sites registry name. Only the real Yard asks GitHub;
+# a test Yard opts in with KITCHEN_CI_COUNT=1 (and a fake gh), so no test reaches the network. A failure is logged, never a stop.
+function Invoke-ChoreCiBudget {
+    $realRoot = $root -eq [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'brain-kitchen'))
+    if ($env:KITCHEN_CI_COUNT -ne '1' -and -not ($realRoot -and $env:KITCHEN_CI_COUNT -ne '0')) { return }
+    $every = if ($env:KITCHEN_CI_COUNT_EVERY_MIN -match '^\d+$') { [int]$env:KITCHEN_CI_COUNT_EVERY_MIN } else { 10 }
+    $m = Load-Meta; if ($m.lastCiCount -and ((Now) - (ToUtc $m.lastCiCount)).TotalMinutes -lt $every) { return }
+    Enter-State; try { $m = Load-Meta; $m.lastCiCount = Iso (Now); Save-Meta $m } finally { Exit-State }
+    $sec = if ($env:KITCHEN_CI_COUNT_BUDGET_SEC -match '^\d+$') { [int]$env:KITCHEN_CI_COUNT_BUDGET_SEC } else { 20 }
+    try {
+        . (Join-Path $PSScriptRoot 'ci-budget-lib.ps1')
+        $towers = @(All-Jobs -Live | ForEach-Object { Get-JobTower $_ } | Where-Object { $_ } | Select-Object -Unique)
+        $null = Update-CiBudget $root $towers $sec
+    } catch { Enter-State; try { Emit 'ci.count.failed' '' @{ detail = "$($_.Exception.Message)" } } finally { Exit-State } }
+}
 # The Kitchen-Chores task ran (started a chores run) within KITCHEN_CHORES_STALE_SEC (300 s): then the tick leaves the chores to it.
 # Absent (never ran) or stale (stopped, disabled, hung): the tick runs them itself after its first pass, as before W2.
 function Test-ChoresByTask {
@@ -1590,6 +1731,7 @@ switch ($Action) {
                     run = $null; notBefore = $null; approval = $null; history = @(); created = Iso (Now) }
             if ($recName) { $j.recipe = $recName }
             if ($null -ne $recVars) { $j.vars = $recVars }
+            Set-NewJobSite $j
             Save-Job $j; Save-NextId ($n + 1)
             Emit 'job.added' $j.id @{ name = $Name; steps = $steps.Count; depth = $depth; parent = $parent }
             Write-Output "added $($j.id) $Name ($($steps.Count) step(s))"
@@ -1774,6 +1916,9 @@ switch ($Action) {
         $ceilD = Get-ScalerCeiling; $wd = Read-KitchenWeights $root
         $lightD = @($wd.Keys | Where-Object { (Get-StationWeight $wd $_).light } | Sort-Object); $heavyD = @($wd.Keys | Where-Object { (Get-StationWeight $wd $_).measured } | Sort-Object)
         $report.slots = "heavy limit $(Get-KitchenScalerLimit $root $MaxConcurrent $ceilD) (scaler; maxConcurrent $MaxConcurrent, ceiling $ceilD); light: $(if ($lightD.Count) { $lightD -join ', ' } else { 'none measured yet' }); measured heavy: $(if ($heavyD.Count) { $heavyD -join ', ' } else { 'none yet (at most maxConcurrent)' })"
+        $regD = Get-YardSites $root   # TD-7: the Sites registry's limits (no "sites" block: nothing added, the line is as before)
+        if ($regD.sites.Count) { $report.slots += "; Sites: " + (@($regD.sites.Keys | Sort-Object | ForEach-Object { "$_ heavy $(if ($null -ne $regD.sites[$_].maxHeavy) { $regD.sites[$_].maxHeavy } else { 'any' }), share $($regD.sites[$_].share)" }) -join '; ') }
+        foreach ($sp in $regD.problems) { $report.notes += "kitchen.json $sp" }
         $report.ok = -not $report.problems.Count; $report.ms = $dsw.ElapsedMilliseconds; $report.lockMs = $lsw.ElapsedMilliseconds
         Emit 'doctor' '' @{ ok = $report.ok; findOnly = $lookOnly; problems = ($report.problems -join '; '); watch = ($watchFound -join '; '); archived = $report.archived; ms = $report.ms; lockMs = $report.lockMs; slots = $report.slots; notes = ($report.notes -join '; ') }
         if (-not $report.ok) { Alert 'MED' ("Kitchen doctor: " + ($report.problems -join '; ')) }
@@ -1804,23 +1949,45 @@ switch ($Action) {
         $alerts = if (Test-Path -LiteralPath $alertsPath) { @(Get-Content -LiteralPath $alertsPath -Tail 5 | ForEach-Object { $_ | ConvertFrom-Json }) } else { @() }
         # freeze windows as the supervisor last wrote them (freeze.json): status never runs git (10-22: rebuilding here took 145 s)
         $freeze = try { Read-FreezeView $root } catch { [ordered]@{ repos = @(); errors = @([ordered]@{ repo = ''; name = 'kitchen'; error = $_.Exception.Message }) } }
-        if ($Json) { @{ jobs = $jobs; failRate = $b.rate; breaker = $b.meta; alerts = $alerts; freeze = $freeze } | ConvertTo-Json -Depth 12; break }
+        # work orders grouped by Site (TD-5): its own vars.site, its Tower's, else the registry's. No order with a Site = exactly the
+        # output from before Sites (no headers, no "sites" key); a registry that will not read is named, and grouping goes on without it.
+        $reg = $null; $regErr = ''; try { $reg = Get-SiteList (Read-SiteRegistry $root) } catch { $regErr = $_.Exception.Message }
+        $groups = @(Group-JobsBySite $jobs $reg); $bySite = $groups.Count -gt 1 -or ($groups.Count -eq 1 -and $groups[0].site)
+        if ($Json) {
+            $sj = @{ jobs = $jobs; failRate = $b.rate; breaker = $b.meta; alerts = $alerts; freeze = $freeze }
+            if ($bySite) { $sj.sites = @($groups | ForEach-Object { [ordered]@{ site = $_.site; name = $_.name; jobs = @($_.jobs | ForEach-Object { [string]$_.id }) } }) }
+            if ($regErr) { $sj.sitesError = $regErr }
+            $ss = @(Get-SiteStopState $b.meta); if ($ss.Count) { $sj.siteStops = $ss }   # TD-8: only when a Site is stopped or paused
+            $sj | ConvertTo-Json -Depth 12; break
+        }
         Write-Output ("KITCHEN  {0} jobs  running {1}  done {2}  attention {3}  recent fail rate {4:P0}  spent today `${5:N2} of `${6:N2}" -f $jobs.Count,
             @($jobs | ? status -eq 'running').Count, @($jobs | ? status -eq 'done').Count,
             @($jobs | ? { $_.status -in 'quarantined', 'needs-human', 'waiting-approval', 'failed' }).Count, $b.rate, (Spend-Today), $DailyBudgetUsd)
-        foreach ($j in $jobs) {
-            $last = if ($j.history.Count) { $j.history[-1].outcome + $(if ($j.history[-1].detail) { ": " + $j.history[-1].detail } else { '' }) } else { '' }
-            if ($j.status -eq 'pending' -and $j.retryWait -and $j.notBefore -and (ToUtc $j.notBefore) -gt (Now)) { $last = "waiting $(Format-WaitMinutes ((ToUtc $j.notBefore) - (Now)).TotalSeconds) before retry; last $last" }
-            Write-Output ("  {0,-4} {1,-16} {2,-16} step {3}/{4}  {5}" -f $j.id, $j.status, $j.name, [math]::Min($j.cursor + 1, $j.steps.Count), $j.steps.Count, $last)
+        if ($regErr) { Write-Output "  SITES REGISTRY unreadable, Sites from work orders and Towers only: $regErr" }
+        foreach ($g in $groups) {
+            if ($bySite) { Write-Output ("  {0}: {1} work order{2}" -f $(if ($g.site) { "SITE $($g.site)$(if ($g.name -and $g.name -cne $g.site) { ' ' + $g.name })" } else { 'UNASSIGNED' }), $g.jobs.Count, $(if ($g.jobs.Count -ne 1) { 's' })) }
+            foreach ($j in $g.jobs) {
+                $last = if ($j.history.Count) { $j.history[-1].outcome + $(if ($j.history[-1].detail) { ": " + $j.history[-1].detail } else { '' }) } else { '' }
+                if ($j.status -eq 'pending' -and $j.retryWait -and $j.notBefore -and (ToUtc $j.notBefore) -gt (Now)) { $last = "waiting $(Format-WaitMinutes ((ToUtc $j.notBefore) - (Now)).TotalSeconds) before retry; last $last" }
+                Write-Output ("  {0,-4} {1,-16} {2,-16} step {3}/{4}  {5}" -f $j.id, $j.status, $j.name, [math]::Min($j.cursor + 1, $j.steps.Count), $j.steps.Count, $last)
+            }
         }
         if ($b.meta.breakerTripped) {
             $bu = if ($b.meta.breakerOpenUntil) { ToUtc $b.meta.breakerOpenUntil } else { $null }
             Write-Output ("  STOP-WORK ORDER on: {0}" -f $(if ($bu -and $bu -gt (Now)) { "no new work for $(Format-WaitMinutes ($bu - (Now)).TotalSeconds) more" } else { 'one trial step runs before new work starts again' }))
         }
+        foreach ($x in @(Get-SiteStopState $b.meta)) { Write-Output (Format-SiteStopLine $x) }   # TD-8: Sites stopped by the Owner or by their own Stop-work order
         Format-FreezeLines $freeze | ForEach-Object { Write-Output $_ }
         foreach ($a in $alerts) { Write-Output "  ALERT [$($a.level)] $($a.text)$(if ($a.sent -in 'off', 'failed', 'limited') { " (not sent: $($a.why))" })" }   # TD-EH-04: an unsent alert says so
     }
     'pause' {
+        if ($Site) {   # TD-8: one Site stopped; its running work, the watchers and the other Sites go on (the tick reads PAUSED-<code>)
+            $c = Resolve-PauseSite $Site $true
+            Set-Content -LiteralPath (Join-Path $root "PAUSED-$c") -Value (Iso (Now))
+            Enter-State; try { Emit 'site.paused' '' @{ site = $c } } finally { Exit-State }
+            Write-Output "Site $c stopped: none of its new work starts until 'kitchen.ps1 resume -Site $c'; its running work, the watchers and the other Sites carry on"
+            break
+        }
         # a marker, not a scheduled-task change (that needs Jordan's yes): the dead-supervisor alarm in Chef and kitchen-check stays quiet
         # while it exists, so a deliberate stop is never mistaken for a broken task. Workers already running are still minded by each tick (TD-EH-13).
         Set-Content -LiteralPath (Join-Path $root 'PAUSED') -Value (Iso (Now))
@@ -1829,6 +1996,14 @@ switch ($Action) {
         Write-Output "Yard paused; each Walkround starts nothing new until 'kitchen.ps1 resume'$(if ($run) { " ($run work order(s) still running, still watched for time, memory, log and heartbeat; kitchen.ps1 kill -Id <J> stops one)" })"
     }
     'resume' {
+        if ($Site) {   # TD-8: lifts that Site's stop only; the global pause, if any, still holds everything
+            $c = Resolve-PauseSite $Site $false; $sf = Join-Path $root "PAUSED-$c"
+            if (-not (Test-Path -LiteralPath $sf)) { Write-Output "Site $c was not stopped"; break }
+            Remove-Item -LiteralPath $sf -Force
+            Enter-State; try { Emit 'site.resumed' '' @{ site = $c } } finally { Exit-State }
+            Write-Output "Site $c resumed$(if (Test-Path -LiteralPath (Join-Path $root 'PAUSED')) { '; the whole Yard is still paused (kitchen.ps1 resume)' } else { '; its new work starts on the next tick' })"
+            break
+        }
         $pf = Join-Path $root 'PAUSED'
         if (-not (Test-Path -LiteralPath $pf)) { Write-Output 'the kitchen was not paused'; break }
         Remove-Item -LiteralPath $pf -Force

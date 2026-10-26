@@ -10,6 +10,7 @@
 # -Impacted: only the suites the changed files map to (repair's loop runs); ends "PARTIAL PASS: N of M suites", never "ALL PASS", and writes no
 # results\<job>.tests.json unless it failed. Any shared core file, unmapped file or unknown change list runs all suites and says why.
 # -Only never writes a pass to results\<job>.tests.json either: a named few suites are never the job's whole result.
+# The repo's "inspector" block can make -Impacted the default for an order's own run ("local": "impacted"; see below and repo-config.ps1).
 # Suites run several at once (kitchen/suite-times-lib.ps1 has the rules): up to min(4, cores/2), longest first, each started only while
 # the recorded peaks of the running suites + its own + 1,024 MB stay under free RAM; one at a time until the repo has any history in
 # <kitchen>\suite-times.jsonl (run-bounded writes a line per suite run). Each suite's limit is clamp(3 x p90 of its last 20 passing runs,
@@ -85,6 +86,12 @@ if ($rc.Present) { Write-Output "tests: repo settings from $($rc.Path) (the main
 if (-not $PSBoundParameters.ContainsKey('SuiteTimeoutSec') -and $rc.TestTimeoutSec) { $SuiteTimeoutSec = $rc.TestTimeoutSec }
 $skipList = @($Skip -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $onlyList = @($Only | ForEach-Object { $_ -split '[,;]' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+# The Tower's inspector block (TD-12, repo-config.ps1): "local": "impacted" makes an order's own run an impacted one, as if -Impacted
+# were given, because its CI runs every suite (the block refuses impacted without ci full). Verify on main (-Dir), -Only and a caller's
+# own -Glob are left as they were. No block prints nothing new and changes nothing.
+$ip = $rc.Inspector; $byInspector = $ownWorktree -and -not $Impacted -and -not $onlyList.Count -and $Glob -eq $defaultGlob -and $ip.Local -eq 'impacted'
+if ($byInspector) { $Impacted = [switch]$true }
+if ($ip.Given) { Write-Output "tests: inspector: local $($ip.Local), ci $($ip.Ci)$(if ($byInspector) { ' (this run maps the change to its suites; CI runs them all)' })" }
 $found = Resolve-RepoSuites $Dir $patterns
 # a pattern that matches nothing fails the run: a cook that deletes a suite must not make the check pass by shrinking it
 if ($found.Unmatched.Count) { Write-Output "tests: no suites match $($found.Unmatched -join ', ') in $Dir"; exit 1 }
@@ -219,7 +226,8 @@ function Start-Suite($item) {
     if ($sb.mode -eq 'off') { $a += @('-TimeoutSeconds', $limit, '-MaxMB', $MaxMB) }
     else {
         # sandboxed: kitchen-sandbox.exe enforces the limit and the memory cap; run-bounded around it measures the run and is the backstop
-        $c = Get-KitchenSuiteCommand $sb $s.FullName $Dir $sandbox $limit $MaxMB $cfList
+        # (TD-10: $repoName is the Tower whose sandboxMedium block applies, besides the global list)
+        $c = Get-KitchenSuiteCommand $sb $s.FullName $Dir $sandbox $limit $MaxMB $cfList $repoName
         $r.cmd = "$sandbox.cmd.json"; $r.scratch = $c.scratch; $r.stopMB = [math]::Max(1024, $MaxMB * 2)   # the sandbox's own cap (sandbox.ps1)
         [ordered]@{ exe = $c.exe; args = @($c.args) } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $r.cmd -Encoding utf8
         $a += @('-CommandFile', $r.cmd, '-TimeoutSeconds', ($limit + 60), '-MaxMB', ([math]::Max(1024, $MaxMB * 2) + 1024))

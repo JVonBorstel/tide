@@ -255,6 +255,47 @@ function retryWhyOf(j) {
   const h = (j?.history || []).at(-1); if (!h || !FAIL_OUTCOMES.has(h.outcome)) return '';
   return isJobPrivate(j) || !h.detail ? h.outcome : `${h.outcome}: ${String(h.detail).slice(0, 200)}`;
 }
+// ---- the Site of an order (multi-site design TD-4), by the Yard's own rules: kitchen/jobs-lib.ps1 Get-KitchenJobSite (the stored
+// vars.site that kitchen.ps1 add writes, also jobs-index.json si; else, for an order from before TD-3, its Tower's kitchen.repo.json
+// "site" read from the MAIN checkout) and kitchen/roadmap-lib.ps1 Get-SiteDisplayId (B-42 shows GW-42 when the Tower's Blueprint has
+// a site block). '' = no Site: the row shows exactly as before. Display only, never written back; a file that will not read is no Site.
+const SITE_CODES = ['GW', 'JH', 'TD', 'ZG'];   // kitchen/repo-config.ps1 RepoSiteCodes, exact capitals
+const FLOOR_ID = /^[A-Za-z][A-Za-z0-9]{0,5}-\d{1,4}$/;   // roadmap-lib.ps1 RoadmapIdRe
+const jobVar = (j, k) => (j?.vars && j.vars[k] != null ? String(j.vars[k]) : '');
+function towerOf(j) {   // jobs-lib.ps1 Get-JobTower: vars.repo, else the first step's Repo; a {{template}} not yet filled is no Tower
+  const r = jobVar(j, 'repo'); if (r && !r.includes('{{')) return r;
+  for (const s of j?.steps || []) { const x = s?.args?.Repo ? String(s.args.Repo) : ''; if (x && !x.includes('{{')) return x; }
+  return '';
+}
+function mainOf(tower) {   // a worktree's .git is a file naming <main>\.git\worktrees\<name>; no .git at all = no checkout (git would refuse it too)
+  const g = path.join(tower, '.git'); const st = fs.statSync(g); if (st.isDirectory()) return tower;
+  const gd = path.resolve(tower, /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(g, 'utf8'))[1].trim());
+  let common = path.resolve(gd, '..', '..'); try { common = path.resolve(gd, fs.readFileSync(path.join(gd, 'commondir'), 'utf8').trim()); } catch {}
+  return path.dirname(common);
+}
+const towerSites = new Map();   // Tower -> { at, site, block }, read again after 30 s (a Tower's config changes only through a merge)
+function towerSite(tower) {
+  if (!tower) return { site: '', block: null };
+  const hit = towerSites.get(tower); if (hit && Date.now() - hit.at < 30000) return hit;
+  let site = '', block = null;
+  try {
+    const main = mainOf(tower); const cfg = readJson(path.join(main, 'kitchen.repo.json')) || {};
+    if (typeof cfg.site === 'string' && SITE_CODES.includes(cfg.site)) site = cfg.site;
+    const rel = typeof cfg.roadmap === 'string' ? cfg.roadmap.replace(/\\/g, '/') : '';
+    if (rel && !rel.startsWith('/') && !rel.includes(':') && !rel.split('/').some((x) => /^\.\.+$/.test(x.trim()))) {
+      const p = path.join(main, rel); const b = memo('roadmapSite:' + p, sigOf(p), () => readJson(p)?.site ?? null);
+      if (b && typeof b === 'object' && /^[A-Z]{2,3}$/.test(b.code) && (b.id_prefix == null || /^[A-Za-z][A-Za-z0-9]{0,5}$/.test(b.id_prefix))) block = { code: b.code, id_prefix: b.id_prefix || b.code };
+    }
+  } catch {}
+  const e = { at: Date.now(), site, block }; towerSites.set(tower, e); return e;
+}
+const siteOfJob = (j) => { const s = jobVar(j, 'site'); return SITE_CODES.includes(s) ? s : towerSite(towerOf(j)).site; };
+function siteDisplayId(block, id) {   // roadmap-lib.ps1 Get-SiteDisplayId: an id with the Site's stored prefix shows the Site code
+  if (!block || !FLOOR_ID.test(id)) return id;
+  const dash = id.indexOf('-'); return id.slice(0, dash).toLowerCase() === block.id_prefix.toLowerCase() ? block.code + id.slice(dash) : id;
+}
+// the Blueprint Floor an order builds (vars.item, a stored id such as B-53), as people see it (GW-53); none on a private order
+const floorOf = (j) => { const it = jobVar(j, 'item'); return FLOOR_ID.test(it) && !isJobPrivate(j) ? siteDisplayId(towerSite(towerOf(j)).block, it) : ''; };
 function jobView(j) {
   const s = j.steps?.[Math.min(j.cursor, (j.steps?.length || 1) - 1)] || {};
   const hist = j.history || []; const last = hist.length ? hist[hist.length - 1] : null;
@@ -266,6 +307,7 @@ function jobView(j) {
     recipe: j.recipe || null, label: labelOf(j), stuck: stuckOf(j), retryWhy: retryWhyOf(j),
     // TD-EH-08: a pending order waiting out its back-off before a retry ('wait' = it waited on CI, the network or GitHub; 'code' = the rest)
     retry: j.status === 'pending' && j.retryWait && j.notBefore ? { cls: j.retryWait.class === 'wait' ? 'wait' : 'code' } : null };   // the order's words (vars) stay out of the live stream; the job sheet shows them on request
+  const site = siteOfJob(j), floor = floorOf(j); if (site) v.site = site; if (floor) v.floor = floor;   // TD-4: a Site code and a Floor id, never words; no Site, no key
   if (v.approval) {   // what the gate is: a merge of a code change (with its size and whether it touches a protected file) or another step
     v.approval.gate = mergeGate(j) ? 'merge' : 'step';
     if (v.approval.gate === 'merge' && !isJobPrivate(j)) { v.change = changeSummary(j); const cl = ciLookError(j.id); if (cl) v.approval.ciLook = cl; }
@@ -517,8 +559,10 @@ function stateParts() {
     due: memo('due', sigOf(trackerPath) + '|' + today(), () => dueItems().length), push: pushOn(),
     ideas: memo('ideas', sigOf(ip), () => (readJson(ip)?.items || []).filter((x) => x.status === 'new').length), leads: memo('leads', sigOf(leadsPath), clientsNew),
     freeze: memo('freeze', sigOf(path.join(root, 'freeze.json')) + '|' + Math.floor(Date.now() / 60000), freezeView),
+    ciBudget: memo('ci-budget', sigOf(path.join(root, 'ci-budget.json')) + '|' + new Date().toISOString().slice(0, 7), ciBudgetView),   // TD-11 (public/ci-budget.js)
     mainStatus: mainStatusView(),   // TD-EH-03a: each Tower's main, green or red (the Board's main-is-red banner, public/main-status.js)
     undoUnpushed: undoUnpushedView(), automergePause: automergePauseView(),   // TD-EH-10/11: banners in public/undo-pause.js
+    siteStops: siteStopsView(meta),   // TD-8: each Site's stop (by the Owner) and Stop-work order (public/site-stop.js); [] with no Sites
     lead: leadView(), lobe: lobeView(), lobeOwner: lobeOwnerView(), lobeGlass: lobeGlass(), alerts: memo('alerts', sigOf(ap), () => tailLines(ap, 8).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean)) };
   top.alertsUnsent = memo('alertsUnsent', sigOf(ap), () => alertsUnsent(ap));   // TD-EH-04: the Board's "Phone alerts are off" banner
   return { top, jobs };
@@ -541,6 +585,21 @@ function state() { const p = stateParts(); return { ...p.top, jobs: p.jobs.map((
 // ---- TD-EH-03a main status: each Tower's main as verify last found it (kitchen/main-status.ps1 writes <kitchen>\main-status\<sha12>.json
 // on every verdict). Read-only. A few small files: listed and stat'ed each call, parsed again only when one changed. A file that cannot be
 // read is shown as such (state 'unreadable'), never dropped: a red main must not vanish behind a torn file.
+// ---- TD-8: Sites the Owner stopped and Sites whose own Stop-work order is open. The registry is kitchen.json "sites" (the state copy wins
+// over the repo copy, as kitchen.ps1 reads it); PAUSED-<code> is written by kitchen.ps1 pause -Site; supervisor.json siteBreakers by the
+// tick. No registry: [] (the Board shows nothing new and has no Site taps).
+const SITE_CODE = /^[A-Z]{2,3}$/;
+function siteCodes() {
+  const s = fileJson(path.join(root, 'kitchen.json'))?.sites ?? fileJson(path.join(kitchenDir, 'kitchen.json'))?.sites;
+  return s && typeof s === 'object' && !Array.isArray(s) ? Object.keys(s).filter((c) => SITE_CODE.test(c)).sort() : [];
+}
+function siteStopsView(meta) {
+  const sb = meta?.siteBreakers && typeof meta.siteBreakers === 'object' ? meta.siteBreakers : {};
+  return siteCodes().map((code) => {
+    const b = sb[code]; const open = !!(b && b.tripped);
+    return { code, stopped: fs.existsSync(path.join(root, 'PAUSED-' + code)), stopWork: open, stopWorkUntil: open ? b.openUntil || null : null };
+  });
+}
 function mainStatusView() {
   const dir = path.join(root, 'main-status'); let files = [];
   try { files = fs.readdirSync(dir).filter((f) => /^[0-9a-f]{12}\.json$/.test(f)).sort(); } catch { return []; }
@@ -581,13 +640,26 @@ function automergePauseView() {
     return { until: v.until, since: typeof v.since === 'string' ? v.since : null, flaky: Number(v.flaky) || 0, suites: (Array.isArray(v.suites) ? v.suites : []).map(String).slice(0, 20) };
   });
 }
+// TD-11 CI budgets: <kitchen>\ci-budget.json as the chores last wrote it (kitchen/ci-budget-lib.ps1). Read-only; null when absent or from
+// another month (last month's count says nothing about this one). Unknown stays unknown: a missing number is null here, never 0.
+function ciBudgetView() {
+  const v = readJson(path.join(root, 'ci-budget.json'));
+  if (!v || typeof v.month !== 'string' || v.month !== new Date().toISOString().slice(0, 7) || !Array.isArray(v.sites)) return null;
+  const n = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+  const sites = v.sites.slice(0, 12).map((s) => ({ code: String(s?.code || '').slice(0, 3), state: ['ok', 'partial', 'unknown', 'none'].includes(s?.state) ? s.state : 'unknown', why: String(s?.why || '').slice(0, 300),
+    runs: n(s?.runs), minutes: n(s?.minutes), minutesAtLeast: n(s?.minutesAtLeast), budget: s?.budget === 'unlimited' ? 'unlimited' : n(s?.budget), over: s?.over === true }));
+  const pool = v.pool && typeof v.pool === 'object' ? { state: v.pool.state === 'ok' ? 'ok' : 'unknown', minutesAtLeast: n(v.pool.minutesAtLeast) ?? 0 } : null;
+  return { month: v.month, at: typeof v.at === 'string' ? v.at : null, monthEnds: typeof v.monthEnds === 'string' ? v.monthEnds : null, poolLimit: n(v.poolLimit) ?? 2000, pool, sites,
+    problems: (Array.isArray(v.problems) ? v.problems : []).slice(0, 5).map((p) => String(p).slice(0, 200)) };
+}
 // Merge freeze windows per repo (kitchen.repo.json "freeze"), as the supervisor last wrote them to freeze.json (kitchen/freeze-lib.ps1,
 // every 2 minutes): read-only. Windows already over are dropped here; active-or-ahead is decided by the app against its own clock.
 function freezeView() {
   const v = readJson(path.join(root, 'freeze.json')); if (!v) return null;
   const now = Date.now(); const ok = (w) => w && typeof w.from === 'string' && typeof w.to === 'string' && new Date(w.to).getTime() > now;
-  const repos = (Array.isArray(v.repos) ? v.repos : []).map((r) => ({ name: String(r?.name || ''), windows: (Array.isArray(r?.windows) ? r.windows : []).filter(ok).map((w) => ({ from: w.from, to: w.to, why: String(w.why || ''), fromText: String(w.fromText || ''), toText: String(w.toText || '') })) })).filter((r) => r.windows.length);
-  const errors = (Array.isArray(v.errors) ? v.errors : []).map((e) => ({ name: String(e?.name || ''), error: String(e?.error || '') }));
+  const repos = (Array.isArray(v.repos) ? v.repos : []).map((r) => ({ name: String(r?.name || ''), windows: (Array.isArray(r?.windows) ? r.windows : []).filter(ok).map((w) => ({ from: w.from, to: w.to, why: String(w.why || ''), fromText: String(w.fromText || ''), toText: String(w.toText || ''), site: String(w.site || '') })) })).filter((r) => r.windows.length);
+  // site / source (TD-9): a Site-closed window from the Sites registry, or a registry (kitchen.json) that cannot be read for that Site
+  const errors = (Array.isArray(v.errors) ? v.errors : []).map((e) => ({ name: String(e?.name || ''), error: String(e?.error || ''), site: String(e?.site || ''), source: String(e?.source || '') }));
   return { at: v.at || null, repos, errors };
 }
 // Everything about one job: each step, every run of it (outcome, cost receipt, the sous chef's decision), history and the approval.
@@ -912,6 +984,12 @@ async function act(body) {
     case 'push-test': if (!pushOn()) return { ok: false, error: 'push alerts are off' }; push('INFO', 'Test from the Board: push alerts work.'); return { ok: true };
     case 'live-on': fs.writeFileSync(path.join(root, 'LIVE'), `on since ${new Date().toISOString()} (from the Chef app)`); return { ok: true };
     case 'kitchen-resume': try { fs.unlinkSync(path.join(root, 'PAUSED')); } catch {} kick(); return { ok: true };   // Jordan's tap: same as kitchen.ps1 resume
+    case 'site-pause': case 'site-resume': {   // TD-8: stop or resume one Site; kitchen.ps1 checks the registry and logs the tap
+      const code = String(body.site || ''); if (!SITE_CODE.test(code) || !siteCodes().includes(code)) return { ok: false, error: 'pick a Site' };
+      const { err, out } = await ps(path.join(kitchenDir, 'kitchen.ps1'), [op === 'site-pause' ? 'pause' : 'resume', '-Site', code], 30000);
+      if (err || /^ERROR/m.test(out)) return { ok: false, error: out.trim() || String(err?.message || 'the Yard did not answer') };
+      kick(); return { ok: true, data: out.trim() };
+    }
     case 'live-off': try { fs.unlinkSync(path.join(root, 'LIVE')); } catch {} return { ok: true };
     default: return { ok: false, error: `unknown action '${op}'` };
   }

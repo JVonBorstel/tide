@@ -13,6 +13,15 @@
 #        merge freeze windows (up to 50): nothing merges into the repo from 'from' until 'to' (this PC's local time; an ISO offset
 #        such as -06:00 or Z is honoured when given). The merge station and scripts/merge-pr.ps1 wait or refuse with the 'why'
 #        (kitchen/freeze-lib.ps1); building, testing and opening pull requests go on.
+#     "site": "TD"                                                      the Site this Tower belongs to (multi-site design TD-2): one of
+#        RepoSiteCodes below, exact capitals. No key = Unassigned, which works exactly as before (nothing is refused for it).
+#     "inspector": { "local": "full", "ci": "quick", "ciTests": ["tests/Test-Lint.ps1"] }
+#        what the Inspector runs (multi-site design TD-12; Read-RepoInspector). local: the tests Step in an order's own worktree,
+#        "full" (every suite; repair's loop still asks for -Impacted, as before) or "impacted" (only the suites the change maps to, as if
+#        -Impacted were given; a shared or unmapped file still runs them all). ci: what GitHub runs, "quick" (ci.yml's parse, secret
+#        and quality checks) or "full" (the suites in ciTests, default the "tests" list; on ubuntu only the suites the Linux audit
+#        passed, projects/tide/audits/linux-portability-2026-10-23.md). local "impacted" needs ci "full": something must run every
+#        suite. No block = local full, ci quick: what every Tower did before TD-12. Keys starting with _ are notes; others are refused.
 # Globs: * = any characters but /, ** = anything including /, ? = one character; \ and / both work; matched without regard to case.
 # Unknown keys are ignored; a wrong type, an absolute path or a '..' is an ERROR, never a fall-back to the defaults (fail closed).
 #
@@ -23,6 +32,9 @@
 # so a test file the cook adds still runs; only the list of patterns comes from main.
 $script:RepoConfigFile = 'kitchen.repo.json'
 $script:RepoDefaultTests = @('tests/Test-*.ps1')
+# Known Site codes (Glossary: GW Demo Project, JH Job hunt, TD Tide; ZG zeitgeistd, the Owner's yes to Q7). The Sites registry
+# (kitchen.json "sites", TD-7) replaces this list; until then a code not on it is refused, never taken as a new Site.
+$script:RepoSiteCodes = @('GW', 'JH', 'TD', 'ZG')
 # folders a suite search never enters: git's own, dependencies, the kitchen's notes
 $script:RepoWalkSkip = @('.git', 'node_modules', '.kitchen')
 
@@ -100,14 +112,42 @@ function Read-RepoBySize($Value, [scriptblock]$Bad) {
     }
     $out
 }
+# The Inspector plan (TD-12): { Given; Local = full|impacted; Ci = quick|full; CiTests = globs CI runs when Ci is full }. $Value $null =
+# no block = today's plan. $Tests = the config's suite list (the CiTests default). $Bad throws the config's own error message.
+function Read-RepoInspector($Value, [string[]]$Tests, [scriptblock]$Bad) {
+    $plan = [pscustomobject]@{ Given = $false; Local = 'full'; Ci = 'quick'; CiTests = @() }
+    if ($null -eq $Value) { return $plan }
+    if ($Value -isnot [pscustomobject]) { & $Bad "'inspector' must be an object like { ""local"": ""full"", ""ci"": ""quick"" }" }
+    $plan.Given = $true
+    foreach ($p in $Value.PSObject.Properties) {
+        $k = $p.Name.ToLowerInvariant(); $v = $p.Value
+        if ($k.StartsWith('_')) { continue }
+        if ($k -eq 'local' -or $k -eq 'ci') {
+            $allowed = if ($k -eq 'local') { 'full', 'impacted' } else { 'quick', 'full' }
+            if ($v -isnot [string] -or $v -notin $allowed) { & $Bad "'inspector.$k' must be ""$($allowed -join '"" or ""')"" (got '$v')" }
+            if ($k -eq 'local') { $plan.Local = $v.ToLowerInvariant() } else { $plan.Ci = $v.ToLowerInvariant() }
+        } elseif ($k -eq 'citests') {
+            $t = @($v); if ($v -is [string] -or $null -eq $v -or $t.Count -eq 0 -or $t.Count -gt 50) { & $Bad "'inspector.ciTests' must be a list of 1 to 50 relative paths or globs" }
+            $plan.CiTests = @(@(foreach ($g in $t) {
+                    $why = Get-RepoGlobProblem $g; if ($why) { & $Bad "'inspector.ciTests' entry '$g' $why" }
+                    $n = ConvertTo-RepoGlob $g; if ($n -notmatch '(?i)\.ps1$') { & $Bad "'inspector.ciTests' entry '$g' must end in .ps1" }; $n
+                }) | Select-Object -Unique)
+        } else { & $Bad "'inspector' key '$($p.Name)' is not known; it takes local, ci and ciTests (a note key starts with _)" }
+    }
+    # an impacted local run is never the whole check: with CI quick too, no run anywhere would cover every suite
+    if ($plan.Local -eq 'impacted' -and $plan.Ci -ne 'full') { & $Bad "'inspector.local' ""impacted"" needs 'inspector.ci' ""full"" (otherwise no run covers every suite)" }
+    if ($plan.Ci -eq 'full' -and -not $plan.CiTests.Count) { $plan.CiTests = @($Tests) }
+    $plan
+}
 # Reads and validates <Root>\kitchen.repo.json. Throws a message naming the file and the key on anything wrong. Absent file = defaults.
 function Read-RepoConfig([string]$Root) {
     $path = Join-Path $Root $script:RepoConfigFile
-    $cfg = [pscustomobject]@{ Present = $false; Path = $path; Root = $Root; Tests = @($script:RepoDefaultTests); TestsGiven = $false; TestTimeoutSec = 0; Github = ''; Protected = @(); CommitFiles = 0; CommitLines = 0; CommitExclude = @(); CommitBySize = @{}; Roadmap = ''; Freeze = @() }
+    $cfg = [pscustomobject]@{ Present = $false; Path = $path; Root = $Root; Tests = @($script:RepoDefaultTests); TestsGiven = $false; TestTimeoutSec = 0; Github = ''; Protected = @(); CommitFiles = 0; CommitLines = 0; CommitExclude = @(); CommitBySize = @{}; Roadmap = ''; Freeze = @(); Site = ''; Inspector = (Read-RepoInspector $null) }
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $cfg }
     $bad = { param($msg) throw "$($script:RepoConfigFile) ($path): $msg" }
     try { $j = Get-Content -LiteralPath $path -Raw -Encoding utf8 | ConvertFrom-Json -ErrorAction Stop } catch { & $bad "is not valid JSON ($($_.Exception.Message))" }
-    if ($j -isnot [pscustomobject]) { & $bad 'must be a JSON object' }
+    # the real type, not [pscustomobject] (= PSObject): pipeline output is PSObject-wrapped, so a root of [1] passed that check
+    if ($j -isnot [Management.Automation.PSCustomObject]) { & $bad 'must be a JSON object' }
     $get = { param($name) $p = $j.PSObject.Properties | Where-Object { $_.Name -ieq $name } | Select-Object -First 1; if ($p) { , $p.Value } else { $null } }
     $cfg.Present = $true
     $tests = & $get 'tests'
@@ -185,6 +225,14 @@ function Read-RepoConfig([string]$Root) {
                 [pscustomobject]@{ From = $t.from; To = $t.to; Why = $why.Trim() }
             })
     }
+    $si = & $get 'site'
+    if ($null -ne $si) {
+        $known = $script:RepoSiteCodes -join ', '
+        if ($si -isnot [string]) { & $bad "'site' must be a Site code in quotes, one of $known (got '$si')" }
+        if ($si -cnotin $script:RepoSiteCodes) { & $bad "'site' '$si' is not a known Site code; it must be one of $known, exact capitals (a new Site is added to the registry first)" }
+        $cfg.Site = $si
+    }
+    $cfg.Inspector = Read-RepoInspector (& $get 'inspector') $cfg.Tests $bad
     $cfg
 }
 

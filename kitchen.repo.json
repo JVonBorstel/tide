@@ -1,8 +1,14 @@
 {
   "github": "JVonBorstel/tide",
+  "site": "TD",
   "commitBudget": {
     "files": 8,
     "lines": 400,
     "_why": "interim 10-22 until J246 budget-by-size; the station default 4/150 refused most size-M orders"
+  },
+  "inspector": {
+    "local": "full",
+    "ci": "quick",
+    "_why": "private Tower (TD-12 default): every suite runs sandboxed on this PC, CI is ci.yml's quick checks; public later = local impacted, ci full"
   }
 }

@@ -1364,3 +1364,9 @@ html.lobe-px .lobe-box{border:12px solid transparent;border-image:var(--lobe-dlg
 .lobe-seed>summary{color:var(--ink-2)}.lobe-seed .lobe-list{opacity:.75}
 .lobe-focus{display:grid;grid-template-columns:1fr auto;align-items:end;gap:8px;margin:0 0 10px}.lobe-focus .lobe-f{margin:0}
 .lobe-props{margin:0;padding:0;list-style:none}.lobe-prop{padding:8px 0;border-top:2px dashed var(--line-strong)}.lobe-prop:first-child{border-top:0}
+/* TD-4 the Site on the Board (pass-app/public/sites.js): a small code chip per row, the count line and the Site filter. Pixel tokens only;
+   the code is ink on a tint of its Site's colour, so it reads in both themes; nothing moves, so reduced motion has nothing to stop. */
+.site-chip{display:inline-block;margin-right:6px;padding:0 5px 0 7px;font:700 11px/16px var(--mono);letter-spacing:.06em;color:var(--ink);vertical-align:1px;background:color-mix(in srgb,var(--site,var(--px-steel)) 22%,transparent);box-shadow:inset 3px 0 0 var(--site,var(--px-steel));clip-path:var(--px-notch-s)}
+.site-chip[data-site="GW"]{--site:var(--px-ember)}.site-chip[data-site="JH"]{--site:var(--px-tape-lo)}.site-chip[data-site="ZG"]{--site:var(--px-focus)}
+.site-bar{margin:0 var(--gutter) 10px;min-width:0}.site-count{margin:0 0 6px;font:600 13px/18px var(--mono);color:var(--ink-2);overflow-wrap:anywhere}
+.site-seg button{font-family:var(--mono);letter-spacing:.04em;padding:0 4px;transition:none}

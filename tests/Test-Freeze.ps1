@@ -1,6 +1,8 @@
 # Tests for per-repo merge freeze windows (kitchen.repo.json "freeze"; kitchen/repo-config.ps1, kitchen/freeze-lib.ps1): the merge
 # station waits with the reason inside a window and merges outside it, a malformed window fails loudly naming the field, no freeze key
-# is today's behaviour, and kitchen.ps1 status and Chef's freeze.json show it. KITCHEN_FREEZE_NOW stands in for the clock.
+# is today's behaviour, and kitchen.ps1 status and Chef's freeze.json show it. Site-closed windows from the Sites registry (kitchen.json
+# "sites.<CODE>.closed", TD-9) join a Tower's own and name the Site; the Demo Project window answers the same whatever the registry holds.
+# KITCHEN_FREEZE_NOW stands in for the clock.
 # Self-cleaning: a scratch repo and a scratch kitchen under TEMP only; no network.
 $ErrorActionPreference = 'Stop'
 $k = Join-Path $PSScriptRoot '..\kitchen'
@@ -122,7 +124,92 @@ try {
     SetCfg '{"freeze":[{"from":"2026-10-27T00:00","to":"2026-10-28T18:00","why":""}]}'
     Check "status: a repo whose freeze will not load says so (none merge)" (((Format-FreezeLines (Get-KitchenFreezeView $kr)) -join "`n") -match "FREEZE demo-project: cannot tell whether merges are frozen, so none merge: .*'freeze\[0\]\.why'")
     $app = Get-Content (Join-Path $PSScriptRoot '..\pass-app\public\app.js') -Raw
-    Check 'Board app: freeze banner lines in Site closed words (closed until, closing ahead, cannot be read)' ($app -match 'Site closed: \$\{esc\(r\.name\)\} takes no merges until \$\{esc\(w\.toText\)\}' -and $app -match 'Site closing ahead for' -and $app -match 'kitchen\.repo\.json cannot be read, so the site stays closed and nothing merges')
+    Check 'Board app: freeze banner lines in Site closed words (closed until, closing ahead, cannot be read)' ($app -match 'const st = w\.site \? `Site \$\{esc\(w\.site\)\}` : ''Site''' -and $app -match '\$\{st\} closed: \$\{esc\(r\.name\)\} takes no merges until \$\{esc\(w\.toText\)\}' -and $app -match '\$\{st\} closing ahead for' -and $app -match 'kitchen\.repo\.json cannot be read''\}, so the site stays closed and nothing merges')
+
+    # ---- Site-closed windows from the Sites registry (TD-9): kitchen.json "sites.<CODE>.closed", added to its Towers' own windows ----
+    $kj = Join-Path $kr 'kitchen.json'
+    function SetReg([string]$json) { if ($json) { Set-Content -LiteralPath $kj -Value $json -Encoding utf8 } else { Remove-Item -LiteralPath $kj -ErrorAction SilentlyContinue } }
+    function FzAt([string]$now) { $env:KITCHEN_FREEZE_NOW = $now; Get-RepoFreezeState $repo }
+    $tdRel = '{"sites":{"TD":{"maxHeavy":2,"closed":[{"from":"2026-10-29T00:00","to":"2026-10-30T12:00","why":"release"}]}}}'
+    # today's Demo Project freeze, Mon 10-27 00:00 to Tue 10-28 18:00 MT, in its own kitchen.repo.json: the same answer at every edge whatever
+    # the registry holds (none, no sites, empty, another Site's window, a damaged file for a Tower with no Site, the same window under GW)
+    function GwSame([string]$label, [bool]$exact = $true) {
+        $a = FzAt '2026-10-26T23:59'; $b = FzAt '2026-10-27T00:00'; $c = FzAt '2026-10-27T12:00'; $d = FzAt '2026-10-28T17:59'; $e = FzAt '2026-10-28T18:00'
+        $why = if ($exact) { $c.reason -eq 'frozen until 10-28 18:00: release demo' } else { $c.reason -match '^frozen until 10-28 18:00: release demo' }
+        Check "Demo Project 10-27 00:00 to 10-28 18:00 exactly as today: $label" (-not $a.err -and -not $a.active -and $b.active -and $c.active -and $why -and $c.waitSec -eq (30 * 3600 + 5) -and $d.active -and -not $e.active -and -not $e.err)
+    }
+    SetCfg $demo
+    SetReg ''; GwSame 'no state kitchen.json'
+    SetReg '{"maxConcurrent":4}'; GwSame 'a kitchen.json with no sites'
+    SetReg '{"sites":{}}'; GwSame 'an empty registry'
+    SetReg $tdRel; GwSame "another Site's window"
+    SetReg '{"sites": ['; GwSame 'a damaged kitchen.json never touches a Tower with no Site'
+    SetCfg '{"site":"GW","freeze":[{"from":"2026-10-27T00:00","to":"2026-10-28T18:00","why":"release demo"}]}'
+    SetReg ''; GwSame 'the Tower names Site GW, no registry'
+    SetReg '{"sites":{"GW":{"closed":[{"from":"2026-10-27T00:00","to":"2026-10-28T18:00","why":"release demo"}]}}}'; GwSame 'the same window under GW in the registry' $false
+
+    SetCfg '{"site":"TD"}'; SetReg $tdRel
+    $s1 = FzAt '2026-10-29T12:00'
+    Check 'Site window: a Tower of that Site is closed, the reason names the Site, back on the rail at its end (24 h + 5 s)' ($s1.active -and $s1.reason -eq 'frozen until 10-30 12:00: release (Site TD closed)' -and $s1.waitSec -eq (24 * 3600 + 5))
+    Check 'Site window: open just before it and at its end minute' (-not (FzAt '2026-10-28T23:59').active -and -not (FzAt '2026-10-30T12:00').active)
+    SetCfg '{"site":"GW"}'
+    Check "Site window: a Tower of another Site is not closed by it" (-not (FzAt '2026-10-29T12:00').active -and -not (FzAt '2026-10-29T12:00').err)
+    SetCfg '{"site":"TD","freeze":[{"from":"2026-10-28T00:00","to":"2026-10-29T06:00","why":"tower window"}]}'
+    $u1 = FzAt '2026-10-28T12:00'; $u2 = FzAt '2026-10-29T03:00'
+    Check "union: the Tower's own window alone" ($u1.reason -eq 'frozen until 10-29 06:00: tower window' -and $u1.waitSec -eq (18 * 3600 + 5))
+    Check 'union: where both cover now, the one that ends last (the Site window, 33 h + 5 s)' ($u2.reason -match '\(Site TD closed\)' -and $u2.waitSec -eq (33 * 3600 + 5))
+    SetReg '{"sites":{"TD":{"closed":[{"from":"2026-10-29T00:00","to":"2026-10-30T12:00","why":"repo copy"}]}}}'
+    Check 'the state-folder copy is the registry read (here, the repo copy has an empty sites)' ((FzAt '2026-10-29T12:00').reason -match 'repo copy')
+    SetCfg '{"site":"TD"}'
+    $badReg = @(
+        @('{"sites": [', 'cannot be read as JSON'),
+        @('{"sites":["TD"]}', "'sites' must be an object"),
+        @('{"sites":{"TD":"closed"}}', "'sites\.TD' must be an object"),
+        @('{"sites":{"TD":{"closed":{"from":"2026-10-29T00:00"}}}}', "'sites\.TD\.closed' must be a list"),
+        @('{"sites":{"TD":{"closed":[{"from":"2026-10-29T00:00","why":"x"}]}}}', "'sites\.TD\.closed\[0\]\.to' is missing"),
+        @('{"sites":{"TD":{"closed":[{"from":"Tuesday","to":"2026-10-30T12:00","why":"x"}]}}}', "'sites\.TD\.closed\[0\]\.from' must be a date and time"),
+        @('{"sites":{"TD":{"closed":[{"from":"2026-10-30T00:00","to":"2026-10-29T12:00","why":"x"}]}}}', "'sites\.TD\.closed\[0\]\.to' .* must be after"),
+        @('{"sites":{"TD":{"closed":[{"from":"2026-10-29T00:00","to":"2026-10-30T12:00","why":" "}]}}}', "'sites\.TD\.closed\[0\]\.why' must be a short reason"))
+    foreach ($b in $badReg) { SetReg $b[0]; $m = (FzAt '2026-10-25T12:00').err; Check "bad registry for the Tower's Site fails closed naming the field: $($b[1])" ($m -match 'cannot tell whether merges are frozen' -and $m -match $b[1] -and $m -match 'kitchen\.json') }
+    SetReg '{"sites":{"GW":{"closed":"soon"}}}'
+    Check "a bad window under another Site does not hold this Tower" (-not (FzAt '2026-10-25T12:00').err)
+
+    # the merge station: waits inside the Site window naming the Site, held for Jordan on a bad registry, merges after
+    if (-not (& git -C $repo rev-parse --verify --quiet kitchen/J1)) { Branch 'f.txt' }
+    SetReg $tdRel; $before = (& git -C $repo rev-parse HEAD)
+    $r = Merge '2026-10-29T12:00'
+    Check 'merge station, Site window: waits (exit 11) naming the Site, main unchanged' ($r.Code -eq 11 -and $r.Out -match 'demo-project frozen until 10-30 12:00: release \(Site TD closed\)' -and $r.Wait -eq (24 * 3600 + 5) -and (& git -C $repo rev-parse HEAD) -eq $before)
+    SetReg '{"sites":{"TD":{"closed":[{"from":"2026-10-29T00:00","why":"x"}]}}}'
+    $r = Merge '2026-10-25T12:00'
+    Check 'merge station, bad registry: held for Jordan (exit 10) naming the field' ($r.Code -eq 10 -and $r.Out -match "'sites\.TD\.closed\[0\]\.to' is missing" -and (& git -C $repo rev-parse HEAD) -eq $before)
+    SetReg $tdRel
+    $r = Merge '2026-10-30T12:00'
+    Check 'merge station, after the Site window: merges' ($r.Code -eq 0 -and $r.Out -match 'MERGED')
+
+    # status and Chef's freeze.json name the Site; a changed registry rebuilds freeze.json at once
+    $env:KITCHEN_FREEZE_NOW = '2026-10-29T12:00'
+    $v = Get-KitchenFreezeView $kr; $gr = @($v.repos | Where-Object { $_.name -eq 'demo-project' })
+    Check 'view: the Tower carries its Site and the window names it' ($gr.Count -eq 1 -and $gr[0].site -eq 'TD' -and $gr[0].windows[0].site -eq 'TD' -and $gr[0].windows[0].active)
+    Check 'status line names the Site (closed now)' (((Format-FreezeLines $v) -join "`n") -match 'FREEZE demo-project: merges frozen until 10-30 12:00: release \(Site TD closed\)')
+    $env:KITCHEN_FREEZE_NOW = '2026-10-27T12:00'
+    Check 'status line names the Site (ahead)' (((Format-FreezeLines (Get-KitchenFreezeView $kr)) -join "`n") -match 'FREEZE demo-project: merges will freeze 10-29 00:00 to 10-30 12:00: release \(Site TD closed\)')
+    SetCfg $demo; $v = Get-KitchenFreezeView $kr; $gr = @($v.repos | Where-Object { $_.name -eq 'demo-project' })
+    Check 'view, no Site on the Tower: the same keys as before (no site added)' ($gr.Count -eq 1 -and -not $gr[0].Contains('site') -and -not $gr[0].windows[0].Contains('site'))
+    SetCfg '{"site":"TD"}'
+    Update-FreezeView $kr 0
+    Check "freeze.json read back keeps the Site" (@((Read-FreezeView $kr).repos | Where-Object { $_.name -eq 'demo-project' -and $_.site -eq 'TD' -and $_.windows[0].site -eq 'TD' }).Count -eq 1)
+    $back = (Get-Date).AddMinutes(-2); (Get-Item $fzp).LastWriteTime = $back; Update-FreezeView $kr
+    Check 'freeze view: registry unchanged and under 10 min old: not rebuilt' ((Get-Item $fzp).LastWriteTime -eq $back)
+    SetReg '{"sites":{"TD":{"closed":[{"from":"2026-10-29T00:00","to":"2026-10-30T12:00","why":"release moved"}]}}}'; (Get-Item $kj).LastWriteTime = (Get-Date).AddMinutes(-1)
+    (Get-Item $fzp).LastWriteTime = $back; Update-FreezeView $kr
+    Check 'freeze view: a changed registry rebuilds it at once' ((Get-Item $fzp).LastWriteTime -gt $back -and (Get-Content $fzp -Raw) -match 'release moved')
+    SetReg '{"sites":{"TD":{"closed":[{"from":"2026-10-29T00:00"}]}}}'
+    $v = Get-KitchenFreezeView $kr; $er = @($v.errors | Where-Object { $_.name -eq 'demo-project' })
+    Check 'view, bad registry: an error for the Tower naming its Site and kitchen.json, no windows shown' ($er.Count -eq 1 -and $er[0].site -eq 'TD' -and $er[0].source -eq 'kitchen.json' -and -not @($v.repos | Where-Object { $_.name -eq 'demo-project' }).Count)
+    Check 'status line, bad registry: none merge, naming the field' (((Format-FreezeLines $v) -join "`n") -match "FREEZE demo-project: cannot tell whether merges are frozen, so none merge: .*'sites\.TD\.closed\[0\]\.to'")
+    $srv = Get-Content (Join-Path $PSScriptRoot '..\pass-app\server.mjs') -Raw
+    Check 'Board: the server passes the Site of a window and of a registry error; the banner names it' ($srv -match "site: String\(w\.site \|\| ''\)" -and $srv -match "source: String\(e\?\.source \|\| ''\)" -and $app -match 'Site \$\{esc\(e\.site\)\}''s closed windows in kitchen\.json cannot be read')
+    SetReg ''; SetCfg $demo
     # 10-22 regression: 1,012 Repo mentions naming 2 repos meant 2 git calls each, and ticks took 160-340 s. Each distinct path once.
     $many = Join-Path $root 'many'; New-Item -ItemType Directory -Force "$many\jobs" | Out-Null
     $rj = ($repo | ConvertTo-Json)
