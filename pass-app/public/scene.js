@@ -50,8 +50,8 @@ const SKIN = ['#f6d5bd', '#eab98f', '#d39a6a', '#b0784c', '#8a5634', '#5e3a22'];
 export function lookOf(id) { const h = hashId(id); return { skin: SKIN[h % SKIN.length], hat: 6 + ((h >>> 4) % 4) * 1.5, stache: ((h >>> 8) & 3) === 0, delay: ((h >>> 11) % 40) / 10 }; }
 export function skyAt(hour) { return hour >= 5 && hour < 8 ? 'dawn' : hour >= 8 && hour < 18 ? 'day' : hour >= 18 && hour < 21 ? 'dusk' : 'night'; }
 
-const STEP_WORD = { plan: 'planning', do: 'building', build: 'building', check: 'Inspection', research: 'researching', talk: 'chatting', diagnose: 'diagnosing',
-  tests: 'inspecting', repair: 'fixing it', commit: 'saving', freshen: 'resurveying', merge: 'handing over', map: 'mapping', worktree: 'setting up', lint: 'checking',
+const STEP_WORD = { plan: 'planning', do: 'building', build: 'building', check: 'inspecting', review: 'inspecting', research: 'researching', talk: 'chatting', diagnose: 'diagnosing',
+  tests: 'testing', repair: 'fixing it', commit: 'saving', freshen: 'resurveying', merge: 'handing over', map: 'mapping', worktree: 'setting up', lint: 'checking',
   mutate: 'testing hard', verify: 'double-checking', slice: 'splitting up' };
 const TOOL_WORD = { edit: 'Editing', write: 'Editing', multiedit: 'Editing', notebookedit: 'Editing', read: 'Reading', bash: 'Running', shell: 'Running', powershell: 'Running',
   grep: 'Searching', glob: 'Searching', websearch: 'Searching', webfetch: 'Fetching', task: 'Delegating', agent: 'Delegating' };
@@ -67,7 +67,7 @@ export function activityWord(j) {
   return base && word !== 'Running' ? word + ' ' + base : word;
 }
 const doing = (j) => activityWord(j) || STEP_WORD[stepKey(j)] || 'working';
-// what a step is, in site words ("inspecting" for tests); the Board's crew cards use it too
+// what a step is, in site words ("inspecting" at the Inspection desk, "testing" at the Test rig); the Board's crew cards use it too
 export const stepWord = (j) => STEP_WORD[stepKey(j)] || 'working';
 
 // ---- what is on the floor right now (pure: tested in node) ----

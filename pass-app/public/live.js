@@ -35,7 +35,7 @@ export const cookName = (j) => { const c = cookOf(j); return c === 'hand' ? 'han
 const colorOf = (n) => COOK_COLORS[n === 'hands' ? 'hand' : n] || COOK_COLORS.sous;
 // a step in plain words (also the job sheet's step list in app.js)
 export const STEP_TAG = { plan: 'Planning', build: 'Building', do: 'Building', review: 'Reviewing the change', map: 'Mapping the code', repair: 'Fixing failing tests', mutate: 'Testing the tests',
-  lint: 'Checking house rules', verify: 'Checking main after the merge', edit: 'Building', check: 'Inspection', research: 'Researching', talk: 'Answering you', diagnose: 'Finding the fix',
+  lint: 'Checking house rules', verify: 'Checking main after the merge', edit: 'Building', check: 'Inspecting', research: 'Researching', talk: 'Answering you', diagnose: 'Finding the fix',
   tests: 'Running the tests', commit: 'Saving the change', freshen: 'Pulling in the latest code', merge: 'Handing it over', worktree: 'Setting up a safe copy', ideas: 'Filing ideas' };
 const human = (s) => String(s || '').replace(/[-_]+/g, ' ');
 export function floorStep(j) { const k = j?.station === 'agent' ? String(j.role || '').toLowerCase() : String(j?.station || ''); return STEP_TAG[k] || cap(human(j?.station)) || 'Working'; }
