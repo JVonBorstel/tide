@@ -71,7 +71,9 @@ else {
             $task = @(for ($i = $names.Count - 1; $i -ge 0; $i--) { Get-ScheduledTask -TaskName $names[$i] -ErrorAction SilentlyContinue })[0]
             if (-not $task) { $task = Get-ScheduledTask -TaskName $names[0] -ErrorAction Stop }
             if ($task.State -ne 'Disabled') {
-                $exe = [Environment]::ExpandEnvironmentVariables([string]$task.Actions[0].Execute)
+                # wscript run-hidden.vbs "<pwsh>" ... (the no-flash form, scripts/headless-task-lib.ps1): the pwsh inside is what can go missing
+                . (Join-Path $PSScriptRoot 'headless-task-lib.ps1')
+                $exe = Get-TaskProgram ([string]$task.Actions[0].Execute) ([string]$task.Actions[0].Arguments)
                 if ($exe -match '\\WindowsApps\\Microsoft\.PowerShell_' -or -not (Test-Path -LiteralPath $exe)) { Write-Output "WARN $($task.TaskName) task runs $exe (missing or version-pinned); scripts/install-tasks.ps1 re-registers it (Jordan's yes)"; $warn++ }
             }
         } catch { }

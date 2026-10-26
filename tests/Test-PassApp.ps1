@@ -8,11 +8,28 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('kitchen-test-pass-' + [guid]::New
 # W4 acceptance (pass-app/test-patch.mjs: patches, keyed rows, change-driven state, no git on the loop; its own three throwaway servers,
 # about 75 s, one of them watched for a full 60 s loop window): started now, beside this suite, and read at the end
 $w4Out = "$root-w4.json"
-$w4Psi = [Diagnostics.ProcessStartInfo]::new('cmd.exe'); $w4Psi.Arguments = "/c node `"$(Join-Path $repo 'pass-app\test-patch.mjs')`" > `"$w4Out`" 2> `"$root-w4-err.txt`""
+$env:PASS_GITHUB = 'off'   # the City's GitHub reads (pass-app/towers.mjs): off for W4's servers; this suite's server reads a fake gh (below)
+$w4Psi =[Diagnostics.ProcessStartInfo]::new('cmd.exe'); $w4Psi.Arguments = "/c node `"$(Join-Path $repo 'pass-app\test-patch.mjs')`" > `"$w4Out`" 2> `"$root-w4-err.txt`""
 $w4Psi.UseShellExecute = $false; $w4Psi.CreateNoWindow = $true
 $w4 = [Diagnostics.Process]::new(); $w4.StartInfo = $w4Psi; [void]$w4.Start()
 $port = Get-Random -Minimum 20000 -Maximum 40000
 $env:BRAIN_KITCHEN = $root; $env:PASS_PORT = "$port"; $env:PASS_NO_TAILSCALE = '1'; $env:PASS_HOSTS = 'chef-box.tailnet-test.example'; $env:BRAIN_NTFY_TOPIC = $null; $env:PASS_NO_KICK = '1'; $env:KITCHEN_OLLAMA_URL = 'off'; $env:KITCHEN_AGY_EXE = 'off'
+# the City's GitHub reads go to a fake gh (node, answers.json beside it), every 5 s, never the network
+$ghFake = "$root-gh"; New-Item -ItemType Directory -Force $ghFake | Out-Null
+Set-Content "$ghFake\gh.mjs" @'
+// a fake gh for tests/Test-PassApp.ps1: answers from answers.json beside it; never the network
+import fs from 'node:fs'; import path from 'node:path'; import { fileURLToPath } from 'node:url';
+const a = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'answers.json'), 'utf8')); const args = process.argv.slice(2);
+if (a.fail) { process.stderr.write('To get started with GitHub CLI, please run:  gh auth login'); process.exit(4); }
+if (args[0] === 'api') { process.stdout.write(JSON.stringify({ resources: { graphql: { remaining: 4999 } } })); process.exit(0); }
+process.stdout.write(JSON.stringify(a[args[args.indexOf('--state') + 1]] || []));
+'@ -Encoding utf8
+function Set-GhAnswers($fail) {
+    @{ fail = $fail; merged = @(@{ number = 5; title = 'City floor from GitHub'; mergedAt = [DateTime]::UtcNow.AddHours(-1).ToString('o'); mergeCommit = @{ oid = ('5' * 40) }; headRefName = 'hand-branch' })
+        open = @(@{ number = 6; title = 'City crane from GitHub'; isDraft = $false; createdAt = [DateTime]::UtcNow.ToString('o'); headRefName = 'kitchen/J952'; statusCheckRollup = @(@{ status = 'COMPLETED'; conclusion = 'FAILURE' }) }) } | ConvertTo-Json -Depth 6 | Set-Content "$ghFake\answers.json" -Encoding utf8
+}
+Set-GhAnswers $false
+$env:PASS_GITHUB = $null; $env:PASS_GH = "$ghFake\gh.mjs"; $env:PASS_GITHUB_MS = '5000'
 $career = "$root-career"; $env:PASS_CAREER_DIR = $career; $env:PASS_APPLY_FILL = "$root-fill\apply-fill.mjs"; $env:KITCHEN_NOTIFY_LOG = "$root-notify.txt"; $env:KITCHEN_NO_DIAGNOSE = '1'; $env:PASS_STALL_CHECK_MS = '500'
 New-Item -ItemType Directory -Force "$career\scout" | Out-Null
 $income = "$root-income"; $env:PASS_INCOME_DIR = $income; New-Item -ItemType Directory -Force $income | Out-Null
@@ -1071,6 +1088,41 @@ console.log(JSON.stringify({ banners: siteStopBanners(items, { when }), rows: si
     }
     $appCss = Get-Content (Join-Path $repo 'pass-app\public\app.css') -Raw
 
+    # the City (plans/city-god-mode-2026-10-26.md): pass-app/test-city.mjs (towers.mjs on throwaway state folders and a fake git), then the live route
+    $cityOut = & node (Join-Path $repo 'pass-app\test-city.mjs') 2>$null
+    $cityExit = $LASTEXITCODE; $cityTest = $null
+    try { $cityTest = ($cityOut -join "`n") | ConvertFrom-Json } catch { $cityTest = $null }
+    Check 'city: test-city.mjs exits 0 (a node crash is a failure, not silence)' ($cityExit -eq 0)
+    Check 'city: test-city.mjs reported at least 25 checks' (@($cityTest).Count -ge 25)
+    foreach ($t in @($cityTest)) { if ($t) { Check "city: $($t.name)" ($t.pass -eq $true) } }
+    Check 'City_TowersNeedsKey: /api/towers needs the key' ((Get-Code "$base/api/towers") -eq 401)
+    $twRaw = (Invoke-WebRequest "$base/api/towers" -Headers $auth).Content; $tw = $twRaw | ConvertFrom-Json
+    Check 'City_TowersRoute: ok, this repo as its one building (no bootRepos here), with a 12-hex version' ($tw.ok -and @($tw.towers).Count -eq 1 -and $tw.v -match '^[0-9a-f]{12}$' -and @($tw.towers)[0].kind -in @('tower', 'lot'))
+    Check 'City_NoLocalPaths: /api/towers carries no folder path from this PC' ($twRaw -notmatch [regex]::Escape(($repo -replace '\\', '\\')) -and $twRaw -notmatch [regex]::Escape(($root -replace '\\', '\\')))
+    Check 'City_TowersV_InState: the state carries towersV, the same as /api/towers v' ((Invoke-RestMethod "$base/api/state" -Headers $auth).towersV -eq $tw.v)
+    $citySlug = [string](Get-Content (Join-Path $repo 'kitchen.repo.json') -Raw | ConvertFrom-Json).github
+    Add-Content -LiteralPath (Join-Path $root 'merges.jsonl') -Value (@{ pr = 77; repo = $citySlug; sha = ('7' * 40); actor = 'claude-session'; why = 'batch-run integrate-city: test'; at = [DateTime]::UtcNow.ToString('o'); ok = $true } | ConvertTo-Json -Compress) -Encoding utf8
+    Start-Sleep -Milliseconds 3500   # towers.mjs looks at its inputs at most every 3 s
+    $tw2 = Invoke-RestMethod "$base/api/towers" -Headers $auth; $fl77 = @(@($tw2.towers)[0].floors | Where-Object { $_.pr -eq 77 })
+    Check 'City_TowersV_MovesOnMerge: a merge line raises a floor (pr, sha, by session, its Pour) and moves towersV' ($tw2.v -ne $tw.v -and $fl77.Count -eq 1 -and $fl77[0].by -eq 'session' -and $fl77[0].pour -eq 'city' -and @($tw2.towers)[0].kind -eq 'tower' -and (Invoke-RestMethod "$base/api/state" -Headers $auth).towersV -eq $tw2.v)
+    @{ id = 'J950'; name = 'improve: city tower probe'; status = 'pending'; cursor = 0; attempt = 0; created = [DateTime]::UtcNow.ToString('o'); history = @(); steps = @(@{ script = 'agent-step.ps1'; args = @{} }, @{ script = 'merge.ps1'; args = @{ Repo = $repo } }) } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $root 'jobs\J950.json') -Encoding utf8
+    @{ id = 'J951'; name = 'research: city yard probe'; status = 'pending'; cursor = 0; attempt = 0; created = [DateTime]::UtcNow.ToString('o'); history = @(); steps = @(@{ script = 'agent-step.ps1'; args = @{} }) } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $root 'jobs\J951.json') -Encoding utf8
+    $sJT = Invoke-RestMethod "$base/api/state" -Headers $auth
+    Check 'City_JobViewTower: a work order with a merge Repo carries its Tower key; one with no Repo carries none (the Yard lot)' (@($sJT.jobs | Where-Object id -eq 'J950')[0].tower -eq @($tw2.towers)[0].key -and $null -eq @($sJT.jobs | Where-Object id -eq 'J951')[0].tower)
+    Remove-Item (Join-Path $root 'jobs\J950.json'), (Join-Path $root 'jobs\J951.json') -Force
+    # G2: GitHub (the fake gh above, read every 5 s): every merged and open PR, CI from the checks, the last good read kept on a failure
+    for ($i = 0; $i -lt 60 -and -not (Invoke-RestMethod "$base/api/state" -Headers $auth).githubAt; $i++) { Start-Sleep -Milliseconds 250 }
+    Start-Sleep -Milliseconds 3500
+    $twG = Invoke-RestMethod "$base/api/towers" -Headers $auth; $tG = @($twG.towers)[0]; $sG = Invoke-RestMethod "$base/api/state" -Headers $auth
+    $fl5 = @($tG.floors | Where-Object { $_.pr -eq 5 }); $cr6 = @($tG.open | Where-Object { $_.pr -eq 6 })
+    Check 'City_GitHubRead: a merged PR from GitHub is a floor with its title; an open PR is a crane with its CI (red) and work order (its file is not found, so no title); the state carries githubAt' ($fl5.Count -eq 1 -and $fl5[0].title -eq 'City floor from GitHub' -and $fl5[0].by -eq 'github' -and $cr6.Count -eq 1 -and $cr6[0].ci -eq 'red' -and $cr6[0].job -eq 'J952' -and $null -eq $cr6[0].title -and $sG.githubAt -and $twG.githubAt -eq $sG.githubAt -and $null -eq $twG.githubError)
+    Check 'City_GitHubCache: the last good read is kept in the state folder (towers-github.json)' ((Test-Path (Join-Path $root 'towers-github.json')) -and (Get-Content (Join-Path $root 'towers-github.json') -Raw) -match 'City floor from GitHub')
+    Set-GhAnswers $true
+    for ($i = 0; $i -lt 60 -and -not (Invoke-RestMethod "$base/api/towers" -Headers $auth).githubError; $i++) { Start-Sleep -Milliseconds 250 }
+    $twF = Invoke-RestMethod "$base/api/towers" -Headers $auth; $tF = @($twF.towers)[0]
+    Check 'City_GitHubFail: a failed read says so in plain words, keeps githubAt at the last good read and drops no floor or crane' ($twF.githubError -match 'gh is not signed in$' -and $twF.githubAt -eq $sG.githubAt -and @($tF.floors | Where-Object { $_.pr -eq 5 }).Count -eq 1 -and @($tF.open | Where-Object { $_.pr -eq 6 }).Count -eq 1 -and $twF.v -ne $twG.v)
+    Set-GhAnswers $false
+
     # listen (I40): the spoken-text builder and speaker live between the speak:start/speak:end markers in app.js; run them in node
     $speakBlock = [regex]::Match($appJs, '(?s)// speak:start\r?\n(.*?)// speak:end').Groups[1].Value
     Check 'listen: app.js has the speak block, Listen buttons and speaker icon' ($speakBlock.Length -gt 200 -and $appJs -match 'data-listen="brief"' -and $appJs -match 'job-listen' -and (Get-Content (Join-Path $repo 'pass-app\public\index.html') -Raw) -match 'id="i-speaker"[\s\S]*id="job-listen"')
@@ -1120,11 +1172,11 @@ console.log(JSON.stringify(checks));
     Check 'listen: speak tests exit 0 and report at least 15 checks' ($speakExit -eq 0 -and $null -ne $speakRes -and @($speakRes).Count -ge 15)
     foreach ($t in @($speakRes)) { if ($null -ne $t) { Check "listen: $($t.name)" ($t.pass -eq $true) } }
 
-    Check 'scene: budget header comment in scene.js' ($sceneJs -match '(?m)^// Budget: at most 60 animated elements and about 25 KB of SVG markup')
+    Check 'scene: the header comment in scene.js names the still fallback card and its budget' ($sceneJs -match '(?m)^// Fallback: a still card \(no animation, at most 25 KB of markup')
     Check 'scene: exports mountScene, sceneHtml, and activityWord' ($sceneJs -match 'export function mountScene\b' -and $sceneJs -match 'export function sceneHtml\b' -and $sceneJs -match 'export function activityWord\b')
     Check 'scene: renderScene in app.js calls mountScene' ($appJs -match 'mountScene\(el, s')
-    Check 'scene: app.css defines prefers-reduced-motion' ($appCss -match '@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)[\s\S]*?\.scene-stage')
-    Check 'scene: app.css defines paused state for document.hidden' ($appCss -match '\.scene-stage\.paused')
+    Check 'scene: the still card in app.css never moves (no animation, transition or keyframes; rename S7a)' ($appCss -match '/\* ---- the scene before the pixel stage loads' -and ([regex]::Match($appCss, '/\* ---- the scene before the pixel stage loads[\s\S]*?(?=/\* ----)').Value -notmatch 'animation|transition|@keyframes'))
+    Check 'scene: the kitchen SVG and its styles are gone (no .scene-stage.paused, no sc- keyframes)' ($appCss -notmatch '\.scene-stage\.paused' -and $appCss -notmatch '@keyframes sc-' -and $sceneJs -notmatch '<svg')
 
     # when Claude is away: lead.json notes, the mode from the plan reading, Jordan's manual "out", the boot pack line
     # clients: income leads (the station writes leads.json; Chef shows them and keeps Jordan's marks, under the same lock)
@@ -1653,14 +1705,14 @@ console.log(JSON.stringify(checks));
     $env:BRAIN_KITCHEN = $null; $env:PASS_PORT = $null; $env:PASS_NO_TAILSCALE = $null; $env:PASS_HOSTS = $null; $env:PASS_NO_KICK = $null; $env:KITCHEN_OLLAMA_URL = $null; $env:KITCHEN_AGY_EXE = $null
     Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains((Split-Path $root -Leaf)) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }  # only this run's GUID root: a concurrent run of this suite (another job's tests station, verify) must keep its workers
     $env:PASS_CAREER_DIR = $null; $env:PASS_APPLY_FILL = $null; $env:KITCHEN_NOTIFY_LOG = $null; $env:KITCHEN_NO_DIAGNOSE = $null; $env:PASS_STALL_CHECK_MS = $null; $env:PASS_HOSTS = $null; $env:PASS_INCOME_DIR = $null
-    Remove-Item -Recurse -Force $root, "$root-gate-repo", "$root-out.txt", "$root-err.txt", "$root-career", "$root-fill", "$root-notify.txt", "$root-income" -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $root, "$root-gate-repo", "$root-out.txt", "$root-err.txt", "$root-career", "$root-fill", "$root-notify.txt", "$root-income", "$root-gh" -ErrorAction SilentlyContinue
 }
 # the pixel stage and the pixel interface skin (sprites.js; the node checks for it run above through test-scene.mjs)
 $pxScene = Get-Content (Join-Path $repo 'pass-app\public\scene.js') -Raw
 $pxSprites = Get-Content (Join-Path $repo 'pass-app\public\sprites.js') -Raw
 $pxCss = Get-Content (Join-Path $repo 'pass-app\public\app.css') -Raw
 $pxSkin = $pxCss.Substring([Math]::Max(0, $pxCss.IndexOf('Chef pixel skin')))
-Check 'pixel: scene.js loads sprites.js lazily and keeps the SVG scene if it cannot' ($pxScene -match "import\('\./sprites\.js'\)\.then" -and $pxScene -match '\.catch\(\(\) => \{ /\* no sprites' -and $pxScene -match 'if \(PX && canvasOk\(\)\) \{ el\._scene = null; mountPixel\(el, L\); return; \}')
+Check 'pixel: scene.js loads sprites.js lazily and keeps the still card if it cannot' ($pxScene -match "import\('\./sprites\.js'\)\.then" -and $pxScene -match '\.catch\(\(\) => \{ /\* no sprites' -and $pxScene -match 'if \(PX && canvasOk\(\)\) \{ el\._card = null; mountPixel\(el, L\); return; \}')
 Check 'pixel: sprites.js is art as code: the two-line header, no fetch, no image files, no network' (($pxSprites -split "`n")[0] -match '^// ' -and ($pxSprites -split "`n")[1] -match '^// ' -and $pxSprites -notmatch '\bfetch\(|new Image\(|https?://|\.png\b')
 Check 'pixel: the canvas is drawn crisp (pixelated, whole-number scale)' ($pxSkin -match '\.px-canvas\{[^}]*image-rendering:pixelated' -and $pxScene -match 'export function pixelScale' -and $pxScene -match 'imageSmoothingEnabled = false')
 Check 'pixel: the stage stops while hidden, scrolled off screen (IntersectionObserver) or under reduced motion' ($pxScene -match "ok: \(\) => stageOk\(sc, document, reduced\(\)\)" -and (Get-Content (Join-Path $repo 'pass-app\public\frame.js') -Raw) -match "sc\.visible !== false" -and $pxScene -match "new IntersectionObserver\(" -and $pxScene -match "addEventListener\('visibilitychange'")
@@ -1676,6 +1728,17 @@ $pxIdx = Get-Content (Join-Path $repo 'pass-app\public\index.html') -Raw; $pxMf 
 Check 'site theme: the old token names still resolve in light and dark (--ember, --ember-grad, --ember-wash, --on-ember, --live, --amber, --sky)' ((@('--ember', '--ember-grad', '--ember-wash', '--on-ember', '--live', '--amber') | Where-Object { ([regex]::Matches($pxCss, "(?m)[\s{;]$_\s*:")).Count -lt 2 }).Count -eq 0 -and $pxCss -match 'html\[data-daypart=night\]\{--sky:#4F86C6\}' -and ([regex]::Matches($pxCss, '@media \(prefers-color-scheme:dark\)\{:root\{')).Count -ge 3)
 Check 'site theme: the theme-color metas and the manifest colours are the site paper (light) and the night site (dark)' ($pxIdx -match '<meta name="theme-color" content="#1A1412" media="\(prefers-color-scheme: dark\)">' -and $pxIdx -match '<meta name="theme-color" content="#EFE6D4" media="\(prefers-color-scheme: light\)">' -and $pxCss -match '--bg:#EFE6D4;' -and $pxCss -match '--bg:#1A1412;' -and $pxMf.background_color -eq '#1A1412' -and $pxMf.theme_color -eq '#1A1412' -and $pxMf.id -eq '/' -and $pxMf.start_url -eq '/#/pass')
 Check 'site theme: hazard tape, hard hat and beacon wear the tokens, wait for html.px and stop under reduced motion' ($pxSkin -match 'html\.px \.top::after\{[^}]*background:var\(--px-hazard\)' -and $pxSkin -match 'html\.px \.sec\.hot \.sec-head::after\{[^}]*background:var\(--px-hazard\)' -and $pxSkin -match 'html\.px \.top h1::before\{[^}]*background:var\(--cloche\)' -and $pxSkin -match '@media \(prefers-reduced-motion:reduce\)\{html\.px \.top h1::before,html\.px \.sec\.hot \.sec-head::after,html\.px \.sec\.hot \.sec-head>span::before\{animation:none\}\}')
+# the icons (rename S6b): the app icon is pixel art from the palette with its art inside the maskable safe zone, at the same path everywhere;
+# the symbol ids app.js builds stay; the tab icons hop and nod only under html.px, never scale, and hold still under reduced motion; New work order fits a phone
+$icoSvg = Get-Content (Join-Path $repo 'pass-app\public\icon.svg') -Raw; $icoArt = [regex]::Match($icoSvg, '<g id="art">([\s\S]*?)</g>').Groups[1].Value; $icoFar = 0
+foreach ($m in [regex]::Matches($icoArt, 'M(\d+) (\d+)h(\d+)v(\d+)')) { $x0 = [int]$m.Groups[1].Value; $y0 = [int]$m.Groups[2].Value; $x1 = $x0 + [int]$m.Groups[3].Value; $y1 = $y0 + [int]$m.Groups[4].Value
+  foreach ($p in @(@($x0, $y0), @($x1, $y0), @($x0, $y1), @($x1, $y1))) { $d = [Math]::Sqrt([Math]::Pow($p[0] - 256, 2) + [Math]::Pow($p[1] - 256, 2)); if ($d -gt $icoFar) { $icoFar = $d } } }
+$icoHex = @([regex]::Matches($icoSvg, '#[0-9a-fA-F]{6}') | ForEach-Object { $_.Value.ToLower() } | Sort-Object -Unique)
+Check 'site icons: the app icon is pixel art from the sprites.js palette, full bleed, its art inside the maskable safe zone (the 80% circle)' ($icoSvg -match 'viewBox="0 0 512 512"' -and $icoSvg -match 'shape-rendering="crispEdges"' -and $icoSvg -notmatch '<(text|image|script|use|linearGradient|radialGradient)\b|href=' -and $icoArt.Length -gt 200 -and $icoFar -gt 150 -and $icoFar -le 204.8 -and $icoHex.Count -ge 6 -and @($icoHex | Where-Object { $pxSprites -notmatch "'$_'" }).Count -eq 0)
+Check 'site icons: one icon path everywhere (manifest "any maskable", both links, the shell cache, served before sign-in, push)' (@($pxMf.icons).Count -eq 1 -and $pxMf.icons[0].src -eq '/icon.svg' -and $pxMf.icons[0].purpose -eq 'any maskable' -and $pxIdx -match '<link rel="icon" href="/icon\.svg">' -and $pxIdx -match '<link rel="apple-touch-icon" href="/icon\.svg">' -and (Get-Content (Join-Path $repo 'pass-app\public\sw.js') -Raw) -match "'/icon\.svg'" -and (Get-Content (Join-Path $repo 'pass-app\server.mjs') -Raw) -match "url\.pathname === '/icon\.svg'" -and (Get-Content (Join-Path $repo 'pass-app\public\app.js') -Raw) -match "icon: '/icon\.svg'")
+Check 'site icons: every symbol id app.js and the page use is still defined (i-pass, i-cooks, i-talk ...)' ((@('pass', 'activity', 'ledger', 'cooks', 'talk', 'send', 'lock', 'hunt', 'plus', 'screen', 'speaker', 'settings', 'x', 'back', 'more', 'chev', 'down', 'cloche') | Where-Object { $pxIdx -notmatch "<symbol id=`"i-$_`"" }).Count -eq 0)
+Check 'site icons: the tab you land on hops once and Live nods while a crew works, stepped, under html.px, never scaled, still under reduced motion' ($pxSkin -match 'html\.px \.bar a\[aria-current="page"\] svg\{animation:px-hop [^}]*steps\(1\) 1\}' -and $pxSkin -match 'html\.px \.bar a\[data-view=cooks\]:has\(\.live-count:not\(\[hidden\]\)\) svg\{animation:px-nod [^}]*steps\(1\)' -and $pxSkin -match 'html\.px \.bar a svg,html\.px \.bar a\[aria-current="page"\] svg\{transform:none' -and $pxSkin -match '@media \(prefers-reduced-motion:reduce\)\{html\.px \.bar a svg,html\.px \.order-btn svg\{animation:none!important\}\}')
+Check 'site icons: New work order stacks into two lines on a phone (it wrapped onto three at 375 px) and keeps its words' ($pxCss -match '@media \(max-width:440px\)\{\.order-btn\{flex-direction:column;[^}]*\}\.order-btn span\{text-wrap:balance\}\}' -and $pxIdx -match '<span>New work order</span></button>' -and $pxSkin -match 'html\.px \.order-btn::after\{[^}]*background:var\(--px-hazard\)')
 # the W4 node checks started at the top (a crash, a hang past 180 s or a missing result is a failure, never silence)
 if (-not $w4.WaitForExit(180000)) { & taskkill.exe /PID $w4.Id /T /F 2>&1 | Out-Null }
 $w4Res = $null; try { $w4Res = (Get-Content $w4Out -Raw) | ConvertFrom-Json } catch { }

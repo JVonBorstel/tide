@@ -134,9 +134,11 @@ try {
     Train; $before = ([string](& git -C $repo rev-parse HEAD)).Trim()
     $r = Station 'merge' 'J1' @('-Approved')
     $bm = BareRef 'refs/heads/main'
-    Check 'merge: exit 0, MERGED via PR #1' ($r.code -eq 0 -and $r.out -match 'GitHub merged PR #1' -and $r.out -match 'MERGED kitchen/J1 into main')
-    Check 'merge: pinned to the tested commit (--match-head-commit)' ((Get-Content (Join-Path $gh 'calls.log') -Raw) -match "pr merge 1 -R $slug --merge --match-head-commit $tip1")
-    Check "merge: the merge commit's author is the account's noreply address (--author-email), never its primary email" ((Get-Content (Join-Path $gh 'calls.log') -Raw) -match "pr merge 1 -R $slug [^\r\n]*--author-email 1001\+fake-owner@users\.noreply\.github\.com")
+    Check 'merge: exit 0, MERGED via PR #1' ($r.code -eq 0 -and $r.out -match 'merged PR #1 here as 1001\+fake-owner@users\.noreply\.github\.com and pushed it' -and $r.out -match 'MERGED kitchen/J1 into main')
+    $mc = "$(& git -C $bare log -1 --format='%P|%ae|%ce' main)"
+    Check "merge: GitHub's main got one merge commit whose second parent is exactly the tested commit" (($mc -split '\|')[0] -match " $tip1$")
+    Check "merge: the merge commit's author and committer are the account's noreply address, never its primary email" ($mc -like '*|1001+fake-owner@users.noreply.github.com|1001+fake-owner@users.noreply.github.com')
+    Check 'merge: GitHub is never asked to merge (it would stamp the primary email)' ((Get-Content (Join-Path $gh 'calls.log') -Raw) -notmatch 'pr merge 1 ')
     Check "merge: GitHub's main has the merge with the kitchen's subject" ((& git -C $bare log -1 --format=%s main) -eq 'Merge kitchen/J1 (kitchen J1, approved by Jordan)')
     Check "merge: the real checkout's main fast-forwarded to GitHub's" (([string](& git -C $repo rev-parse HEAD)).Trim() -eq $bm -and (Get-Content (Join-Path $repo 'a.txt') -Raw) -match 'reworked')
     Check 'merge: worktree, local branch and GitHub branch cleaned up' (-not (Test-Path $w1) -and -not (& git -C $repo rev-parse --verify --quiet kitchen/J1) -and -not (BareRef 'refs/heads/kitchen/J1'))
