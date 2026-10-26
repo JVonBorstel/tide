@@ -79,23 +79,36 @@ $s2 = pwsh -NoProfile -File $kc @easy -MaxTempGB 999 -TempDir $ft | Out-String
 Check 'paused supervisor is shown, not warned' ($s2 -match 'PAUSED the kitchen supervisor is paused' -and $s2 -notmatch 'not ticking' -and $LASTEXITCODE -eq 0)
 $env:BRAIN_KITCHEN = $kcSaved.k; $env:BRAIN_GUARD_STATE = $kcSaved.g
 
-# 5. kitchen-check flags a heavy process but never kills it
-$p = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', '$a = New-Object byte[] 300MB; for ($i=0; $i -lt $a.Length; $i += 4096) { $a[$i] = 1 }; Start-Sleep 90' -PassThru -WindowStyle Hidden
-$h = ''; [void](Wait-Until { $script:h = pwsh -NoProfile -File $kc -MaxProcMB 200 | Out-String; $script:h -match "pid $($p.Id)\b" } 45)
-Check 'flags heavy pid' ($h -match "pid $($p.Id)\b")
-Check 'did not kill' ($null -ne (Get-Process -Id $p.Id -ErrorAction SilentlyContinue))
-Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+# 5-6 run kitchen-check against a scratch TEMP (TEMP and TMP point at it for the check's own default), and their heavy and busy processes
+# live until this suite stops them (or this suite's pwsh exits), never on a clock of their own. They used to end themselves after 90 s
+# while kitchen-check scanned the real TEMP: at 170,000 files one scan took 57 s, the first scan came too early to see the CPU, the
+# second ended at t+116 s, and 'busy loop not killed' failed on a loop that had ended by itself (exit 0 at start+90 s; nothing killed it).
+$ktTemp = Join-Path $root 'kc-scratch-temp'; New-Item -ItemType Directory -Force -Path $ktTemp | Out-Null
+$tempSaved = @{ TEMP = $env:TEMP; TMP = $env:TMP }
+$untilSuiteEnds = "`$suite = Get-Process -Id $PID; "   # each helper below runs while this suite's pwsh is running
+try {
+    $env:TEMP = $ktTemp; $env:TMP = $ktTemp
 
-# 6. flags a busy-loop process (high CPU seconds) and a huge TEMP file; kills nothing
-$b = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', '$e=(Get-Date).AddSeconds(90); while((Get-Date) -lt $e){ $x=1+1 }' -PassThru -WindowStyle Hidden
-$big = Join-Path ([IO.Path]::GetTempPath()) ('kt-big-' + [guid]::NewGuid().ToString('N') + '.bin')
-$fs = [IO.File]::Create($big); $fs.SetLength(60MB); $fs.Dispose()
-$h2 = ''; [void](Wait-Until { $script:h2 = pwsh -NoProfile -File $kc -MaxCpuSec 3 -MaxFileMB 50 | Out-String; $script:h2 -match "busy.*pid $($b.Id)\b" } 45)
-Check 'flags busy loop' ($h2 -match "busy.*pid $($b.Id)\b")
-Check 'flags huge temp file' ($h2 -match [regex]::Escape((Split-Path $big -Leaf)))
-Check 'busy loop not killed' ($null -ne (Get-Process -Id $b.Id -ErrorAction SilentlyContinue))
-Stop-Process -Id $b.Id -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $big -Force
+    # 5. kitchen-check flags a heavy process but never kills it
+    $p = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', ($untilSuiteEnds + '$a = New-Object byte[] 300MB; for ($i=0; $i -lt $a.Length; $i += 4096) { $a[$i] = 1 }; while (-not $suite.HasExited) { Start-Sleep -Milliseconds 500 }') -PassThru -WindowStyle Hidden
+    $h = ''; [void](Wait-Until { $script:h = pwsh -NoProfile -File $kc -MaxProcMB 200 | Out-String; $script:h -match "pid $($p.Id)\b" } 45)
+    Check 'flags heavy pid' ($h -match "pid $($p.Id)\b")
+    Check 'did not kill' ($null -ne (Get-Process -Id $p.Id -ErrorAction SilentlyContinue))
+    Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+
+    # 6. flags a busy-loop process (high CPU seconds) and a huge TEMP file; kills nothing
+    $b = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', ($untilSuiteEnds + 'while (-not $suite.HasExited) { $x = 1 + 1 }') -PassThru -WindowStyle Hidden
+    $big = Join-Path $ktTemp ('kt-big-' + [guid]::NewGuid().ToString('N') + '.bin')
+    $fs = [IO.File]::Create($big); $fs.SetLength(60MB); $fs.Dispose()
+    $h2 = ''; [void](Wait-Until { $script:h2 = pwsh -NoProfile -File $kc -MaxCpuSec 3 -MaxFileMB 50 | Out-String; $script:h2 -match "busy.*pid $($b.Id)\b" } 45)
+    Check 'flags busy loop' ($h2 -match "busy.*pid $($b.Id)\b")
+    Check 'flags huge temp file' ($h2 -match [regex]::Escape((Split-Path $big -Leaf)))
+    Check 'busy loop not killed' ($null -ne (Get-Process -Id $b.Id -ErrorAction SilentlyContinue))
+    Stop-Process -Id $b.Id -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $big -Force
+} finally {
+    $env:TEMP = $tempSaved.TEMP; $env:TMP = $tempSaved.TMP
+}
 
 # 7. Spend-Today retains cumulative spend across rotated events-*.jsonl files
 $origKitchen = $env:BRAIN_KITCHEN
