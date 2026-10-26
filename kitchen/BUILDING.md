@@ -60,7 +60,7 @@ before Jordan is asked. A change merged *while this one waits for Jordan* can st
 
 ## Other repositories (`kitchen.repo.json`)
 The line builds in any git repo: `kitchen/cook.ps1 -Recipe improve -Vars @{ goal = '...'; repo = 'C:\path\to\repo' }`. A repo that does not keep its suites at
-`tests\Test-*.ps1` says so in `kitchen.repo.json` at its root (no file = brain-monitor's layout, nothing changes):
+`tests\Test-*.ps1` says so in `kitchen.repo.json` at its root (no file = this repo's own layout, nothing changes):
 ```json
 { "tests": ["tests/phase0/Test-Phase0.ps1"], "testTimeoutSec": 900, "github": "owner/name", "protected": [".claude/**", "scripts/**"] }
 ```
@@ -166,6 +166,26 @@ Every AI step asks it which crew (code: cook) to use, and it answers with one ch
 5. **Nothing free?** The step **waits** (exit 11) without using a retry; a cook that hits its limit mid-step hands over to the next one.
 Try it: `just sous "..."` (decides only), `just cooks` (the cooks' state), `just wake <cook>`.
 The **model scout** (Spec `scout`) runs weekly as a standing order and reports what's new in AI models vs what we run.
+
+## Building in public
+Tide's home is https://github.com/JVonBorstel/tide, a **public** repo (since 2026-10-26): every commit, branch name, PR text and CI log
+can be read by anyone. The history before 2026-10-24 stays in a private repo and is never pushed here.
+- **Commit and merge identity: the noreply address.** Commit as `Jordan VonBorstel <204934145+JVonBorstel@users.noreply.github.com>`
+  (`git -c user.name="Jordan VonBorstel" -c user.email=204934145+JVonBorstel@users.noreply.github.com commit ...`, or that `user.email`
+  in the checkout). Claude sessions merge only with `pwsh -File scripts/merge-pr.ps1 -Repo JVonBorstel/tide -Pr N`: the merge commit
+  is authored with the signed-in account's noreply address (`Get-MergeAuthorEmail` in `kitchen/github-lib.ps1`), never the account's
+  primary email. No web-button merge and no bare `gh pr merge` from a session (2026-10-26: a web merge put a private address on main).
+- **Personal values live only in the state folder** (`%LOCALAPPDATA%\brain-kitchen`): this PC's repo list and suite list
+  (`verify-all.json`), job-search and career settings, private words, the push topic, the Board's key. The repo keeps generic
+  defaults and reads the state-folder copy over them (as `kitchen.json` does). A new personal value goes there, never in a tracked
+  file, a test fixture or a PR text. Paths in docs are `%USERPROFILE%\...`, never a real user folder.
+- **Private work comes over only through the port tool.** Work done in the private repo reaches this repo only by
+  `scripts/port-private.ps1`: a private branch becomes a cleaned tree (the same cleaning rules every time), then a branch on tide's
+  main and a PR. No hand copies, no cherry-picks across the two histories (they are unrelated, so `freshen` cannot merge them either).
+- **The cleaning scan.** Before anything from the private side is pushed, a privacy scan runs on the cleaned tree and must report 0
+  live hits: secret-shaped values (`scripts/secret-patterns.ps1`), this PC's user name and paths, private network and device names,
+  personal and employer emails and names, and private project names. The scan compares against values read live from this PC, so it
+  lives in the private notes, not here. A session also greps its own diff for those words before every push and stops on a hit.
 
 ## Before you finish any change
 1. The relevant `tests/Test-*.ps1` passes (run through `scripts/run-bounded.ps1`).

@@ -1,6 +1,7 @@
 # GitHub plumbing for the pull-request flow: the pr, ci-wait, merge and deploy stations and automerge.ps1 dot-source this (functions only).
 # gh is `gh` on PATH, or KITCHEN_GH (tests: a fake .ps1 that plays GitHub over a local bare repo, so no test ever touches the network).
-# Pushes and fetches go to https://github.com/<owner>/<name>.git by explicit URL (Jordan's checkout has no 'origin' remote), or to
+# Pushes and fetches go to https://github.com/<owner>/<name>.git by explicit URL (the slug from kitchen.repo.json, whatever remotes the
+# checkout has: its 'origin' never decides where work goes), or to
 # KITCHEN_GITHUB_REMOTE (a remote name or URL; tests: the bare repo). Nothing here prompts: a missing login fails instead of hanging a step.
 
 # gh, captured: {ok, code, out (stdout), err (stderr)}. Never throws (a missing gh is a failed call, not a crashed station).
@@ -24,6 +25,15 @@ function Invoke-GhJson([string[]]$GhArgs) {
     $r | Add-Member -NotePropertyName json -NotePropertyValue $null -Force
     if ($r.ok) { try { $r.json = $r.out | ConvertFrom-Json -ErrorAction Stop } catch { $r.ok = $false; $r.err = 'gh did not answer with JSON' } }
     $r
+}
+# The author of a merge commit GitHub makes: the signed-in account's noreply address, passed as gh pr merge --author-email.
+# Without it GitHub stamps the account's primary email (2026-10-26: a merge on the public tide repo carried Jordan's work address).
+# KITCHEN_MERGE_EMAIL overrides. Returns $null when gh cannot say who is signed in: the caller refuses to merge (fail closed).
+function Get-MergeAuthorEmail {
+    if ($env:KITCHEN_MERGE_EMAIL) { return $env:KITCHEN_MERGE_EMAIL }
+    $r = Invoke-GhJson @('api', 'user')
+    if (-not $r.ok -or -not $r.json.id -or -not $r.json.login) { return $null }
+    "$($r.json.id)+$($r.json.login)@users.noreply.github.com"
 }
 function Get-GhWhy($r) { $t = (("$($r.err) $($r.out)" -replace '\s+', ' ').Trim()); if ($t.Length -gt 160) { $t = $t.Substring(0, 160) + '...' }; if ($t) { $t } else { "gh exit $($r.code)" } }
 # what kind of failure: the repo is not there / gh is not signed in (waiting will not help) / anything else (the network: try again later)

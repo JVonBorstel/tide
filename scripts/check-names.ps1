@@ -10,6 +10,7 @@
 # is KNOWN (an edited line that kept its word); any other hit is FOUND. Baseline entries only shrink, the same rule as lint-baseline.json.
 # Exit: 0 report only (always, unless -Enforce); 1 with -Enforce and FOUND hits, unless -Branch is kitchen/J<n> with n <= exemptThrough;
 # 2 bad input (no -Base, a ref git cannot resolve, not a git repository, unreadable allow or baseline file).
+# A root commit (no parent) with -Base <ref>^1 is compared with the empty tree, with a NOTE line; a shallow clone's cut-off commit is not a root.
 param([string]$Base = '', [string]$Root = '', [string]$Allow = '', [string]$Baseline = '', [string]$Summary = '', [switch]$Enforce,
     [string]$Branch = $env:GITHUB_HEAD_REF, [switch]$WriteBaseline)
 $ErrorActionPreference = 'Stop'
@@ -254,7 +255,27 @@ if ($WriteBaseline) {
 }
 
 & git -C $Root rev-parse --verify --quiet "$Base^{commit}" 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) { Stop-Names "git cannot resolve -Base $Base (CI needs fetch-depth 2 for HEAD^1)" }
+$rootNote = ''
+if ($LASTEXITCODE -ne 0) {
+    # -Base <ref>^1 (also ^, ~, ~1) where <ref> is a root commit (a repo's first commit has no parent): compare with the empty tree, so
+    # every line of the commit counts as added. The oldest commit of a shallow clone also shows no parent but has one: still bad input.
+    $stem = if ($Base -match '^(.+?)(?:\^1?|~1?)$') { $Matches[1] } else { '' }
+    $sha = if ($stem) { ([string](& git -C $Root rev-parse --verify --quiet "$stem^{commit}" 2>$null)).Trim() } else { '' }
+    $isRoot = $false
+    if ($sha) {
+        $isRoot = @(([string](& git -C $Root rev-list --parents -n 1 $sha 2>$null)).Trim() -split '\s+').Count -eq 1
+        $shallow = ([string](& git -C $Root rev-parse --git-path shallow 2>$null)).Trim()
+        if ($shallow -and -not [IO.Path]::IsPathRooted($shallow)) { $shallow = Join-Path $Root $shallow }
+        if ($isRoot -and $shallow -and (Test-Path -LiteralPath $shallow) -and @(Get-Content -LiteralPath $shallow) -contains $sha) { $isRoot = $false }
+    }
+    if (-not $isRoot) { Stop-Names "git cannot resolve -Base $Base (CI needs fetch-depth 2 for HEAD^1)" }
+    $empty = [IO.Path]::GetTempFileName()   # a 0-byte file: its tree hash is the empty tree in this repo's hash format
+    try { $tree = ([string](& git -C $Root hash-object -t tree $empty 2>$null)).Trim() } finally { Remove-Item -LiteralPath $empty -Force -ErrorAction SilentlyContinue }
+    if (-not $tree) { Stop-Names "git cannot resolve -Base $Base, and the empty tree could not be made for the root commit $stem" }
+    $rootNote = "$stem ($($sha.Substring(0, 7))) is a root commit with no parent: -Base $Base is compared as the empty tree, so every line counts as added"
+    Write-Output "NOTE: $rootNote"
+    $Base = $tree
+}
 $was = @{}
 if (Test-Path -LiteralPath $Baseline) {
     try { $bj = Get-Content -LiteralPath $Baseline -Raw -Encoding utf8 | ConvertFrom-Json -AsHashtable } catch { Stop-Names "baseline is not valid JSON: $Baseline" }
@@ -289,6 +310,7 @@ $line = "Names: $mode; $files files and $lineCount added lines checked, $($found
 Write-Output $line
 if ($Summary) {
     $md = @('', '## Old names (scripts/check-names.ps1)', '', "- $line")
+    if ($rootNote) { $md += "- Note: $rootNote" }
     $md += @($found | Select-Object -First 30 | ForEach-Object { "- ``$($_.rel):$($_.line)`` ""$($_.old)"" -> $($_.new)" })
     Add-Content -LiteralPath $Summary -Value $md -Encoding utf8
 }

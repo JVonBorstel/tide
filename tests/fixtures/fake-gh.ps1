@@ -2,7 +2,7 @@
 # State lives in FAKE_GH_DIR: repos.txt (repos that exist, one owner/name per line), prs.json (the pull requests), checks.json
 # ({ "<head sha>": [statusCheckRollup items] }), mergeable.txt (overrides MERGEABLE), offline.txt (every call fails like a dropped
 # network), signedout.txt (every call fails as gh does when signed out), calls.log (every call, one per line). FAKE_GH_BARE is the bare repo that stands in for GitHub's git side.
-# Speaks only what the kitchen uses: repo view, pr list / create / edit / view / merge / comment. A PR record with a "bare" field reads its
+# Speaks only what the kitchen uses: api user, repo view, pr list / create / edit / view / merge / comment. A PR record with a "bare" field reads its
 # head from that bare repo instead (tests/Test-PortPrivate.ps1: the private repo and tide are two bare repos).
 $ErrorActionPreference = 'Stop'
 $dir = $env:FAKE_GH_DIR; $bare = $env:FAKE_GH_BARE
@@ -32,6 +32,10 @@ function View([hashtable]$p) {
 function Find([string]$n) { $p = @($db.prs | Where-Object { [string]$_.number -eq $n -and $_.repo -eq $repo }); if (-not $p.Count) { Fail "GraphQL: Could not resolve to a PullRequest with the number of $n." }; $p[0] }
 $cmd = ($pos | Select-Object -First 2) -join ' '
 switch ($cmd) {
+    'api user' {   # the signed-in account (Get-MergeAuthorEmail builds <id>+<login>@users.noreply.github.com from it); nouser.txt: gh cannot say
+        if (Test-Path -LiteralPath (Join-Path $dir 'nouser.txt')) { Fail 'HTTP 401: Requires authentication' }
+        @{ id = 1001; login = 'fake-owner' } | ConvertTo-Json -Compress; exit 0
+    }
     'repo view' {
         $known = @(Get-Content -LiteralPath (Join-Path $dir 'repos.txt') -ErrorAction SilentlyContinue)
         if ($known -notcontains $pos[2]) { Fail "GraphQL: Could not resolve to a Repository with the name '$($pos[2])'. (repository)" }

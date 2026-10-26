@@ -41,6 +41,16 @@ try {
     $base = Save-Commit 'base'
     $r = Invoke-Guard @('-Root', $fx, '-Base', 'no-such-ref-here')
     Expect 'a -Base git cannot resolve: exit 2' ($r.code -eq 2 -and $r.text -match 'cannot resolve -Base no-such-ref-here') $r.text
+    # 1b. a root commit (a repo's first commit, as on the public repo's first push): -Base HEAD^1 has no parent, so it is compared with the
+    # empty tree and every line counts as added, with a NOTE saying so (it used to stop with "git cannot resolve -Base HEAD^1")
+    $rootSum = Join-Path $fx 'root-summary.md'
+    $r = Invoke-Guard @('-Root', $fx, '-Base', 'HEAD^1', '-Summary', $rootSum)
+    Expect 'root commit, -Base HEAD^1: exit 0, a NOTE names the empty tree, and every line of the commit is checked' ($r.code -eq 0 -and $r.text -match '(?m)^NOTE: HEAD \([0-9a-f]{7}\) is a root commit with no parent: -Base HEAD\^1 is compared as the empty tree' -and $r.text -match '(?m)^Names: report only; 1 files and 3 added lines checked, 0 old words') $r.text
+    $rs = if (Test-Path -LiteralPath $rootSum) { Get-Content -LiteralPath $rootSum -Raw } else { '' }
+    Expect 'root commit: the step summary carries the note' ($rs -match '- Note: HEAD \([0-9a-f]{7}\) is a root commit') $rs
+    Remove-Item -LiteralPath $rootSum -Force -ErrorAction SilentlyContinue
+    $r = Invoke-Guard @('-Root', $fx, '-Base', 'HEAD~2')
+    Expect 'root commit, -Base HEAD~2: still bad input (only one step back from a root is the empty tree)' ($r.code -eq 2 -and $r.text -match 'cannot resolve -Base HEAD~2') $r.text
 
     # 2. the fixture change: display text with old words, and code that must never match
     Save-Fixture 'pass-app/public/ui.js' (@'
@@ -85,6 +95,14 @@ n.setAttribute('class', `actor chef st-${c}`); const sel = document.querySelecto
     Expect 'report only: exit 0 with findings, and the closing line says so' ($r.code -eq 0 -and $r.text -match '(?m)^Names: report only; 3 files .*, 8 old words \(0 baselined\), 8 new') $r.text
     $s = if (Test-Path -LiteralPath $sum) { Get-Content -LiteralPath $sum -Raw } else { '' }
     Expect 'the summary file gets the heading, the closing line and the findings' ($s -match '## Old names' -and $s -match 'Names: report only' -and $s -match '`pass-app/public/ui\.js:4` "Plated" -> Handed over') $s
+    $r = Invoke-Guard @('-Root', $fx, '-Base', 'HEAD^1')
+    Expect 'a commit with a parent: -Base HEAD^1 is that parent, no root NOTE' ($r.code -eq 0 -and $r.text -notmatch 'root commit' -and $r.text -match '8 new') $r.text
+    # a shallow clone's oldest commit shows no parent but has one: that is still "cannot resolve" (CI needs fetch-depth 2), never the empty tree
+    $shallowFx = "$fx-shallow"
+    & git clone -q --depth 1 ('file:///' + ($fx -replace '\\', '/')) $shallowFx 2>&1 | Out-Null
+    $r = Invoke-Guard @('-Root', $shallowFx, '-Base', 'HEAD^1')
+    Expect 'shallow clone, depth 1: -Base HEAD^1 is bad input (exit 2), not a root commit' ((Test-Path -LiteralPath (Join-Path $shallowFx '.git\shallow')) -and $r.code -eq 2 -and $r.text -match 'cannot resolve -Base HEAD\^1' -and $r.text -notmatch 'root commit') $r.text
+    Remove-Item -LiteralPath $shallowFx -Recurse -Force -ErrorAction SilentlyContinue
 
     # 3. enforce mode, and the exemptThrough rule for older work orders
     $r = Invoke-Guard @('-Root', $fx, '-Base', $base, '-Enforce', '-Branch', '')
@@ -127,6 +145,7 @@ n.setAttribute('class', `actor chef st-${c}`); const sel = document.querySelecto
     Expect 'ci-quick-checks.ps1 does not run check-names' ((Get-Content -LiteralPath (Join-Path $repo 'scripts\ci-quick-checks.ps1') -Raw) -notmatch 'check-names')
 } finally {
     Remove-Item -LiteralPath $fx -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "$fx-shallow" -Recurse -Force -ErrorAction SilentlyContinue
 }
 Write-Output "Names tests: $script:ok passed, $script:bad failed"
 exit ([int]($script:bad -gt 0))

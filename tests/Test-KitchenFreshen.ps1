@@ -166,6 +166,33 @@ exit 0
     $out = Station 'freshen'
     Check 'main with uncommitted edits: waits (exit 11)' ($LASTEXITCODE -eq 11 -and $out -match 'uncommitted' -and (& git -C $wt rev-parse HEAD) -eq $wtHead)
     G checkout -q -- other.txt
+    # 5. main replaced by an unrelated history (2026-10-26: brain-monitor moved to tide with a fresh history, the same files): no merge can
+    # freshen the order. A plain hold (exit 10, the supervisor's hold code) as the last line, which the supervisor shows as the reason: it
+    # names the cut-over and the way out (re-cook or port). Never the old late failure (exit 1 "git merge failed"), never a silent pass.
+    $env:KITCHEN_JOB = 'J60'
+    pwsh -NoProfile -File (Join-Path $st 'worktree.ps1') -Repo $repo | Out-Null
+    $w60 = Join-Path $kr 'worktrees\J60'
+    Set-Content "$w60\u1.txt" 'job'; pwsh -NoProfile -File (Join-Path $st 'commit.ps1') -Message 'job u1' | Out-Null
+    $head60 = (& git -C $w60 rev-parse HEAD); $base60 = (Get-Content "$w60\.kitchen\BASE" -Raw); $diff60 = (Get-Content "$w60\.kitchen\DIFF.patch" -Raw)
+    $oldMain = (& git -C $repo rev-parse main)
+    G branch -m main old-main; G checkout -q --orphan main; G commit -q -m 'fresh history, same files'   # the old main is kept, as in the cut-over
+    $newMain = (& git -C $repo rev-parse main)
+    . (Join-Path $PSScriptRoot '..\kitchen\history-lib.ps1')
+    Check 'history: two roots share no history (unrelated)' ((Get-HistoryRelation $repo $oldMain $newMain) -eq 'unrelated')
+    Check 'history: a branch and its own main share history (shared)' ((Get-HistoryRelation $repo $oldMain $head60) -eq 'shared')
+    Check 'history: a commit git does not have is unknown, never unrelated' ((Get-HistoryRelation $repo ('0' * 40) $newMain) -eq 'unknown')
+    $out = Station 'freshen'; $ec = $LASTEXITCODE
+    $lastLine = @($out -split "`r?`n" | Where-Object { $_.Trim() }) | Select-Object -Last 1
+    Check 'unrelated main: held (exit 10), not a failure' ($ec -eq 10)
+    Check 'unrelated main: the last line is the plain hold naming the branch, main and the cut-over' ($lastLine -match "^freshen: HOLD: kitchen/J60 and main@$($newMain.Substring(0, 7)) share no history" -and $lastLine -match '2026-10-26 cut-over of brain-monitor to tide')
+    Check 'unrelated main: the hold names the way out (re-cook tool for this order, its kept branch, the port tool)' ($lastLine -match 'scripts/rebase-orders\.ps1 -Ids J60' -and $lastLine -match 'pre-tide/kitchen/J60' -and $lastLine -match 'scripts/port-private\.ps1')
+    Check 'unrelated main: says nothing merged or changed' ($lastLine -match 'Nothing merged, nothing changed')
+    Check 'unrelated main: HEAD, BASE and DIFF.patch unchanged; no BASE.next, no MERGE_HEAD' ((& git -C $w60 rev-parse HEAD) -eq $head60 -and (Get-Content "$w60\.kitchen\BASE" -Raw) -eq $base60 -and (Get-Content "$w60\.kitchen\DIFF.patch" -Raw) -eq $diff60 -and -not (Test-Path "$w60\.kitchen\BASE.next") -and -not (& git -C $w60 rev-parse --verify --quiet MERGE_HEAD))
+    Check 'unrelated main: worktree clean, real checkout untouched' (@(& git -C $w60 status --porcelain --untracked-files=no).Count -eq 0 -and (& git -C $repo rev-parse main) -eq $newMain -and (& git -C $repo rev-parse old-main) -eq $oldMain)
+    $null = Station 'freshen'
+    Check 'unrelated main: a re-run holds again, still nothing changed' ($LASTEXITCODE -eq 10 -and (& git -C $w60 rev-parse HEAD) -eq $head60)
+    G checkout -q old-main; G branch -m main fresh-main; G branch -m old-main main   # back to the old main for the checks below (nothing deleted)
+
     $env:KITCHEN_JOB = ''
     $null = Station 'freshen'
     Check 'no job: exit 2' ($LASTEXITCODE -eq 2)

@@ -5,6 +5,8 @@
 # Writes only in the job's worktree, its branch and .kitchen\ (BASE and DIFF.patch are reset so the diff shows only this job's change;
 # BASE.next holds the tip while the move is under way, TD-EH-09).
 # Safe to re-run: merging a tip that is already in the branch does nothing.
+# A branch that shares no history with main (main was replaced, as in the 2026-10-26 cut-over to tide) is held for Jordan (exit 10)
+# with the way out (re-cook or port), nothing changed (kitchen/history-lib.ps1).
 #   step: {"station":"freshen","args":{"Repo":"C:\\path\\to\\repo"}}
 param([Parameter(Mandatory)][string]$Repo, [string]$Order = '', [string]$Supplier = '', [switch]$Private, [switch]$Public, [int]$MaxTurns = 40, [double]$MaxBudgetUsd = 3, [string]$Agent = '')
 $ErrorActionPreference = 'Stop'
@@ -44,12 +46,19 @@ $into = (& git -C $Repo rev-parse --abbrev-ref HEAD)
 $mainDirty = @(& git -C $Repo status --porcelain --untracked-files=no)
 # "main" is the repo's default branch (origin/HEAD, else main, else master; repo-config.ps1): other repos may use master. None found: 'main'.
 . (Join-Path $PSScriptRoot '..\repo-config.ps1'); $mainName = Get-RepoDefaultBranch $Repo; if (-not $mainName) { $mainName = 'main' }
+. (Join-Path $PSScriptRoot '..\history-lib.ps1')
 if ($into -ne $mainName -or $mainDirty.Count) {
     if ($env:KITCHEN_RUN) { Set-Content -LiteralPath "$env:KITCHEN_RUN.wait" -Value 600 }
     Write-Output "freshen: the real checkout is $(if ($into -ne $mainName) { "on '$into', not $mainName" } else { "$mainName with uncommitted changes" }); waiting, nothing changed"; exit 11
 }
 $tip =(& git -C $Repo rev-parse HEAD)
 $short = (& git -C $Repo rev-parse --short HEAD)
+# main replaced by an unrelated history (2026-10-26: brain-monitor moved to tide with a fresh history): no merge can bring this order up to
+# date, and git would only fail late. Held for Jordan (exit 10) in one plain line naming the way out; nothing written, BASE stays.
+if ((Get-HistoryRelation $wt $tip HEAD) -eq 'unrelated') {
+    Write-Output (Get-UnrelatedHistoryHold 'freshen' $job $branch $mainName $short 'Nothing merged, nothing changed')
+    exit 10
+}
 Set-Content -LiteralPath $nextFile -Value $tip   # before the merge: a stop anywhere from here on is finished or dropped by the next start
 & git -C $wt merge-base --is-ancestor $tip HEAD 2>&1 | Out-Null
 if ($LASTEXITCODE -eq 0) {

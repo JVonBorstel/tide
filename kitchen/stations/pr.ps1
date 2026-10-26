@@ -6,6 +6,7 @@
 # Writes the PR to <worktree>\.kitchen\PR.json and to <kitchen>\results\<job>.pr.json, the copy ci-wait, merge and automerge trust
 # (outside the worktree, where AI-written code ran). A private order (never leaves this PC) or a repo with no GitHub home is skipped:
 # the record says so and the order merges locally, as before. Exit 11 (try again later) when GitHub cannot be reached.
+# A branch that shares no history with main (main was replaced, as in the 2026-10-26 cut-over to tide) is never pushed: held (exit 10).
 # First, the taster override (kitchen\taster-gate.ps1): final tests red (or run on another commit) = exit 1, even after a SHIP.
 #   step: {"station":"pr","args":{"Repo":"{{repo}}","GitHub":"{{github}}"},"timeoutSec":300,"retries":1}
 param([Parameter(Mandatory)][string]$Repo, [string]$GitHub = '')
@@ -41,6 +42,12 @@ Write-Output "pr: $($gate.say)"
 if (Test-JobPrivate $jj) { Skip 'private' 'a private order stays on this PC: no push, no pull request (it merges locally); skipped' }
 $tip = [string](& git -C $Repo rev-parse --verify --quiet "refs/heads/$branch^{commit}" 2>$null)
 if ($tip -notmatch '^[0-9a-f]{40,64}$') { Write-Output "pr: branch $branch not found in $Repo"; exit 2 }
+# an order built on a main since replaced by an unrelated history (2026-10-26: brain-monitor moved to the public repo tide with a fresh
+# history): pushing its branch would publish the whole old history there. Held for Jordan (exit 10), nothing pushed (kitchen/history-lib.ps1).
+. (Join-Path $PSScriptRoot '..\repo-config.ps1'); . (Join-Path $PSScriptRoot '..\history-lib.ps1')
+$prMain = Get-RepoDefaultBranch $Repo; if (-not $prMain) { $prMain = 'main' }
+$prMainSha = "$(& git -C $Repo rev-parse --verify --quiet "refs/heads/$prMain^{commit}" 2>$null)".Trim()
+if ($prMainSha -and (Get-HistoryRelation $Repo $tip $prMainSha) -eq 'unrelated') { Write-Output (Get-UnrelatedHistoryHold 'pr' $job $branch $prMain $prMainSha.Substring(0, 7) 'Nothing pushed, no pull request opened'); exit 10 }
 # no name on the order: the repo's own kitchen.repo.json "github" (read from its main checkout) before any guess from the folder name
 if (-not $GitHub) {
     . (Join-Path $PSScriptRoot '..\repo-config.ps1')
