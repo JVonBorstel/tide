@@ -73,16 +73,20 @@ after an event line 20 -> 10 ms; a stream message after the first 182 KB -> abou
   files in ember, and the lines with `textContent`, wrapped (no sideways scroll at 375 px). The yes carries the listed sha, and the server
   still measures the diff fresh before granting. A private work order lists file names only: no counts, no lines (`?file=` is 403), and its
   work order page no longer carries the worktree diff. Not at a merge gate: 409; git failed: 503.
-### The City's data (G1)
-- **`GET /api/towers`** (`towers.mjs`, signed in like every `/api/*`): `{ ok, at, gitAt, v, towers, errors }`. One row per repo on
+### The City's data (G1, G2)
+- **`GET /api/towers`** (`towers.mjs`, signed in like every `/api/*`): `{ ok, at, gitAt, githubAt, githubError, v, towers, errors }`. One row per repo on
   this PC, left to right: Towers by their first floor (a Tower never moves), then Lots, then the Office.
   - `kind`: `tower` (it has a floor or a crane), `lot` (commits only: a stone base of `plinth.commits`) or `office` (the repo named
     `city.office`, default gemini-brain: `commits`, `lastCommit`, never floors).
-  - `floors[]` `{pr?, sha?, at, by, job?, pour?, undone?, past?}`, oldest first, one per merge commit: every ok line of `merges.jsonl`
+  - `floors[]` `{pr?, sha?, at, by, job?, pour?, title?, undone?, past?}`, oldest first, one per merge commit: every merged PR on GitHub
+    (`by: 'github'`, its title, its work order from a `kitchen/J123` branch), every ok line of `merges.jsonl`
     (`by: 'session'`; `pour` from "batch-run integrate-<name>") and every `results\J*.merge.json` (`by: 'yard'`, or `'auto'` when
-    `automerged.jsonl` lists it; `undone` when it was taken down). The same PR in both is one floor.
-  - `open[]` `{pr, draft, ci, job, createdAt}`: an active work order with a `J*.pr.json` and no merge yet; `ci` is red, pending or green
-    from `J*.ci.json`, else `null` (unknown).
+    `automerged.jsonl` lists it; `undone` when it was taken down). The same PR in several records is one floor, by the strongest record.
+  - `open[]` `{pr, title?, draft, ci, job?, createdAt}`: every open PR on GitHub once read (hand PRs and Dependabot's too); before the
+    first read, an active work order with a `J*.pr.json` and no merge yet. `ci` from the PR's checks (any failure red, anything
+    unfinished pending, else green), else the work order's `J*.ci.json`, else `null` (unknown).
+  - A floor or crane of a private work order carries no `title`, nor does one whose work order file cannot be found (unknown counts as
+    private).
   - `plinth {commits, before}`: a Tower's first-parent commits before its first floor; `blueprint {total, shipped}` from `ledger.json`.
   - A field with no record is left out (the phone draws nothing for it); before the first git read `gitAt` is `null` and no stone base
     is sent. No folder path from this PC is sent. `errors[]` names an unreadable state `kitchen.json` or a `bootRepos` folder that is
@@ -90,6 +94,14 @@ after an event line 20 -> 10 ms; a stream message after the first 182 KB -> abou
 - **`towersV`** in the state: the version of that answer. It moves only when the answer would (a merge, a git count); the phone fetches
   `/api/towers` again then. The inputs are looked at at most every 3 s; git runs every 10 min off the main thread
   (`PASS_TOWERS_GIT_MS`).
+- **GitHub** (G2): `gh` (or `PASS_GH`; a `.mjs` runs under node) lists each repo's merged PRs (in full once, then only those merged
+  since a day before the newest kept, `--limit 200`) and open PRs with their checks, every 5 min (`PASS_GITHUB_MS`), off the main
+  thread, 15 s per call; an old history repo once a day, merged only. Read-only; the token stays on this PC. `PASS_GITHUB=off` turns it
+  off. The last good read is kept in `<state>	owers-github.json`, so a failed read (`githubError`, in plain words: not signed in, not
+  installed, rate limit, over 15 s, not on GitHub) drops no floor and invents no crane, and a restart starts from it. `githubAt` (also a
+  state field, so the phone's "GitHub read N min ago" sign stays true without a refetch) is the last read that fully worked. Each read
+  logs one line: lists read, milliseconds, GraphQL points left. `towersV` leaves out `gitAt` and `githubAt`: a read that found nothing
+  new does not make the phone fetch again.
 - **`tower`** on each work order in the state: the key of the Tower its merge step's `Repo` is, or `null` (research, career, scouts:
   the Yard lot).
 - **Which repos, and their names** come from the state folder's `kitchen.json` only (personal values never sit in this repo):
@@ -97,7 +109,8 @@ after an event line 20 -> 10 ms; a stream message after the first 182 KB -> abou
   `names { <key>: 'Shown name' }`, `office '<folder>'`, and `history { <key>: { github: 'owner/name', ref: '<branch>' } }`, an older
   repo whose merged PRs sit under the "public from" line (`past: true`, `publicFrom` = the public repo's first merged PR) on a stone base
   of that branch's first-parent commits. A key is the repo's Site code in lower case (`kitchen.repo.json` `site`), else its GitHub name,
-  else its folder name.
+  else its folder name; `names` and `history` are found by key, else GitHub name, else folder name (so they hold when a Site code
+  arrives).
 
 ## Run
 - Starts at sign-in (scheduled task `Kitchen-Pass`, hidden via `start-hidden.vbs`); the Walkround's (code: supervisor's) watchdog restarts it if it stops. Manual: `node pass-app/server.mjs`.

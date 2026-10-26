@@ -8,11 +8,28 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('kitchen-test-pass-' + [guid]::New
 # W4 acceptance (pass-app/test-patch.mjs: patches, keyed rows, change-driven state, no git on the loop; its own three throwaway servers,
 # about 75 s, one of them watched for a full 60 s loop window): started now, beside this suite, and read at the end
 $w4Out = "$root-w4.json"
-$w4Psi = [Diagnostics.ProcessStartInfo]::new('cmd.exe'); $w4Psi.Arguments = "/c node `"$(Join-Path $repo 'pass-app\test-patch.mjs')`" > `"$w4Out`" 2> `"$root-w4-err.txt`""
+$env:PASS_GITHUB = 'off'   # the City's GitHub reads (pass-app/towers.mjs): off for W4's servers; this suite's server reads a fake gh (below)
+$w4Psi =[Diagnostics.ProcessStartInfo]::new('cmd.exe'); $w4Psi.Arguments = "/c node `"$(Join-Path $repo 'pass-app\test-patch.mjs')`" > `"$w4Out`" 2> `"$root-w4-err.txt`""
 $w4Psi.UseShellExecute = $false; $w4Psi.CreateNoWindow = $true
 $w4 = [Diagnostics.Process]::new(); $w4.StartInfo = $w4Psi; [void]$w4.Start()
 $port = Get-Random -Minimum 20000 -Maximum 40000
 $env:BRAIN_KITCHEN = $root; $env:PASS_PORT = "$port"; $env:PASS_NO_TAILSCALE = '1'; $env:PASS_HOSTS = 'chef-box.tailnet-test.example'; $env:BRAIN_NTFY_TOPIC = $null; $env:PASS_NO_KICK = '1'; $env:KITCHEN_OLLAMA_URL = 'off'; $env:KITCHEN_AGY_EXE = 'off'
+# the City's GitHub reads go to a fake gh (node, answers.json beside it), every 5 s, never the network
+$ghFake = "$root-gh"; New-Item -ItemType Directory -Force $ghFake | Out-Null
+Set-Content "$ghFake\gh.mjs" @'
+// a fake gh for tests/Test-PassApp.ps1: answers from answers.json beside it; never the network
+import fs from 'node:fs'; import path from 'node:path'; import { fileURLToPath } from 'node:url';
+const a = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'answers.json'), 'utf8')); const args = process.argv.slice(2);
+if (a.fail) { process.stderr.write('To get started with GitHub CLI, please run:  gh auth login'); process.exit(4); }
+if (args[0] === 'api') { process.stdout.write(JSON.stringify({ resources: { graphql: { remaining: 4999 } } })); process.exit(0); }
+process.stdout.write(JSON.stringify(a[args[args.indexOf('--state') + 1]] || []));
+'@ -Encoding utf8
+function Set-GhAnswers($fail) {
+    @{ fail = $fail; merged = @(@{ number = 5; title = 'City floor from GitHub'; mergedAt = [DateTime]::UtcNow.AddHours(-1).ToString('o'); mergeCommit = @{ oid = ('5' * 40) }; headRefName = 'hand-branch' })
+        open = @(@{ number = 6; title = 'City crane from GitHub'; isDraft = $false; createdAt = [DateTime]::UtcNow.ToString('o'); headRefName = 'kitchen/J952'; statusCheckRollup = @(@{ status = 'COMPLETED'; conclusion = 'FAILURE' }) }) } | ConvertTo-Json -Depth 6 | Set-Content "$ghFake\answers.json" -Encoding utf8
+}
+Set-GhAnswers $false
+$env:PASS_GITHUB = $null; $env:PASS_GH = "$ghFake\gh.mjs"; $env:PASS_GITHUB_MS = '5000'
 $career = "$root-career"; $env:PASS_CAREER_DIR = $career; $env:PASS_APPLY_FILL = "$root-fill\apply-fill.mjs"; $env:KITCHEN_NOTIFY_LOG = "$root-notify.txt"; $env:KITCHEN_NO_DIAGNOSE = '1'; $env:PASS_STALL_CHECK_MS = '500'
 New-Item -ItemType Directory -Force "$career\scout" | Out-Null
 $income = "$root-income"; $env:PASS_INCOME_DIR = $income; New-Item -ItemType Directory -Force $income | Out-Null
@@ -1052,6 +1069,18 @@ console.log(JSON.stringify({ undo: undoPushBanners(v.undo, { when }), none: undo
     $sJT = Invoke-RestMethod "$base/api/state" -Headers $auth
     Check 'City_JobViewTower: a work order with a merge Repo carries its Tower key; one with no Repo carries none (the Yard lot)' (@($sJT.jobs | Where-Object id -eq 'J950')[0].tower -eq @($tw2.towers)[0].key -and $null -eq @($sJT.jobs | Where-Object id -eq 'J951')[0].tower)
     Remove-Item (Join-Path $root 'jobs\J950.json'), (Join-Path $root 'jobs\J951.json') -Force
+    # G2: GitHub (the fake gh above, read every 5 s): every merged and open PR, CI from the checks, the last good read kept on a failure
+    for ($i = 0; $i -lt 60 -and -not (Invoke-RestMethod "$base/api/state" -Headers $auth).githubAt; $i++) { Start-Sleep -Milliseconds 250 }
+    Start-Sleep -Milliseconds 3500
+    $twG = Invoke-RestMethod "$base/api/towers" -Headers $auth; $tG = @($twG.towers)[0]; $sG = Invoke-RestMethod "$base/api/state" -Headers $auth
+    $fl5 = @($tG.floors | Where-Object { $_.pr -eq 5 }); $cr6 = @($tG.open | Where-Object { $_.pr -eq 6 })
+    Check 'City_GitHubRead: a merged PR from GitHub is a floor with its title; an open PR is a crane with its CI (red) and work order (its file is not found, so no title); the state carries githubAt' ($fl5.Count -eq 1 -and $fl5[0].title -eq 'City floor from GitHub' -and $fl5[0].by -eq 'github' -and $cr6.Count -eq 1 -and $cr6[0].ci -eq 'red' -and $cr6[0].job -eq 'J952' -and $null -eq $cr6[0].title -and $sG.githubAt -and $twG.githubAt -eq $sG.githubAt -and $null -eq $twG.githubError)
+    Check 'City_GitHubCache: the last good read is kept in the state folder (towers-github.json)' ((Test-Path (Join-Path $root 'towers-github.json')) -and (Get-Content (Join-Path $root 'towers-github.json') -Raw) -match 'City floor from GitHub')
+    Set-GhAnswers $true
+    for ($i = 0; $i -lt 60 -and -not (Invoke-RestMethod "$base/api/towers" -Headers $auth).githubError; $i++) { Start-Sleep -Milliseconds 250 }
+    $twF = Invoke-RestMethod "$base/api/towers" -Headers $auth; $tF = @($twF.towers)[0]
+    Check 'City_GitHubFail: a failed read says so in plain words, keeps githubAt at the last good read and drops no floor or crane' ($twF.githubError -match 'gh is not signed in$' -and $twF.githubAt -eq $sG.githubAt -and @($tF.floors | Where-Object { $_.pr -eq 5 }).Count -eq 1 -and @($tF.open | Where-Object { $_.pr -eq 6 }).Count -eq 1 -and $twF.v -ne $twG.v)
+    Set-GhAnswers $false
 
     # listen (I40): the spoken-text builder and speaker live between the speak:start/speak:end markers in app.js; run them in node
     $speakBlock = [regex]::Match($appJs, '(?s)// speak:start\r?\n(.*?)// speak:end').Groups[1].Value
@@ -1612,7 +1641,7 @@ console.log(JSON.stringify(checks));
     $env:BRAIN_KITCHEN = $null; $env:PASS_PORT = $null; $env:PASS_NO_TAILSCALE = $null; $env:PASS_HOSTS = $null; $env:PASS_NO_KICK = $null; $env:KITCHEN_OLLAMA_URL = $null; $env:KITCHEN_AGY_EXE = $null
     Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains((Split-Path $root -Leaf)) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }  # only this run's GUID root: a concurrent run of this suite (another job's tests station, verify) must keep its workers
     $env:PASS_CAREER_DIR = $null; $env:PASS_APPLY_FILL = $null; $env:KITCHEN_NOTIFY_LOG = $null; $env:KITCHEN_NO_DIAGNOSE = $null; $env:PASS_STALL_CHECK_MS = $null; $env:PASS_HOSTS = $null; $env:PASS_INCOME_DIR = $null
-    Remove-Item -Recurse -Force $root, "$root-gate-repo", "$root-out.txt", "$root-err.txt", "$root-career", "$root-fill", "$root-notify.txt", "$root-income" -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $root, "$root-gate-repo", "$root-out.txt", "$root-err.txt", "$root-career", "$root-fill", "$root-notify.txt", "$root-income", "$root-gh" -ErrorAction SilentlyContinue
 }
 # the pixel stage and the pixel interface skin (sprites.js; the node checks for it run above through test-scene.mjs)
 $pxScene = Get-Content (Join-Path $repo 'pass-app\public\scene.js') -Raw

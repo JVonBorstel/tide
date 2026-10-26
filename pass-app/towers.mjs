@@ -1,7 +1,8 @@
 // The City's data (GET /api/towers): one row per project on this PC (a Tower, a Lot or the Office) with its floors (merged work), its
 // cranes (open PRs) and its stone base. Called by server.mjs (the route, towersV in the state, jobView.tower) and pass-app/test-city.mjs.
 // Read-only. Sources: the state-folder kitchen.json (bootRepos, city), each repo's kitchen.repo.json, merges.jsonl, results\J*.merge.json,
-// J*.pr.json, J*.ci.json, automerged.jsonl, ledger.json, and git (counts, off the main thread through the server's run(), every 10 min).
+// J*.pr.json, J*.ci.json, automerged.jsonl, ledger.json, git (counts, every 10 min) and GitHub (gh, read-only, every 5 min), both off the
+// main thread through the server's run(). The last good GitHub read is kept in <state>	owers-github.json, so a failed read drops nothing.
 // The truth rule (plans/city-god-mode-2026-10-26.md section 4): a field with no record is left out, so the phone draws nothing for it.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -56,8 +57,10 @@ export function sitesOf(root, repoHome, home = os.homedir()) {
     let key = keyOf(site || (slug ? slug.split('/')[1] : folder)) || 'site'; const base = key;
     for (let i = 2; seenKey.has(key); i++) key = `${base}-${i}`;
     seenKey.add(key);
-    const h = city.history?.[key]; const hist = h && slugOf(h.github) && REF.test(String(h.ref || '')) ? { slug: slugOf(h.github), ref: String(h.ref) } : null;
-    const shown = typeof names[key] === 'string' && names[key].trim() ? names[key].trim().slice(0, 40) : n === normPath(repoHome) ? 'Tide' : folder;
+    // config is looked up by key, then GitHub name, then folder name, so it holds when a Site code arrives later (tide -> td)
+    const pick = (o) => [key, slug ? slug.split('/')[1].toLowerCase() : '', folder.toLowerCase()].map((k) => o?.[k]).find((v) => v !== undefined);
+    const h = pick(city.history); const hist = h && slugOf(h.github) && REF.test(String(h.ref || '')) ? { slug: slugOf(h.github), ref: String(h.ref) } : null;
+    const nm = pick(names); const shown = typeof nm === 'string' && nm.trim() ? nm.trim().slice(0, 40) : n === normPath(repoHome) ? 'Tide' : folder;
     sites.push({ key, name: shown, dir: p, n, folder, slug, office: folder.toLowerCase() === office, history: hist });
   }
   return { sites, errors };
@@ -98,11 +101,20 @@ function prRecord(root, id) {
 // an order's last CI look (results\J*.ci.json, ci-wait): red, pending or green; anything else (an error look, none) is unknown
 function ciOf(root, id) { const c = readJson(path.join(root, 'results', id + '.ci.json')); return ['red', 'pending', 'green'].includes(c?.state) ? c.state : null; }
 
-export function localRecords(root, sites, jobs = []) {
+// who made a floor, strongest record first: a work order merged on its own, a work order, a session, else GitHub's word alone
+const BY_RANK = { github: 0, session: 1, yard: 2, auto: 3 };
+const joinFloor = (a, b) => ({ ...b, ...a, by: (BY_RANK[b.by] || 0) > (BY_RANK[a.by] || 0) ? b.by : a.by, job: a.job || b.job, title: a.title || b.title, pour: a.pour || b.pour, sha: a.sha || b.sha, undone: a.undone || b.undone });
+const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+// github: Map lower-case owner/name -> { merged: [{n, t, at, sha, job}], open: [{n, t, at, draft, ci, job}] | null } (null = never read)
+export function localRecords(root, sites, jobs = [], github = new Map()) {
   const bySlug = new Map(); const byPath = new Map(sites.map((s) => [s.n, s.key]));
   for (const s of sites) { if (s.slug) bySlug.set(s.slug.toLowerCase(), { key: s.key, past: false }); if (s.history) bySlug.set(s.history.slug.toLowerCase(), { key: s.key, past: true }); }
   const floors = new Map(sites.map((s) => [s.key, new Map()])); const open = new Map(sites.map((s) => [s.key, []]));
-  const add = (key, id, f) => { const m = floors.get(key); const was = m.get(id); m.set(id, was ? { ...f, ...was, job: was.job || f.job, by: was.job ? was.by : f.by, pour: was.pour || f.pour } : f); };
+  const add = (key, id, f) => { const m = floors.get(key); const was = m.get(id); m.set(id, was ? joinFloor(was, f) : f); };
+  // 0. GitHub's merged PRs (the most complete record): the title, the merge commit, the work order from its branch (kitchen/J123)
+  for (const [slug, t] of bySlug) {
+    for (const p of github.get(slug)?.merged || []) add(t.key, `pr:${t.past ? 'old' : 'new'}#${p.n}`, clean({ pr: p.n, sha: p.sha, at: p.at, by: 'github', title: p.t, job: p.job, past: t.past || undefined }));
+  }
   // 1. merges.jsonl: every merge a session made with scripts/merge-pr.ps1 (ok only)
   for (const r of jsonLines(path.join(root, 'merges.jsonl'))) {
     const t = bySlug.get(String(r.repo || '').toLowerCase()); const at = isoOf(r.at);
@@ -121,11 +133,18 @@ export function localRecords(root, sites, jobs = []) {
     if (am.undone.has(id)) f.undone = am.undone.get(id) || at;
     add(key, pr ? `pr:${t.past ? 'old' : 'new'}#${pr.number}` : `sha:${f.sha || id}`, f);
   }
-  // 3. cranes from the Yard's own records: an active order with a PR and no merge yet (GitHub's open list replaces these when read)
+  // 3. cranes: GitHub's open PRs once read (every open PR, hand PRs too); before that, the Yard's own active orders with a PR and no merge
+  const read = new Set();
+  for (const [slug, t] of bySlug) {
+    const g = github.get(slug); if (t.past || !Array.isArray(g?.open)) continue;
+    read.add(slug);
+    for (const o of g.open) open.get(t.key).push(clean({ pr: o.n, title: o.t, draft: !!o.draft, ci: o.ci || (o.job ? ciOf(root, o.job) : null), job: o.job, createdAt: o.at }));
+    for (const o of open.get(t.key)) if (o.ci === undefined) o.ci = null;
+  }
   const merged = new Set(ids.merge);
   for (const id of ids.pr) {
     const j = live.get(id); if (!j || !ACTIVE.has(j.status) || merged.has(id)) continue;
-    const pr = prRecord(root, id); const t = pr && bySlug.get(pr.slug.toLowerCase()); if (!t || t.past) continue;
+    const pr = prRecord(root, id); const t = pr && bySlug.get(pr.slug.toLowerCase()); if (!t || t.past || read.has(pr.slug.toLowerCase())) continue;
     open.get(t.key).push({ pr: pr.number, draft: false, ci: ciOf(root, id), job: id, ...(pr.at ? { createdAt: pr.at } : {}) });
   }
   return { floors: new Map([...floors].map(([k, m]) => [k, dedupeBySha([...m.values()])])), open };
@@ -158,6 +177,91 @@ async function gitFacts(run, site, firstAt) {
   return g;
 }
 
+// ---- GitHub: merged and open PRs, their CI and titles; read-only, off the main thread, every 5 min ----
+// gh is `gh` on PATH, or PASS_GH (a .mjs or .js file runs under node: the tests' fake). PASS_GITHUB=off turns the reads off.
+const GH_MERGED = 'number,title,mergedAt,mergeCommit,headRefName';
+const GH_OPEN = 'number,title,isDraft,createdAt,headRefName,statusCheckRollup';
+const oneLine = (v, max) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '');
+const jobOfBranch = (b) => /^kitchen\/(J\d{1,6})$/.exec(String(b || ''))?.[1] || undefined;
+// what went wrong, in plain words (never gh's raw output)
+function ghWhy(err, out) {
+  const t = `${err?.message || ''} ${err?.code || ''} ${out || ''}`;
+  return /auth login|not logged|HTTP 401|Bad credentials/i.test(t) ? 'gh is not signed in' : /rate limit/i.test(t) ? 'GitHub rate limit reached'
+    : /ENOENT/.test(t) ? 'gh is not installed' : /ETIMEDOUT|timed out|SIGTERM|killed/i.test(t) ? 'gh took over 15 s' : /HTTP 404|Could not resolve/i.test(t) ? 'the repo is not on GitHub' : 'gh failed';
+}
+export async function ghCall(run, args, gh = process.env.PASS_GH || 'gh') {
+  const viaNode = /\.(m?js|cjs)$/i.test(gh); const t0 = Date.now();
+  const { err, out } = await run(viaNode ? process.execPath : gh, viaNode ? [gh, ...args] : args, { encoding: 'utf8', timeout: 15000, windowsHide: true, maxBuffer: 32 << 20 });
+  const ms = Date.now() - t0;
+  if (err) return { ok: false, ms, error: ghWhy(err, out) };
+  try { return { ok: true, ms, data: JSON.parse(out) }; } catch { return { ok: false, ms, error: 'gh gave an answer that is not JSON' }; }
+}
+// a PR's checks (statusCheckRollup: check runs and commit statuses): any failure is red, anything unfinished is pending, else green;
+// no checks at all is unknown (null)
+export function ciOfRollup(list) {
+  if (!Array.isArray(list) || !list.length) return null;
+  const word = (c) => String(c?.conclusion || c?.state || '').toUpperCase();
+  if (list.some((c) => ['FAILURE', 'ERROR', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE'].includes(word(c)))) return 'red';
+  if (list.some((c) => (c?.status && String(c.status).toUpperCase() !== 'COMPLETED') || ['PENDING', 'EXPECTED', ''].includes(word(c)))) return 'pending';
+  return 'green';
+}
+const slimMerged = (p) => clean({ n: p?.number, t: oneLine(p?.title, 140), at: isoOf(p?.mergedAt), sha: SHA.test(p?.mergeCommit?.oid || '') ? p.mergeCommit.oid : undefined, job: jobOfBranch(p?.headRefName) });
+const slimOpen = (p) => ({ ...clean({ n: p?.number, t: oneLine(p?.title, 140), at: isoOf(p?.createdAt), job: jobOfBranch(p?.headRefName) }), draft: !!p?.isDraft, ci: ciOfRollup(p?.statusCheckRollup) });
+const goodPr = (p) => Number.isInteger(p.n) && p.n > 0 && !!p.at;
+// one repo's lists, read again: merged in full the first time, then only those merged since a day before the newest one kept
+async function readRepo(run, t, c, now) {
+  const errs = []; let reads = 0; const next = { ...c };
+  if (!(t.past && c.merged && now - Date.parse(c.mergedAt || 0) < 864e5)) {   // an old history repo: once a day is plenty
+    const newest = (c.merged || []).map((p) => p.at).sort().pop();
+    const since = newest ? new Date(Date.parse(newest) - 864e5).toISOString().slice(0, 10) : null;
+    const r = await ghCall(run, ['pr', 'list', '-R', t.slug, '--state', 'merged', '--json', GH_MERGED, ...(since ? ['--search', `merged:>=${since}`, '--limit', '200'] : ['--limit', '1000'])]); reads++;
+    if (r.ok && Array.isArray(r.data)) {
+      const byN = new Map((c.merged || []).map((p) => [p.n, p])); for (const p of r.data.map(slimMerged).filter(goodPr)) byN.set(p.n, p);
+      next.merged = [...byN.values()].sort((a, b) => a.n - b.n); next.mergedAt = new Date(now).toISOString();
+    } else errs.push(`${t.slug}: ${r.error || 'gh gave no list'}`);
+  }
+  if (!t.past) {
+    const r = await ghCall(run, ['pr', 'list', '-R', t.slug, '--state', 'open', '--limit', '100', '--json', GH_OPEN]); reads++;
+    if (r.ok && Array.isArray(r.data)) next.open = r.data.map(slimOpen).filter(goodPr).sort((a, b) => a.n - b.n); else errs.push(`${t.slug}: ${r.error || 'gh gave no list'}`);
+  }
+  return { next, errs, reads };
+}
+// the repos to read: every Tower's or Lot's GitHub home (kitchen.repo.json github, else its origin remote) and each old history repo
+export function githubTargets(sites, gitBy = new Map()) {
+  const out = new Map();
+  for (const s of sites) {
+    const slug = s.slug || gitBy.get(s.key)?.remoteSlug; if (slug && !s.office) out.set(slug.toLowerCase(), { slug, past: false });
+    if (s.history && !out.has(s.history.slug.toLowerCase())) out.set(s.history.slug.toLowerCase(), { slug: s.history.slug, past: true });
+  }
+  return [...out.values()];
+}
+export function makeGithub({ root, run, targets, everyMs = Number(process.env.PASS_GITHUB_MS) || 300000, off = process.env.PASS_GITHUB === 'off', log = () => {} }) {
+  const file = path.join(root, 'towers-github.json'); const saved = readJson(file);
+  const gh = { repos: new Map(Object.entries(saved?.repos || {}).map(([k, v]) => [k.toLowerCase(), v])), at: isoOf(saved?.at), error: null, ver: 0, busy: null, stats: null };
+  async function refresh() {
+    if (off) return;
+    if (gh.busy) return gh.busy;
+    gh.busy = (async () => {
+      const lists = () => JSON.stringify([...gh.repos].map(([k, c]) => [k, c.merged, c.open]));   // what is drawn, not when it was read
+      const t0 = Date.now(); let reads = 0; const errs = []; const before = lists();
+      for (const t of targets()) {
+        const r = await readRepo(run, t, gh.repos.get(t.slug.toLowerCase()) || {}, Date.now());
+        gh.repos.set(t.slug.toLowerCase(), r.next); reads += r.reads; errs.push(...r.errs);
+      }
+      const rl = await ghCall(run, ['api', 'rate_limit']);   // free: asking for the limit does not use it
+      gh.stats = { ms: Date.now() - t0, reads, left: rl.ok ? rl.data?.resources?.graphql?.remaining ?? null : null };
+      const error = errs.length ? errs[0] : null; const moved = lists() !== before || error !== gh.error;
+      gh.error = error; if (!errs.length) gh.at = new Date().toISOString();
+      if (moved) gh.ver++;
+      try { const tmp = `${file}.tmp-${process.pid}`; fs.writeFileSync(tmp, JSON.stringify({ at: gh.at, repos: Object.fromEntries(gh.repos) })); fs.renameSync(tmp, file); } catch {}
+      log(`towers: GitHub read ${reads} lists in ${gh.stats.ms} ms; ${gh.stats.left ?? 'unknown'} GraphQL points left${error ? '; ' + error : ''}`);
+    })().catch((e) => { gh.error = 'the GitHub read failed: ' + String(e?.message || e).slice(0, 120); gh.ver++; }).finally(() => { gh.busy = null; });
+    return gh.busy;
+  }
+  const timer = off ? null : setInterval(() => refresh(), everyMs); timer?.unref?.();
+  return { gh, refresh, stop() { if (timer) clearInterval(timer); } };
+}
+
 // ---- the view ----
 function blueprints(root) {
   const out = new Map();
@@ -167,10 +271,11 @@ function blueprints(root) {
   }
   return out;
 }
-// a floor or crane of a private work order carries no title (the CREED privacy rule; titles come from GitHub, slice G2)
-const scrub = (x, priv) => (x.title && x.job && priv.has(x.job) ? (({ title, ...rest }) => rest)(x) : x);
+// a floor or crane of a private work order carries no title (the CREED privacy rule); priv(id) is true for a private order, and for one
+// whose file cannot be found (unknown counts as private)
+const scrub = (x, priv) => (x.title && x.job && priv(x.job) ? (({ title, ...rest }) => rest)(x) : x);
 export function buildTowers({ sites, errors = [] }, rec, gitBy = new Map(), extra = {}) {
-  const bp = extra.blueprints || new Map(); const priv = extra.privateJobs || new Set(); const rows = [];
+  const bp = extra.blueprints || new Map(); const priv = extra.isPrivateJob || (() => false); const rows = [];
   for (const s of sites) {
     const g = gitBy.get(s.key) || {}; const floors = (rec.floors.get(s.key) || []).map((f) => scrub(f, priv)); const open = (rec.open.get(s.key) || []).map((o) => scrub(o, priv));
     const kind = s.office ? 'office' : floors.length || open.length ? 'tower' : 'lot';
@@ -194,49 +299,72 @@ export function buildTowers({ sites, errors = [] }, rec, gitBy = new Map(), extr
 export const versionOf = (body) => crypto.createHash('sha1').update(JSON.stringify(body)).digest('hex').slice(0, 12);
 
 // makeTowers: the server's one instance. run(file, args, opts) -> {err, out} is the server's off-thread runner.
-export function makeTowers({ root, repoHome, run, jobs = () => [], isPrivate = () => false, home = os.homedir(), gitEveryMs = Number(process.env.PASS_TOWERS_GIT_MS) || 600000, sigEveryMs = 3000 }) {
+// github: { everyMs, off, log } for the GitHub reads (tests pass their own; the server takes the defaults)
+export function makeTowers({ root, repoHome, run, jobs = () => [], isPrivate = () => false, home = os.homedir(), gitEveryMs = Number(process.env.PASS_TOWERS_GIT_MS) || 600000, sigEveryMs = 3000, github = {} }) {
   const git = { by: new Map(), at: null, busy: null, ver: 0 }; const memo = { sig: '', checked: 0, body: null, v: '' };
   // the Sites are read again when the state kitchen.json changes, and at most every 30 s otherwise (a repo's kitchen.repo.json, a new folder)
   const sm = { sig: '', at: 0, val: null };
   const sitesNow = () => { const sig = sigOf(path.join(root, 'kitchen.json')); if (sm.val && sm.sig === sig && Date.now() - sm.at < 30000) return sm.val; Object.assign(sm, { sig, at: Date.now(), val: sitesOf(root, repoHome, home) }); return sm.val; };
+  const G = makeGithub({ root, run, targets: () => githubTargets(sitesNow().sites, git.by), ...github });
   const inputSig = () => {
     const files = ['kitchen.json', 'merges.jsonl', 'automerged.jsonl', 'ledger.json', 'results'].map((f) => sigOf(path.join(root, f)));
     const r = resultIds(root); const live = new Map(jobs().map((j) => [j.id, j]));
     const recs = [...r.merge.map((id) => id + '.merge.json'), ...r.pr.flatMap((id) => [id + '.pr.json', id + '.ci.json'])].map((f) => f + sigOf(path.join(root, 'results', f)));
     const states = r.pr.map((id) => `${id}:${live.get(id)?.status || '-'}:${live.has(id) && isPrivate(live.get(id)) ? 1 : 0}`);
-    return [...files, ...recs, ...states, git.ver].join('|');
+    return [...files, ...recs, ...states, git.ver, G.gh.ver].join('|');
   };
+  // privacy of a work order named on a floor or crane: its live file, else its archived one (kept: archived files do not change);
+  // an order whose file cannot be found counts as private (no title), never as public
+  const archived = new Map();
+  function privacyOf(list) {
+    const live = new Map(list.map((j) => [j.id, j]));
+    let months = null;
+    return (id) => {
+      if (live.has(id)) return !!isPrivate(live.get(id));
+      if (!archived.has(id)) {
+        months ??= (() => { try { return fs.readdirSync(path.join(root, 'jobs', 'archive')).filter((m) => /^\d{4}-\d{2}$/.test(m)).sort().reverse(); } catch { return []; } })();
+        const j = jobFileOf(root, id, months); archived.set(id, j ? !!isPrivate(j) : null);
+      }
+      const p = archived.get(id); return p === null ? true : p;
+    };
+  }
   function compute() {
-    const st = sitesNow(); const list = jobs(); const rec = localRecords(root, st.sites, list);
-    const privateJobs = new Set(list.filter((j) => isPrivate(j)).map((j) => j.id));
-    const body = buildTowers(st, rec, git.by, { blueprints: blueprints(root), privateJobs });
-    return { gitAt: git.at, ...body };
+    const st = sitesNow(); const list = jobs(); const rec = localRecords(root, st.sites, list, G.gh.repos);
+    const body = buildTowers(st, rec, git.by, { blueprints: blueprints(root), isPrivateJob: privacyOf(list) });
+    return { gitAt: git.at, githubAt: G.gh.at, githubError: G.gh.error, ...body };
   }
   function current() {
     const now = Date.now();
     if (memo.body && now - memo.checked < sigEveryMs) return memo;
     memo.checked = now; const sig = inputSig(); if (memo.body && sig === memo.sig) return memo;
-    const body = compute(); Object.assign(memo, { sig, body, v: versionOf(body) }); return memo;
+    // the version is what is drawn: the towers, the errors and a GitHub failure; not gitAt or githubAt (a read that found nothing new
+    // moves only the state's githubAt, never towersV)
+    const body = compute(); Object.assign(memo, { sig, body, v: versionOf([body.towers, body.errors, body.githubError]) }); return memo;
   }
   async function refreshGit() {
     if (git.busy) return git.busy;
     git.busy = (async () => {
-      const st = sitesNow(); const rec = localRecords(root, st.sites, jobs()); const next = new Map();
+      const st = sitesNow(); const rec = localRecords(root, st.sites, jobs(), G.gh.repos); const next = new Map();
       for (const s of st.sites) next.set(s.key, await gitFacts(run, s, (rec.floors.get(s.key) || [])[0]?.at || null));
       const moved = JSON.stringify([...next]) !== JSON.stringify([...git.by]);
       git.by = next; git.at = new Date().toISOString(); if (moved) git.ver++;
     })().catch(() => {}).finally(() => { git.busy = null; memo.checked = 0; });
     return git.busy;
   }
+  // GitHub after git (a repo's origin remote can name its GitHub home); the stone bases are counted again after GitHub's first floors
+  const refreshGithub = () => G.refresh().finally(() => { memo.checked = 0; });
   const timer = setInterval(() => refreshGit(), gitEveryMs); timer.unref?.();
-  setTimeout(() => refreshGit(), 0).unref?.();
+  setTimeout(() => refreshGit().then(refreshGithub).then(refreshGit), 0).unref?.();
   return {
-    // GET /api/towers: { ok, at, gitAt, v, towers, errors }; never throws (a failure is { ok: false, error })
-    view() { try { const m = current(); return { ok: true, at: new Date().toISOString(), v: m.v, ...m.body }; } catch (e) { return { ok: false, error: 'the City could not be read: ' + String(e?.message || e).slice(0, 200) }; } },
+    // GET /api/towers: { ok, at, gitAt, githubAt, githubError, v, towers, errors }; never throws (a failure is { ok: false, error })
+    view() { try { const m = current(); return { ok: true, at: new Date().toISOString(), v: m.v, ...m.body, githubAt: G.gh.at }; } catch (e) { return { ok: false, error: 'the City could not be read: ' + String(e?.message || e).slice(0, 200) }; } },
     v() { try { return current().v; } catch { return null; } },
+    // the state's githubAt: when GitHub was last read in full (the phone's "GitHub read N min ago" sign), null before any good read
+    githubAt: () => G.gh.at,
+    githubStats: () => G.gh.stats,
     // jobView.tower: the key of the Tower a work order builds on, or null (research, career and scouts belong to the Yard lot)
     towerOf(j) { const r = repoArgOf(j); if (!r) return null; const n = normPath(r); return sitesNow().sites.find((s) => s.n === n && !s.office)?.key || null; },
-    refreshGit,
-    stop() { clearInterval(timer); },
+    refreshGit, refreshGithub,
+    stop() { clearInterval(timer); G.stop(); },
   };
 }
