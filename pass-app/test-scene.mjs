@@ -7,6 +7,7 @@ import { layoutScene, sceneHtml, stationFor, cookOf, lookOf, skyAt, hashId, acti
 import { stageOk, stageFps, stageWalking, frameKey } from './public/frame.js';
 import { WORLD, worldOf, worldWords, worldKey, legendRows, legendHtml, PLACE, HANG, bakeWorld } from './public/world.js';
 import { PURPOSE } from './public/purpose.js';
+import { kitchenHits } from './site-words.mjs';
 import zlib from 'node:zlib';
 import * as P from './public/sprites.js';
 import { MOMENTS, FX, momentsFrom, fxNew, spawn, easeOutBack, easeInOutCubic, chefPose, passFx, approveFx, tapChef, fxBusy, spread, propRects } from './public/moments.js';
@@ -597,6 +598,14 @@ check(`PurposeFlips: each field change changes the picture with the sprites it s
   flat.length === 0 && drawnW(fullState()).some((r) => /^chef-s(it|ide):/.test(r)) && !drawnW({ ...fullState(), stalled: true, lastTick: ago(14) }).some((r) => /^chef-s(it|ide):/.test(r)));
 check('PurposeLegend: the legend sheet is the ledger (every line is a data row; every data row with a line has its icon; no kitchen words)',
   doorCases.every((L) => legendRows(L).every((r) => PURPOSE.some((x) => x.id === r.key && x.kind === 'data') && P.LEGEND_ICONS[r.key] && /^[A-Z].*\.$/.test(r.text) && !KITCHEN_WORDS.test(r.text))));
+// no kitchen word anywhere on screen (chain review 2026-10-26): every string a person can read in the Board's scripts and index.html
+// (site-words.mjs: string literals and template text with markup plumbing and file names taken out; comments never count). sw.js is
+// left out: the service worker shows nothing (its one hit is the cache name 'chef-shell-...', a code name the old stored caches use)
+const pubDir = new URL('./public/', import.meta.url), screenFiles = fs.readdirSync(pubDir).filter((f) => /\.(js|html)$/.test(f) && f !== 'sw.js');
+const onScreen = screenFiles.flatMap((f) => kitchenHits(fs.readFileSync(new URL(f, pubDir), 'utf8'), f));
+const catches = kitchenHits("x = ['open', 'Open ticket']; toast(`Order up! ${t}`); h = `<h3 id=\"dish-h\">The dish</h3>`; // a ticket in a comment\nconst ticket = (id) => id; c = 'chef.' + k; d = `<div class=\"dish-head ${a}\">Recap</div>`;", 'probe.js');
+check(`SiteWordsEverywhere: no chef, toque, kitchen, ticket, dish or ORDER UP in any string a person can read (${screenFiles.length} files: app.js, index.html, live.js, scene.js ...)${onScreen.length ? '; found: ' + onScreen.join(', ') : ''}; the probe catches the old words (${catches.length}) and skips comments, code names and classes`,
+  onScreen.length === 0 && screenFiles.includes('app.js') && screenFiles.includes('index.html') && catches.length === 3 && catches.every((h) => /"(ticket|Order up|dish)"/i.test(h)));
 const siteChrome = P.chromeSprites(mk);
 check('SiteChrome: loading, offline and empty are drawn as site art (32x32: 4, 2 and 2 frames) and the empty one holds no clipboard or cloche (a shovel and an empty pallet)',
   siteChrome.load.width === 128 && siteChrome.off.width === 64 && siteChrome.empty.width === 64 && !/cloche/.test(fs.readFileSync(new URL('./public/sprites.js', import.meta.url), 'utf8').match(/one\('empty'[^\n]*/)[0]));

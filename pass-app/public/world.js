@@ -21,7 +21,7 @@ export const WORLD = [
   { prop: 'fuse', from: 'breaker', absent: 'breaker', meaning: (w) => w.tripped ? 'Power board sparking, STOP tag on: stop-work order (too many steps failed), new work waits; work light out.' : 'Power board shut: no stop-work order.' },
   { prop: 'jar', from: 'spent, budget, budget.stop', absent: 'spent or budget', meaning: (w) => `Budget meter: ${money(w.spent)} of today's ${money(w.budget)} cap (pay-per-use estimate), ${w.level} of 8.${w.locked ? ' Chain and padlock: the cap stopped new work today.' : ''}` },
   { prop: 'aside', from: 'jobs, job.quarantined', absent: 'jobs', meaning: (w) => w.ids.length ? `The bench: ${plural(w.ids.length, 'work order')} failed or stopped (${w.shelf.map(ticket).join(', ')}${w.more ? ` +${w.more}` : ''})${w.smoke.length ? ', dust = in the last 2 min' : ''}.` : 'The bench: empty, nothing failed or stopped.' },
-  { prop: 'spike', from: 'jobs', absent: 'jobs (or 8 tickets or fewer)', meaning: (w) => `Job board tag: ${w.n} more queued.` },
+  { prop: 'spike', from: 'jobs', absent: 'jobs (or 8 work orders or fewer)', meaning: (w) => `Job board tag: ${w.n} more queued.` },
   { prop: 'heat', from: 'jobs, approval.requested', absent: 'its event', meaning: (w) => 'Sign-off lights: ' + w.map((h) => `${ticket(h.id)} ${waitWords(h.mins)}${['', ' (amber, 1 h+)', ' (red, 4 h+)'][h.level]}`).join(', ') + ' waiting for sign-off.' },
   { prop: 'letters', from: 'due', absent: 'due', meaning: (w) => `Notice board: ${plural(w.n, 'job-hunt follow-up')} due.` },
   { prop: 'specials', from: 'leads', absent: 'leads', meaning: (w) => `Whiteboard: ${plural(w.n, 'new client lead')}.` },
