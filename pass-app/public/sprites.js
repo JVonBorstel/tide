@@ -113,13 +113,13 @@ export const BOB = { walk: [0, -1, 0, -1], idle: [0, 1], sleep: [0, 1] };
 function body(g, head, torso, legs, bob) { blit(g, legs, 0, 17); blit(g, torso, 0, 12 + bob); blit(g, head, 0, bob); }
 const STACHE = ['7887'];
 
-// ---- small authored pieces ----
+// ---- small authored pieces: the hands and the site tools (pencil, hammer, magnifier, test probe, crate label) ----
 const HAND = ['.aaa.', 'a222a', 'a221a', '.aaa.'];
-const KNIFE = ['.a.', 'aia', 'aia', 'aia', 'aca', 'aca'];
-const SPOON = ['.a.', 'aca', '.a.', '.a.', '.a.'];
-const TASTER = ['aaa', 'aia', '.a.', '.a.', '.a.'];
-const SPONGE = ['aaaa', 'atta', 'aaaa'];
-const LEAF = ['.a.', 'awa', 'ava'];
+const PENCIL = ['.a.', 'aka', 'aea', 'aGa', 'aGa', 'aBa'];
+const HAMMER = ['aaaa.', 'aghha', 'aaca.', '..c..', '..c..'];
+const LENS = ['aaa', 'aza', 'aaa', '.c.', '.c.'];
+const PROBE = ['aaa.', 'aBBa', 'aaa.'];
+const LABEL = ['aaa', 'apa', 'aaa'];
 const PAN = ['...aaa...', '..a.a.a..', '...aaa...', '.aaaaaaa.', 'aeeeeeeea', 'adeeeeeda', 'addddddda', 'acdddddca', '.accccca.', '..aaaaa..'];
 const JAR = strip(['.aaa. .aaa. .aaa.', '.aca. .aca. .aca.', 'aaaaa aaaaa aaaaa', 'awvva atssa azyya', 'avvua assra ayyxa', 'avvua assra ayyxa', '.aaa. .aaa. .aaa.'], 3);
 const CLOCHE = ['....aa....', '...aiia...', '..aaaaaa..', '.aiiiihha.', 'aiiihhhhga', 'ahhhhhggga', 'aaaaaaaaaa', '.agggggga.'];
@@ -140,12 +140,13 @@ const ICONS = strip([
   'aaaaaaaaaaaa ..a5a5a54a.. ............ aaaaaaaaaaaa .a6pppa654a. .apppppppoa.',
   '.a4a....a4a. ..a444444a.. a.a.a.a.a.a. ............ .aaaaaa554a. .aonnnnnnna.',
   '.aaa....aaa. ..aaaaaaaa.. ............ ............ .......aaa.. .aaaaaaaaaa.'], 6);
+// steam: dust rising off the workbench; sparkle: a glint (also the desk lamp); flame: weld sparks; bubble: a test rig LED
 const PARTICLE = {
-  steam: strip(['..... ..... .o... o.o..', '..... .po.. pop.. ...o.', '..p.. .ppo. .pop. o..o.', '.ppo. ..p.. ..o.. .....', '..... ..... ..... .....'], 4),
+  steam: strip(['..... ..... .l... l.l..', '..... .ml.. mlm.. ...l.', '..m.. .mml. .mlm. l..l.', '.mml. ..m.. ..l.. .....', '..... ..... ..... .....'], 4),
   sparkle: strip(['..... ..t.. ..W.. .....', '..... ..t.. .tWt. ..t..', '..W.. ttWtt WWWWW .tWt.', '..... ..t.. .tWt. ..t..', '..... ..t.. ..W.. .....'], 4),
-  flame: strip(['..t... ...t.. ..t...', '.tst.. ..tst. .tsst.', '.srst. .srrs. tsrrst', 'srqrs. srqqrs .srqs.'], 3),
+  flame: strip(['t..s.. .t...s s...t.', '.t.t.. ..ts.. .t.t..', '..tWs. .sWt.. ..Wts.', '...s.. ...t.. .s....'], 3),
   zz: [['aaaa', '..a.', '.a..', 'aaaa'].map((r) => r.replace(/a/g, 'p'))],
-  bubble: [['.z.', 'zWz', '.z.']],
+  bubble: [['.s.', 'sts', '.s.']],
 };
 
 // ---- every sprite: { w, h, anim, draw(grid, frame) } or { w, h, anim, frames } ----
@@ -159,13 +160,14 @@ add('stache', 4, 1, 'still', (g) => blit(g, STACHE));
 add('waiter-side', 16, 24, 'walk', (g, f) => { body(g, HEAD.waiterSide, TORSO.waiterSide, LEGS.side[f], BOB.walk[f]); });
 add('waiter-idle', 16, 24, 'idle', (g, f) => body(g, HEAD.waiterDown, TORSO.waiterDown, LEGS.down[0], BOB.idle[f]));
 addFrames('cloche', [CLOCHE], 'still');
-// work loops: hands and tools in front of the counter (the chef stands behind it); row 7 is the counter top
+// work loops: hands and tools in front of the station (the crew member stands behind it); row 7 is its top. Survey table: the pencil
+// draws; workbench: the hammer comes down; inspection desk: the magnifier looks; test rig: the probe moves along; handover bay: a label goes on
 const W = (fn) => (g, f) => fn(g, f, [0, 1, 2, 1][f]);
-add('work-board', 16, 8, 'work', W((g, f, k) => { blit(g, HAND, 1, 4); blit(g, KNIFE, 10, k - 1 + (f === 2 ? 1 : 0)); blit(g, HAND, 9, 2 + k); }));
-add('work-stove', 16, 8, 'work', W((g, f, k) => { blit(g, HAND, 0, 4); blit(g, HAND, 11, 4); blit(g, SPOON, 6 + k, 1 + (f % 2)); }));
-add('work-taste', 16, 8, 'work', W((g, f) => { const up = [3, 1, -1, 1][f]; blit(g, HAND, 1, 4); blit(g, TASTER, 10, up - 3); blit(g, HAND, 9, up + 1); }));
-add('work-sink', 16, 8, 'work', W((g, f, k) => { blit(g, HAND, 1 + k, 4); blit(g, SPONGE, 9 + k, 5); blit(g, HAND, 9 + k, 3); }));
-add('work-plate', 16, 8, 'work', W((g, f) => { blit(g, HAND, 1, 4); blit(g, LEAF, 10, [0, 1, 3, 4][f]); blit(g, HAND, 9, [0, 0, 1, 2][f]); }));
+add('work-board', 16, 8, 'work', W((g, f, k) => { blit(g, HAND, 1, 4); blit(g, PENCIL, 10 + (f % 2), k - 1 + (f === 2 ? 1 : 0)); blit(g, HAND, 9 + (f % 2), 2 + k); }));
+add('work-stove', 16, 8, 'work', W((g, f) => { const y = [-1, 0, 2, 1][f]; blit(g, HAND, 0, 4); blit(g, HAMMER, 7, y); blit(g, HAND, 7, y + 3); }));
+add('work-taste', 16, 8, 'work', W((g, f) => { const up = [3, 1, -1, 1][f]; blit(g, HAND, 1, 4); blit(g, LENS, 10, up - 2); blit(g, HAND, 9, up + 2); }));
+add('work-sink', 16, 8, 'work', W((g, f, k) => { blit(g, HAND, 1, 4); blit(g, PROBE, 8 + k, 5); blit(g, HAND, 9 + k, 3); }));
+add('work-plate', 16, 8, 'work', W((g, f) => { blit(g, HAND, 1, 4); blit(g, LABEL, 10, [0, 1, 3, 4][f]); blit(g, HAND, 9, [0, 0, 1, 2][f]); }));
 // the room
 const tile = (rows) => (g) => blit(g, rows);
 add('floor-a', 16, 16, 'still', (g) => { rect(g, 0, 0, 16, 16, 'm'); rect(g, 15, 0, 1, 16, 'l'); rect(g, 0, 15, 16, 1, 'l'); for (const [x, y] of [[3, 4], [10, 9], [6, 12], [12, 3]]) put(g, x, y, 'l'); put(g, 1, 1, 'p'); });
@@ -178,14 +180,19 @@ add('window', 34, 26, 'still', (g) => {
   rect(g, 16, 3, 2, 19, 'c'); rect(g, 3, 12, 28, 1, 'c'); rect(g, 16, 3, 1, 19, 'd'); box(g, -1, 22, 36, 4, DARKWOOD);
 });
 add('door', 18, 30, 'still', (g) => { box(g, 0, 0, 18, 30, DARKWOOD); box(g, 3, 3, 12, 11, WOOD); box(g, 3, 16, 12, 12, WOOD); put(g, 13, 16, 't'); put(g, 13, 17, 's'); });
-add('counter', 28, 20, 'still', (g) => { box(g, 0, 4, 28, 16, WOOD); box(g, 3, 7, 10, 11, DARKWOOD); box(g, 15, 7, 10, 11, DARKWOOD); put(g, 11, 12, 't'); put(g, 17, 12, 't'); box(g, 0, 0, 28, 5, STEEL); });
-add('stove', 28, 20, 'still', (g) => { box(g, 0, 4, 28, 16, IRON); box(g, 4, 9, 20, 9, ['a', 'j', 'f']); rect(g, 4, 6, 20, 1, 'g'); for (const x of [5, 9, 18, 22]) put(g, x, 6, 't'); box(g, 0, 0, 28, 5, ['f', 'g', 'h']); });
-add('oven-glow', 18, 7, 'flame', (g, f) => { rect(g, 0, 0, 18, 7, 'q'); for (let y = 0; y < 7; y++) for (let x = 0; x < 18; x++) if ((x + y + f) % 3 === 0) put(g, x, y, 'r'); rect(g, 2, 5 - f % 2, 14, 1, 's'); });
-add('sink', 28, 20, 'still', (g) => { box(g, 0, 4, 28, 16, STEEL); box(g, 3, 7, 22, 11, IRON); box(g, 0, 0, 28, 5, STEEL); box(g, 4, 0, 20, 4, ['x', 'y', 'z']); rect(g, 18, -1, 1, 1, 'a'); });
-add('board', 16, 6, 'still', (g) => { box(g, 0, 2, 16, 4, WOOD, true); blit(g, ['.aa.', 'aBBa', 'aABa', '.aa.'], 2, 0); blit(g, ['.a.', 'awa', 'ava'], 7, 0); blit(g, ['aaaa.', 'asssa', '.aaa.'], 10, 1); });
-add('pot', 16, 8, 'still', (g) => { box(g, 2, 1, 12, 7, STEEL); rect(g, 3, 1, 10, 1, 'a'); rect(g, 4, 2, 8, 1, 'K'); put(g, 1, 3, 'a'); put(g, 0, 3, 'a'); put(g, 14, 3, 'a'); put(g, 15, 3, 'a'); });
-add('bowl', 16, 6, 'still', (g) => { box(g, 1, 2, 9, 4, PAPER, true); rect(g, 2, 2, 7, 1, 'K'); blit(g, JAR[0], 11, -1); });
-add('plates', 16, 6, 'still', (g) => { box(g, 1, 3, 12, 3, PAPER, true); box(g, 2, 1, 10, 3, PAPER, true); });
+// the stations (code names stay): 'counter' = a plywood top on a steel drawer cabinet (Survey table, Inspection desk, Handover bay),
+// 'stove' = the Workbench (a heavy top, a red toolbox on its shelf), 'sink' = the Test rig (a gauge and an LED strip on its panel)
+add('counter', 28, 20, 'still', (g) => { box(g, 0, 4, 28, 16, STEEL); for (const x of [3, 15]) { box(g, x, 7, 10, 5, IRON); box(g, x, 12, 10, 6, IRON); rect(g, x + 4, 9, 2, 1, 'i'); rect(g, x + 4, 14, 2, 1, 'i'); } box(g, 0, 0, 28, 5, WOOD); });
+add('stove', 28, 20, 'still', (g) => { box(g, 0, 4, 28, 16, IRON); box(g, 3, 8, 22, 10, ['a', 'j', 'f']); box(g, 5, 12, 12, 6, ['q', 'A', 'B']); rect(g, 9, 11, 4, 1, 'a'); rect(g, 6, 14, 10, 1, 'q'); box(g, 0, 0, 28, 5, DARKWOOD); });
+// busy at the workbench: the weld flash at the vice (a white core in a blue-white halo; 3 sizes)
+add('oven-glow', 18, 7, 'flame', (g, f) => { const r = [1.6, 2.6, 2.1][f]; for (let y = 0; y < 7; y++) for (let x = 0; x < 18; x++) { const d = Math.hypot(x - 9, (y - 4) * 1.4); if (d < 1) put(g, x, y, 'W'); else if (d < r) put(g, x, y, 'I'); else if (d < r + 1.6 && (x + y + f) % 2) put(g, x, y, 'z'); } });
+add('sink', 28, 20, 'still', (g) => { box(g, 0, 4, 28, 16, STEEL); box(g, 3, 7, 22, 11, IRON); rect(g, 4, 9, 13, 5, 'j'); ring(g, 21, 12, 0, 3.2, 'p'); ring(g, 21, 12, 2.6, 3.2, 'a'); put(g, 21, 12, 'a'); put(g, 22, 11, 'B'); put(g, 23, 10, 'B'); box(g, 0, 0, 28, 5, STEEL); rect(g, 5, 1, 3, 2, 'B'); rect(g, 9, 1, 3, 2, 'v'); });
+// the station props: a drawing with a ruler and a roll (Survey table), a vice holding a block (Workbench), a clipboard and a desk lamp
+// (Inspection desk), a taped crate on a pallet (Handover bay)
+add('board', 16, 6, 'still', (g) => { box(g, 0, 2, 13, 4, PAPER); rect(g, 2, 3, 4, 1, 'y'); put(g, 2, 4, 'y'); put(g, 5, 4, 'y'); rect(g, 7, 4, 4, 1, 'y'); put(g, 8, 3, 'y'); rect(g, 1, 1, 11, 1, 'G'); for (const x of [3, 6, 9]) put(g, x, 1, 'J'); box(g, 12, 1, 4, 5, PAPER, true); });
+add('pot', 16, 8, 'still', (g) => { box(g, 2, 2, 4, 5, IRON); box(g, 8, 2, 4, 5, IRON); rect(g, 6, 3, 2, 3, 'e'); rect(g, 12, 4, 3, 1, 'h'); rect(g, 15, 3, 1, 3, 'a'); box(g, 1, 6, 12, 2, ['a', 'f', 'g']); });
+add('bowl', 16, 6, 'still', (g) => { box(g, 0, 1, 7, 5, DARKWOOD); box(g, 1, 2, 5, 4, PAPER); rect(g, 2, 0, 3, 2, 'g'); rect(g, 2, 3, 3, 1, 'k'); put(g, 2, 4, 'k'); rect(g, 12, 2, 1, 4, 'a'); rect(g, 10, 5, 5, 1, 'a'); box(g, 8, 0, 6, 3, IRON, true); rect(g, 9, 2, 4, 1, 'I'); });
+add('plates', 16, 6, 'still', (g) => { box(g, 2, 0, 10, 5, WOOD); rect(g, 6, 1, 2, 3, 'n'); rect(g, 3, 2, 2, 1, 'p'); rect(g, 0, 5, 14, 1, 'a'); for (const x of [1, 6, 11]) rect(g, x, 5, 2, 1, 'c'); });
 add('crate', 20, 12, 'still', (g) => { box(g, 0, 0, 20, 12, WOOD); rect(g, 1, 4, 18, 1, 'c'); rect(g, 1, 8, 18, 1, 'c'); });
 add('pass', 40, 34, 'still', (g) => { box(g, 0, 0, 40, 34, IRON); box(g, 3, 3, 34, 24, ['D', 'E', 'F'], false); rect(g, 4, 4, 32, 2, 'q'); box(g, -2, 27, 44, 5, STEEL); });
 add('pass-glow', 32, 20, 'still', (g) => { for (let y = 0; y < 20; y++) for (let x = 0; x < 32; x++) put(g, x, y, y < 3 ? 'K' : y === 3 ? ((x % 2) ? 'K' : 'I') : 'I'); });
@@ -249,7 +256,7 @@ addFrames('chalk-digit', DIGITS.map((d) => d.map((r) => r.replace(/a/g, 'o'))), 
 add('recipes', 9, 8, 'cards', (g, f) => { for (let i = 0; i < f; i++) box(g, 1 + i * 2, 1 + (i % 2), 3, 5, PAPER); box(g, 0, 4, 9, 4, DARKWOOD); });
 add('aside-shelf', 27, 4, 'still', (g) => { box(g, 0, 0, 27, 3, DARKWOOD); put(g, 2, 3, 'a'); put(g, 24, 3, 'a'); });
 add('plate-aside', 5, 3, 'still', (g) => blit(g, ['.abb.', 'aoooa', '.aaa.']));
-addFrames('smoke', PARTICLE.steam.map((fr) => fr.map((r) => r.replace(/p/g, 'l').replace(/o/g, 'k'))), 'steam');
+addFrames('smoke', PARTICLE.steam.map((fr) => fr.map((r) => r.replace(/l/g, 'k').replace(/m/g, 'l'))), 'steam');   // the dust, a shade darker
 add('tag', 15, 9, 'still', (g) => { box(g, 0, 1, 15, 8, PAPER); rect(g, 6, 0, 3, 2, 'g'); put(g, 7, 0, 'a'); });
 add('plus', 3, 5, 'still', (g) => blit(g, GLYPHS['+']));
 // ---- moments (plans/chef-art-2.md wave 2; public/moments.js plays them): the anticipation crouch, the landing squash, the pan

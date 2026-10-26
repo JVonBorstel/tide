@@ -134,7 +134,7 @@ export const STAGE = { w: 192, h: 112, aisle: 76, front: 108, top: 70, doorX: 9,
 export const sx = (x) => Math.round(x * 0.48);          // the 400-wide room onto the 192-pixel stage
 const TICKET_DX = 5;                                    // tickets hang clear of the window
 const waiterX = (i) => 146 + i * 15;                    // waiters at the pass stand a body apart
-const STATION_ART = { board: 'counter', stove: 'stove', taste: 'counter', sink: 'sink', plate: 'counter' };
+const STATION_ART = { board: 'counter', stove: 'stove', taste: 'counter', sink: 'sink', plate: 'counter' };   // code names: the Survey table, Workbench ...
 const PROP = { board: 'board', stove: 'pot', taste: 'bowl', sink: null, plate: 'plates' };
 // the largest whole-number scale that fits (crisp: every art pixel is exactly `scale` device pixels), centred on a device pixel;
 // w is the room's width in art pixels at that scale (192 to 256): the kitchen sits in the middle, wall and floor fill the sides
@@ -270,11 +270,11 @@ export function drawStage(ctx, st, kit) {
   for (const a of actors) if (a.kind === 'chef' && !a.path.length && a.busy) d(kit.get('work-' + a.st, pal(a)), at(4, 120, t, a.look.delay * 1000), a.x - 8, STAGE.top - 6);
   const cx = (k) => sx(STATIONS[k].x);
   if (L.busy.stove) {
-    d(kit.get('oven-glow', room), at(3, 110, t), cx('stove') - 9, STAGE.top + 10); d(kit.get('flame', room), at(3, 110, t), cx('stove') - 3, STAGE.top - 1);
-    for (let i = 0; i < 3; i++) d(kit.get('steam', room), at(4, 260, t, i * 300), cx('stove') - 7 + i * 4, STAGE.top - 12 - Math.floor((t / 90 + i * 5) % 8));
+    d(kit.get('oven-glow', room), at(3, 110, t), cx('stove') - 11, STAGE.top - 6); d(kit.get('flame', room), at(3, 110, t), cx('stove') - 4, STAGE.top - 9);   // the weld flash at the vice, sparks
+    for (let i = 0; i < 3; i++) d(kit.get('steam', room), at(4, 260, t, i * 300), cx('stove') - 7 + i * 4, STAGE.top - 12 - Math.floor((t / 90 + i * 5) % 8));   // dust
   }
-  if (L.busy.taste) d(kit.get('steam', room), at(4, 260, t), cx('taste') - 7, STAGE.top - 10 - Math.floor((t / 120) % 5));
-  if (L.busy.sink) for (let i = 0; i < 3; i++) d(kit.get('bubble', room), 0, cx('sink') - 8 + ((i * 7 + Math.floor(t / 150)) % 14), STAGE.top - 2 - Math.floor((t / 110 + i * 3) % 6));
+  if (L.busy.taste) d(kit.get('sparkle', room), at(4, 260, t), cx('taste'), STAGE.top - 7);   // the inspection desk lamp glints
+  if (L.busy.sink) for (let i = 0; i < 3; i++) d(kit.get('bubble', room), 0, cx('sink') - 10 + ((i + Math.floor(t / 300)) % 4) * 3, STAGE.top + 10);   // the test rig's LEDs chase
   drawFx(st, kit, d, room);   // the moments (moments.js)
   for (const s of st.sparks) { const f = Math.floor((t - s.t) / 90); for (let i = 0; i < 3; i++) d(kit.get('sparkle', room), f + i, s.x - 8 + i * 8, s.y - (i % 2) * 6 - Math.floor(f / 2)); }
   for (const a of actors) if (a.kind !== 'chef') {
