@@ -1,0 +1,34 @@
+{
+  "why": "dod items are the checklist of build-way 3.5",
+  "expect": "/dod/lint: additionalProperties",
+  "doc": {
+    "v": "1.0",
+    "wo": "WO-2001",
+    "status": "pushed",
+    "branch": "wo/2001-sunrise",
+    "pr": "example#41",
+    "head": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+    "tests": [
+      {
+        "suite": "Demo",
+        "passed": 52,
+        "failed": 0
+      },
+      {
+        "suite": "DemoScene",
+        "passed": 12,
+        "failed": 0
+      }
+    ],
+    "dod": {
+      "change-note": "yes",
+      "tests": "yes",
+      "names": "yes",
+      "glossary": "n/a",
+      "docs": "n/a",
+      "lint": "yes"
+    },
+    "asks": "none",
+    "next": "adopt"
+  }
+}

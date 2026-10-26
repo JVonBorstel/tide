@@ -1,0 +1,16 @@
+{
+  "why": "stages are the 8 of build-way 3.1",
+  "expect": "/data/stage: enum",
+  "doc": {
+    "v": "1.0",
+    "seq": 2,
+    "at": "2030-01-07T09:02:00Z",
+    "actor": "engine",
+    "kind": "stage.entered",
+    "wo": "WO-2001",
+    "data": {
+      "stage": "testing"
+    },
+    "proof": null
+  }
+}
