@@ -64,6 +64,9 @@ try {
     $o2 = & $k add -SpecPath $spec -Force | Out-String
     Check 'add (kitchen.ps1): DUPLICATE names the open order, exit 4; -Force adds it and notes it' ($o -match "^DUPLICATE: $($c1.job) is open" -and $code -eq 4 -and $o2 -match '^added (J\d+)' -and (Read-CareJob ([regex]::Match($o2, 'added (J\d+)').Groups[1].Value)).forcedOver -eq $c1.job)
     & $k kill -All | Out-Null
+    $c6 = (& $cook -Recipe care -Vars @{ goal = 'Make kitchen/notify.ps1 say the job number.' } -Json | Out-String) | ConvertFrom-Json
+    Check 'add: a stopped or failed twin does not block a new attempt at its goal (the doctor clears the old one as its duplicate)' ($c6.ok -and $c6.job)
+    & $k kill -All | Out-Null
 
     # ---- every failure has a plain sentence ----
     $a = & $k add -Name 'breaks' -Script $w -ScriptArgs @{ Behavior = 'fail' } -Retries 0 -TimeoutSec 60 -HungSec 60 | Out-String

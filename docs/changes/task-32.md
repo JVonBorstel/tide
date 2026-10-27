@@ -77,7 +77,7 @@ Killed, quarantined and closed are working states: the doctor clears them. `doct
 
 **Duplicates at the door:**
 
-- `kitchen.ps1 add` refuses a goal that matches an open order and prints `DUPLICATE: J12 is open with the same goal ...` (exit 4). An open order is anything not done or cleared.
+- `kitchen.ps1 add` refuses a goal that matches an open order and prints `DUPLICATE: J12 is open with the same goal ...` (exit 4). An open order is one in play: queued, building or waiting for Jordan. A failed or stopped order does not block a new attempt; the doctor clears it as a duplicate of the new one.
 - It matches on normalized text, on the same files and the same title, or on the same roadmap item (`jobs-lib.ps1 Get-OrderDupKeys`). The keys are kept in `jobs-index.json`, so the check opens no job file.
 - `-Force` adds it anyway and notes `forcedOver`. `cook.ps1 -Force` passes it through, and `cook.ps1 -Json` returns `duplicate`.
 
@@ -107,12 +107,12 @@ On 10-27 the Yard had 31 killed, 43 quarantined and 36 closed orders sitting for
 
 One check per acceptance line, named after it:
 
-- `tests/Test-KitchenCare.ps1` (new), 21 checks:
+- `tests/Test-KitchenCare.ps1` (new), 22 checks:
   - each cleared state written with reason (retried, superseded twice, duplicate twice, stale, dropped, on the order and in events);
   - a 3-day-old quarantined order cleared as stale and reopenable;
   - -FindOnly clears nothing;
   - policy table maps each class and an unknown failure to "needs a look";
-  - add refuses a duplicate and the force flag works;
+  - add refuses a duplicate and the force flag works (a failed or stopped twin does not block a new attempt);
   - every failure has a plain sentence (a real failing run, a stopped order, an older order given words by the doctor);
   - plus the one action once (flaky back to freshen; a real failure left alone), and the stale reason naming files main changed (a real git repo).
 - `pass-app/test-failures.mjs` (new, run by `tests/Test-PassApp.ps1`), 12 checks:

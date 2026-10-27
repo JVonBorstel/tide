@@ -92,12 +92,14 @@ function Get-OrderDupKeys($j) {
     $sha = [Security.Cryptography.SHA256]::Create()
     @($keys | ForEach-Object { [Convert]::ToHexString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($_))).Substring(0, 12).ToLowerInvariant() })
 }
-# The open order (anything not done or cleared: queued, building, waiting, failed or stopped) that shares a dup key with $Keys, oldest
-# first, from the jobs-index.json entries. '' when none. kitchen.ps1 add refuses a new order that has one (-Force adds it anyway).
+# The open order (in play: queued, building or waiting for Jordan) that shares a dup key with $Keys, oldest first, from the
+# jobs-index.json entries. '' when none. kitchen.ps1 add refuses a new order that has one (-Force adds it anyway). A failed or stopped
+# order does not block a new attempt at its goal: the doctor clears it as a duplicate of the new one (failure-policy.ps1 Get-CarePlan).
+$script:JobsOpen = @('pending', 'running', 'waiting-approval', 'needs-human')
 function Find-OpenDuplicate([hashtable]$Index, [string[]]$Keys) {
     if (-not $Keys -or -not $Keys.Count) { return '' }
     $want = [Collections.Generic.HashSet[string]]::new([string[]]$Keys)
-    $hit = @($Index.Keys | Where-Object { $e = $Index[$_]; [string]$e.s -notin $script:JobsFinished -and @(([string]$e.d) -split ' ' | Where-Object { $_ -and $want.Contains($_) }).Count } |
+    $hit = @($Index.Keys | Where-Object { $e = $Index[$_]; [string]$e.s -in $script:JobsOpen -and @(([string]$e.d) -split ' ' | Where-Object { $_ -and $want.Contains($_) }).Count } |
             Sort-Object { [int]([string]$_).TrimStart('J') })
     if ($hit.Count) { [string]$hit[0] } else { '' }
 }
