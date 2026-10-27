@@ -92,5 +92,5 @@ const stageBr = ['scene.js', 'sprites.js', 'world.js', 'frame.js', 'moments.js']
 // gate that replaces this one when Jordan taps it (critique section 11).
 // The WebGL2 renderer (decisions D-4 and D-6: performance over size, byte caps stop being merge gates): main stood at 36,728 (LF);
 // its hook in scene.js (the flag, the switch, the fallback, the remount) measured 37,116 (+388). gl.js itself is its own file, loaded
-// only behind its flag, and not counted here (as frame-meter.js). Ceiling +15,600.
+// with the stage unless WebGL2 is turned off; left out of this count on purpose (D-6). Ceiling +15,600.
 check(`budget: the stage files (scene, sprites, world, frame, moments) are at most 37,215 bytes brotli (${stageBr}; 21.6 KB before wave 1; plan +6 KB wave 1, +5 KB wave 2; ceiling +15.6 KB with the frame loop and the WebGL2 hook)`, stageBr <= 21615 + 15600);

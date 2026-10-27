@@ -1,7 +1,7 @@
 // The stage's WebGL2 renderer (pass-app/SCENE.md "Renderer"): it takes the same calls as a Canvas2D context (drawImage with 3, 5 or 9
 // arguments, fillRect with fillStyle), so drawStage in scene.js draws through either one unchanged. Every sprite strip and baked layer
 // is copied once into one atlas texture (shelf-packed; started again when full); a frame is quads in one buffer and one drawElements.
-// scene.js loads this file only behind its flag (?gl in the address, or Settings > About > WebGL2 renderer) and keeps Canvas2D when
+// scene.js loads this file with the stage unless WebGL2 is turned off (Settings > About > WebGL2 renderer, or ?gl=0) and keeps Canvas2D when
 // glStage returns null: no WebGL2, only a software WebGL2, shaders that do not build, or a lost context. No imports, no network.
 export const ATLAS = 2048, MAX_QUADS = 2048;
 // what the Board shows in Settings > About: on, or why not (the last reason it gave up)

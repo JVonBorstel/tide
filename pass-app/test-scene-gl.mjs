@@ -149,10 +149,10 @@ const afterLost = GL.glStage(glCanvas(32, 16)), lostWhy = GL.INFO.why;
 check(`GlContextLost: a lost WebGL2 context falls back to Canvas2D for the rest of the visit (onLost ran ${lostCalls} time; later stages get null: "${lostWhy}"); drawing on the lost context throws nothing`,
   lostCalls === 1 && LR.lost && GL.INFO.lost && !lostThrew && afterLost === null && /lost/.test(lostWhy) && /const remount = \(\) => \{ for \(const el of mounted\) if \(el\._px\) \{ dropStage\(el\._px\); el\._px = null;/.test(sceneSrc));
 GL.INFO.lost = false;
-// behind a flag: ?gl (or ?gl=1) for this visit, Settings > About kept on this phone, ?gl=0 turns a kept one off; without it gl.js is never loaded
-const FLAGS = [['', null, false], ['?gl', null, true], ['?hud&gl=1', null, true], ['', '1', true], ['?gl=0', '1', false], ['?glow', null, false], ['', '0', false], ['?fps&gl', '0', true]];
+// on by default: Settings > About turns it off on this phone (kept '0'), ?gl=0 turns it off for the visit, ?gl turns a kept-off phone on for the visit; when off gl.js is never loaded
+const FLAGS = [['', null, true], ['?gl', null, true], ['?hud&gl=1', null, true], ['', '1', true], ['?gl=0', '1', false], ['?gl=0', null, false], ['?glow', null, true], ['', '0', false], ['?glow', '0', false], ['?fps&gl', '0', true]];
 const appGl = fs.readFileSync(new URL('./public/app.js', import.meta.url), 'utf8');
-check(`GlFlag: the WebGL2 renderer is behind a flag, off by default (${FLAGS.length} cases); gl.js is imported only when the flag is on, and Settings > About has its switch and says which renderer draws`,
+check(`GlFlag: the WebGL2 renderer is on by default and can be turned off (${FLAGS.length} cases); gl.js is imported only when it is on, and Settings > About has its switch and says which renderer draws`,
   FLAGS.every(([q, k, want]) => glWanted(q, k) === want) && (sceneSrc.match(/import\('\.\/gl\.js'\)/g) || []).length === 2 && /glWanted\(location\.search, glk\) \? import\('\.\/gl\.js'\)/.test(sceneSrc) && /\(on \? import\('\.\/gl\.js'\) : Promise\.resolve\(null\)\)/.test(sceneSrc)
   && /id="gl-switch" \$\{sceneGl\(\) \? 'checked' : ''\}/.test(appGl) && /if \(e\.target\.id === 'gl-switch'\) return void sceneGl\(e\.target\.checked\);/.test(appGl) && /<dt>Scene renderer<\/dt>/.test(appGl));
 const okC = glCanvas(8, 8); GL.glStage(okC); const okGl = okC.getContext('webgl2');

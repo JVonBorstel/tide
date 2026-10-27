@@ -132,7 +132,7 @@ try {
   const hw = await F.ev(`(() => { const c = document.createElement('canvas'); return !!c.getContext('webgl2', { failIfMajorPerformanceCaveat: true }); })()`);
   let same = null; const tries = [];
   for (let i = 0; i < 3 && !same; i++) {   // the wall clock's minute hand can move between the two opens: try again then
-    const okGl = await F.open('?gl'); const gl = await F.stillShot(); const okC2 = await F.open(); const c2 = await F.stillShot();
+    const okGl = await F.open('?gl'); const gl = await F.stillShot(); const okC2 = await F.open('?gl=0'); const c2 = await F.stillShot();
     const d = differ(gl, c2); tries.push(d); if (okGl && okC2 && d === 0) same = { w: gl.w, h: gl.h, colours: colours(gl) };
   }
   F.close(); const G = await board({ gpu: true }); await G.phone();
@@ -150,12 +150,14 @@ try {
   await G.ev(`document.querySelector('#menu-body dt:nth-of-type(1)') && [...document.querySelectorAll('#menu-body dt')].find((t) => t.textContent === 'Scene renderer').scrollIntoView({ block: 'center' })`); await sleep(400);
   await G.shot('settings-412-dark-webgl2.png'); await G.ev(`document.querySelector('#menu-sheet [data-close]').click()`); await sleep(300);
   await G.phone({ dark: false }); await G.open('?gl'); await G.shot('scene-412-light-webgl2.png'); await G.phone();
-  // the Settings switch keeps it on this phone without ?gl, and ?gl=0 turns a kept one off for the visit
+  // on by default (no ?gl, nothing kept); ?gl=0 turns it off for the visit; the Settings switch turns it off on this phone, and ?gl turns that phone on for the visit
+  await G.open(); const dflt = await G.renderer(); await G.open('?gl=0'); const offVisit = await G.renderer();
   await G.open(); await G.ev(`document.getElementById('menu-btn').click()`); await G.until(`!!document.getElementById('gl-switch')`, 4000);
   await G.ev(`document.getElementById('gl-switch').click()`); await sleep(1200); await G.ev(`document.querySelector('#menu-sheet [data-close]').click()`); await sleep(300);
-  await G.open(); const kept = await G.renderer(); await G.open('?gl=0'); const offVisit = await G.renderer();
-  check(`GlScreen_SwitchKept: Settings > About > WebGL2 renderer stays on for this phone without ?gl ("${kept.says}"), and ?gl=0 turns it off for the visit ("${offVisit.says}")`,
-    kept.sw === true && (hw ? kept.says === 'WebGL2' : kept.says.startsWith('Canvas2D')) && offVisit.says.startsWith('Canvas2D'), JSON.stringify({ kept, offVisit }));
+  await G.open(); const keptOff = await G.renderer(); await G.open('?gl'); const onVisit = await G.renderer();
+  const drawsGl = (r) => (hw ? r.says === 'WebGL2' : r.says.startsWith('Canvas2D'));
+  check(`GlScreen_DefaultOn: with nothing kept the stage draws with ${hw ? 'WebGL2' : 'the fallback'} and the switch is on ("${dflt.says}"); ?gl=0 turns it off for the visit ("${offVisit.says}"); the switch turned off keeps Canvas2D on this phone ("${keptOff.says}"), and ?gl turns it on for the visit ("${onVisit.says}")`,
+    dflt.sw === true && drawsGl(dflt) && offVisit.says.startsWith('Canvas2D') && keptOff.sw === false && keptOff.says.startsWith('Canvas2D') && drawsGl(onVisit), JSON.stringify({ dflt, offVisit, keptOff, onVisit }));
   // the frame budget in the browser: the frame meter's work p95 (tick + draw + the WebGL2 flush) at CPU 4x slower, each renderer
   const sp = { webgl2: [], canvas2d: [] };
   for (let i = 0; i < speedRuns; i++) { sp.webgl2.push(await G.frameWork('?gl&hud')); sp.canvas2d.push(await G.frameWork('?gl=0&hud')); }
@@ -172,9 +174,12 @@ try {
   await N.shot('scene-412-dark-fallback.png');
   await N.phone({ dark: false }); await N.open('?gl'); await N.shot('scene-412-light-fallback.png'); N.close();
   const S = await board(); await S.phone();
-  const okS = await S.open('?gl'); const rS = await S.renderer(); const imgS = await S.canvasShot(); await S.open(); const imgS2 = await S.canvasShot();
-  check(`GlScreen_FallbackSoftware: a software-only WebGL2 (no graphics chip) is refused: the stage draws with Canvas2D, the same picture as without the flag (${differ(imgS, imgS2)} pixels differ), and Settings > About says why ("${rS.says}")`,
-    okS && /^Canvas2D \(WebGL2 off: no WebGL2/.test(rS.says) && colours(imgS) >= 8 && differ(imgS, imgS2) === 0, JSON.stringify(rS));
+  let okS = false, rS = null, imgS = null; const triesS = [];
+  for (let i = 0; i < 3 && triesS.at(-1) !== 0; i++) {   // the live scene moves between the two opens: try again then
+    okS = await S.open('?gl'); rS = await S.renderer(); imgS = await S.canvasShot(); await S.open('?gl=0'); triesS.push(differ(imgS, await S.canvasShot()));
+  }
+  check(`GlScreen_FallbackSoftware: a software-only WebGL2 (no graphics chip) is refused: the stage draws with Canvas2D, the same picture as with WebGL2 turned off (pixels that differ per try: ${triesS.join(', ')}), and Settings > About says why ("${rS.says}")`,
+    okS && /^Canvas2D \(WebGL2 off: no WebGL2/.test(rS.says) && colours(imgS) >= 8 && triesS.includes(0), JSON.stringify(rS));
   await S.open('?gl'); await S.ev(`document.getElementById('menu-btn').click()`); await S.until(`!!document.getElementById('gl-switch')`, 4000);
   await S.ev(`[...document.querySelectorAll('#menu-body dt')].find((t) => t.textContent === 'Scene renderer').scrollIntoView({ block: 'center' })`); await sleep(400);
   await S.shot('settings-412-dark-fallback.png'); S.close();
