@@ -21,11 +21,11 @@ const steps = [{ script: 'k/agent-step.ps1', args: { Role: 'plan' } }, { script:
 const F = (cls, label, action, text, at) => ({ class: cls, label, action, text, at: iso(at), kind: 'fail', detail: 'raw' });
 const job = (id, name, status, at, o = {}) => ({ id, name, status, cursor: 2, attempt: 0, created: iso(at - H), costUsd: 0.1, steps,
   history: [{ at: iso(at), step: 2, outcome: 'fail', detail: `exit 1: tests: FAILED: Test-Example (${id})` }], stateAt: iso(at), ...o });
-const real = (at) => F('real', 'Real failure', 'stop', 'The tests failed at step 3 of 3 (tests); next: needs a look: See why has the detail, then Retry or Close.', at);
+const real = (at) => F('real', 'Real failure', 'stop', 'The tests failed at step 3 of 3 (tests); next: it needs a look (See why has the detail), then Retry or Close.', at);
 const orders = [
   job('J60', 'improve: Make the example sky warmer at dusk', 'quarantined', now - 2 * H, { failure: real(now - 2 * H) }),
   job('J61', 'improve: Example clock in the corner', 'quarantined', now - 5 * H, { failure: F('conflict', 'Merge conflict', 'freshen', 'Main moved and its change conflicts with main at step 2 of 3 (freshen); next: the Yard freshens it from main once; if it still conflicts, Retry or Close.', now - 5 * H), history: [{ at: iso(now - 5 * H), step: 1, outcome: 'fail', detail: 'exit 1: freshen: CONFLICT merging main into kitchen/J61 in: example/file.txt' }] }),
-  job('J62', 'improve: Example order stopped by hand', 'killed', now - H, { failure: F('stopped', 'Stopped', 'ask', 'It was stopped by hand at step 3 of 3 (tests); next: retry puts it back in the queue; Close ends it.', now - H), history: [] }),
+  job('J62', 'improve: Example order stopped by hand', 'killed', now - H, { failure: F('stopped', 'Stopped', 'ask', 'It was stopped by hand at step 3 of 3 (tests); next: Retry puts it back in the queue; Close ends it.', now - H), history: [] }),
   job('J63', 'improve: Example retry after a slow step', 'quarantined', now - 30 * H, { failure: F('flaky', 'Flaky timing', 'retry', 'The step ran out of time at step 3 of 3 (tests); next: the Yard tries it once more on fresh main; if it fails again, Retry or Close.', now - 30 * H) }),
   job('J67', 'improve: Example failure from before failure care', 'quarantined', now - 3 * H),   // no failure record yet: the raw line in plain words
   // not counted: days old (in Older), and two cleared ones (in Older, with their end and reason)
@@ -73,7 +73,7 @@ try {
     order === 'Real failure|J60|Stopped|J62|Merge conflict|J61|Flaky timing|J63|Failed|J67', order);
   const r60 = rows1.find((x) => x.id === 'J60'), r67 = rows1.find((x) => x.id === 'J67');
   check('FailuresList_PlainSentence: every failure shows one plain sentence of what happened and the next step, never the raw line as the main text',
-    r60?.say === 'The tests failed at step 3 of 3 (tests); next: needs a look: See why has the detail, then Retry or Close.' && rows1.every((x) => x.say && !/^exit \d|^fail: exit/.test(x.say)) && !!r67?.say, JSON.stringify(rows1.map((x) => [x.id, x.say])));
+    r60?.say === 'The tests failed at step 3 of 3 (tests); next: it needs a look (See why has the detail), then Retry or Close.' && rows1.every((x) => x.say && !/^exit \d|^fail: exit/.test(x.say)) && !!r67?.say, JSON.stringify(rows1.map((x) => [x.id, x.say])));
   check('FailuresList_OneTapActions: every failure row has Retry, Close and See why on the row', rows1.every((x) => x.btns.join('|') === 'Retry|Close|See why'), JSON.stringify(rows1.map((x) => x.btns)));
 
   // ---------- Failures list actions work: See why, Retry, Close ----------

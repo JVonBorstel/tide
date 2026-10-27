@@ -53,7 +53,7 @@ What task 32 builds on top, as one system (one policy table, one lifecycle, the 
 **Plain words:**
 
 - `Fail-Step` writes `j.failure`: the class, the action, one sentence of what happened and the next step, and the raw detail.
-  - Example: "The tests failed at step 4 of 15 (tests); next: needs a look: See why has the detail, then Retry or Close."
+  - Example: "The tests failed at step 4 of 15 (tests); next: it needs a look (See why has the detail), then Retry or Close."
   - The step event, the history line, `job.quarantined` and the alert carry the same sentence.
 - `kill` writes one too: "It was stopped by hand ...".
 - The doctor gives the words to an order that failed before this change.
@@ -107,11 +107,12 @@ On 10-27 the Yard had 31 killed, 43 quarantined and 36 closed orders sitting for
 
 One check per acceptance line, named after it:
 
-- `tests/Test-KitchenCare.ps1` (new), 22 checks:
+- `tests/Test-KitchenCare.ps1` (new), 23 checks:
   - each cleared state written with reason (retried, superseded twice, duplicate twice, stale, dropped, on the order and in events);
   - a 3-day-old quarantined order cleared as stale and reopenable;
   - -FindOnly clears nothing;
   - policy table maps each class and an unknown failure to "needs a look";
+  - failure sentences read cleanly: one colon after "next:", and a button name (Retry, Close, See why) keeps its capital;
   - add refuses a duplicate and the force flag works (a failed or stopped twin does not block a new attempt);
   - every failure has a plain sentence (a real failing run, a stopped order, an older order given words by the doctor);
   - plus the one action once (flaky back to freshen; a real failure left alone), and the stale reason naming files main changed (a real git repo).
@@ -127,7 +128,7 @@ One check per acceptance line, named after it:
 
   | Suite | Result |
   |---|---|
-  | `Test-KitchenCare` | 22 passed, 0 failed |
+  | `Test-KitchenCare` | 23 passed, 0 failed |
   | `Test-Backoff` | 48 passed, 0 failed |
   | `Test-JobsIndex` | 13 passed, 0 failed |
   | `Test-KitchenApi` | 64 passed, 0 failed |

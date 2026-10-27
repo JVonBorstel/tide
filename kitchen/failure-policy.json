@@ -13,12 +13,12 @@
     "conflict": { "label": "Merge conflict", "action": "freshen", "backoff": "code", "next": "The Yard freshens it from main once; if it still conflicts, Retry or Close" },
     "stale": { "label": "Stale base", "action": "retry", "backoff": "code", "next": "The Yard tries it once more on fresh main; if main moved too far, Close it and order it again" },
     "resting": { "label": "Crews resting", "action": "wait", "backoff": "wait", "next": "It waits for the usage window and goes on by itself; nothing to do" },
-    "privacy": { "label": "Privacy hold", "action": "ask", "backoff": "code", "next": "Your call: sign it off for a cloud crew, or Close it" },
-    "real": { "label": "Real failure", "action": "stop", "backoff": "code", "next": "Needs a look: See why has the detail, then Retry or Close" },
+    "privacy": { "label": "Privacy hold", "action": "ask", "backoff": "code", "next": "Sign it off for a cloud crew, or Close it" },
+    "real": { "label": "Real failure", "action": "stop", "backoff": "code", "next": "It needs a look (See why has the detail), then Retry or Close" },
     "infra": { "label": "Infrastructure", "action": "wait", "backoff": "wait", "next": "It waits for GitHub, CI or the network and tries again by itself" },
     "stopped": { "label": "Stopped", "action": "ask", "backoff": "code", "next": "Retry puts it back in the queue; Close ends it" }
   },
-  "unknown": { "class": "real", "say": "Something failed that the Yard does not recognise", "next": "Real failure, needs a look: See why has the detail, then Retry or Close" },
+  "unknown": { "class": "real", "say": "Something failed that the Yard does not recognise", "next": "It needs a look (See why has the detail), then Retry or Close" },
   "signatures": [
     { "class": "conflict", "say": "Main moved and its change conflicts with main", "match": "(?-i:\\bCONFLICT\\b)|needs freshen|merge conflict" },
     { "class": "stale", "say": "Its brief was written against files that changed on main since", "match": "stale base|written against|no longer applies|patch does not apply|patch failed" },

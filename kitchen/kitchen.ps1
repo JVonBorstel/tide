@@ -30,7 +30,7 @@
 # may not add jobs), per-step timeout / memory (whole process tree) / log size / heartbeat, retries with backoff, quarantine, unsafe-replay
 # needs a human, and a circuit breaker that stops new starts when most recent steps fail.
 # State: %LOCALAPPDATA%\brain-kitchen (override env BRAIN_KITCHEN). events.jsonl is append-only. jobs\ holds the orders in play and
-# finished ones of the last 3 days (jobs-index.json caches their status); the doctor moves older finished ones to jobs\archive\yyyy-MM\. Exit: 0 ok, 2 error/refused, 3 depth cap.
+# finished ones of the last 3 days (jobs-index.json caches their status); the doctor moves older finished ones to jobs\archive\yyyy-MM\. Exit: 0 ok, 2 error/refused, 3 depth cap, 4 duplicate (add refused a goal that matches an open order; -Force adds it).
 param(
     [Parameter(Mandatory, Position = 0)][ValidateSet('add', 'tick', 'chores', 'watch', 'status', 'approve', 'kill', 'requeue', 'close', 'report', 'doctor', 'pause', 'resume', 'reopen')][string]$Action,
     [string]$Name = '', [string]$Script = '', [hashtable]$ScriptArgs = @{}, [ValidateSet('safe', 'unsafe')][string]$Replay = 'safe',

@@ -54,7 +54,8 @@ function Get-FailureVerdict([string]$Kind, [string]$Detail, $Policy = $null) {
 # One plain sentence: what happened (and where), then the next step. Never the raw log line: that stays in the history (See why).
 function Format-FailureText($Verdict, [int]$Step = 0, [int]$Steps = 0, [string]$Station = '') {
     $where = if ($Step -gt 0 -and $Steps -gt 0) { " at step $Step of $Steps$(if ($Station) { " ($Station)" })" } elseif ($Station) { " ($Station)" } else { '' }
-    $n = [string]$Verdict.next; if ($n) { $n = $n.Substring(0, 1).ToLowerInvariant() + $n.Substring(1) }
+    # The first letter goes lower case after "next:", except a button name (Retry, Close, See why), which keeps its capital.
+    $n = [string]$Verdict.next; if ($n -and $n -cnotmatch '^(Retry|Close|See why)\b') { $n = $n.Substring(0, 1).ToLowerInvariant() + $n.Substring(1) }
     "$($Verdict.say)$where; next: $n."
 }
 

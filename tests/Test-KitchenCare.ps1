@@ -46,6 +46,9 @@ try {
     $u = Get-FailureVerdict 'fail' 'exit 1: something nobody has seen before' $pol
     Check "policy table maps each class and an unknown failure to ""needs a look"" ($($wrong + $wrongAct -join ', '))" ($wrong.Count -eq 0 -and $wrongAct.Count -eq 0 -and $u.class -eq 'real' -and $u.unknown -and $u.next -match 'needs a look' -and $u.action -eq 'stop')
     Check 'policy table: every class has one of the five actions and a back-off' (@($pol.classes.Keys | Where-Object { $pol.classes[$_].action -notin 'retry', 'freshen', 'wait', 'ask', 'stop' -or $pol.classes[$_].backoff -notin 'wait', 'code' }).Count -eq 0)
+    $texts = @(foreach ($c in $cases.Keys) { Format-FailureText (Get-FailureVerdict $cases[$c][0] $cases[$c][1] $pol) 2 3 'tests' }) + (Format-FailureText $u 2 3 'tests')
+    $bad = @($texts | Where-Object { $_ -match ':[^;]*:' -or $_ -cmatch '\b(retry|close|see why)\b' })
+    Check "failure sentences read cleanly: one colon after next, button names keep their capitals ($($bad -join ' | '))" ($bad.Count -eq 0 -and ($texts -join "`n") -cmatch 'next: Retry puts it back in the queue; Close ends it\.')
     Check 'policy table: the back-off classes are read from it (Get-FailureClass)' ((& { . (Join-Path $kd 'backoff-lib.ps1'); (Get-FailureClass 'fail' 'gh: API rate limit exceeded') + ',' + (Get-FailureClass 'fail' 'exit 1') }) -eq 'wait,code')
 
     # ---- add refuses a duplicate and the force flag works ----
@@ -75,7 +78,7 @@ try {
     $fj = Read-CareJob $fid
     $stepEv = @(Events | Where-Object { $_.job -eq $fid -and $_.type -eq 'step.fail' })
     $qEv = @(Events | Where-Object { $_.job -eq $fid -and $_.type -eq 'job.quarantined' })
-    Check 'every failure has a plain sentence' ($fj.status -eq 'quarantined' -and $fj.failure.text -match '^Something failed that the Yard does not recognise at step 1 of 1 \(demo\); next: real failure, needs a look: See why has the detail, then Retry or Close\.$' -and $fj.failure.text -notmatch 'exit 1' -and $fj.failure.detail -match 'exit 1: fail: something is broken' -and $stepEv.Count -and $stepEv[-1].say -eq $fj.failure.text -and $qEv.Count -and $qEv[-1].class -eq 'real' -and @($fj.history)[-1].say) { $fj.failure | ConvertTo-Json -Compress }
+    Check 'every failure has a plain sentence' ($fj.status -eq 'quarantined' -and $fj.failure.text -match '^Something failed that the Yard does not recognise at step 1 of 1 \(demo\); next: it needs a look \(See why has the detail\), then Retry or Close\.$' -and $fj.failure.text -notmatch 'exit 1' -and $fj.failure.detail -match 'exit 1: fail: something is broken' -and $stepEv.Count -and $stepEv[-1].say -eq $fj.failure.text -and $qEv.Count -and $qEv[-1].class -eq 'real' -and @($fj.history)[-1].say) { $fj.failure | ConvertTo-Json -Compress }
     $killed = @(Get-ChildItem (Join-Path $root 'jobs') -Filter 'J*.json' | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json -AsHashtable } | Where-Object status -eq 'killed')
     Check 'every failure has a plain sentence: a stopped order too' ($killed.Count -ge 1 -and @($killed | Where-Object { $_.failure.class -ne 'stopped' -or $_.failure.text -notmatch '^It was stopped by hand' }).Count -eq 0)
     Put-Job 'J90' @{ history = @(@{ step = 0; attempt = 1; outcome = 'crash'; detail = 'worker died without an exit code; its log is empty'; at = (Iso $now.AddHours(-30)) }); stateAt = (Iso $now.AddHours(-30)) }
