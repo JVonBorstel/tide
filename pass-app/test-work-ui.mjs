@@ -150,6 +150,8 @@ try {
   check('WCAG AA in light: every text on the Work screen has at least 4.5:1 contrast (3:1 large)', light.bad.length === 0, light.bad.join('; '));
   const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); const b = Buffer.from(r.data, 'base64'); if (shotsDir) { fs.mkdirSync(shotsDir, { recursive: true }); fs.writeFileSync(path.join(shotsDir, name), b); } return b; };
   const pngL = await shot('work-ui-light-375.png');
+  if (shotsDir) { await ev(`document.getElementById('wk-h-streams').scrollIntoView()`); await sleep(400); await shot('work-ui-light-375-streams.png'); await ev(`scrollTo(0, 0)`); await sleep(200); }
+  if (shotsDir) { const r = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true }); fs.writeFileSync(path.join(shotsDir, 'work-ui-light-375-full.png'), Buffer.from(r.data, 'base64')); }
   await media('dark'); await sleep(300);
   const dark = await ev(contrastJs);
   check('WCAG AA in dark: every text on the Work screen has at least 4.5:1 contrast (3:1 large)', dark.bad.length === 0 && dark.bg !== light.bg, dark.bad.join('; ') + ' ' + dark.bg);
