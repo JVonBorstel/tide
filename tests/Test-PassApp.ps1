@@ -1141,6 +1141,12 @@ console.log(JSON.stringify({ banners: siteStopBanners(items, { when }), rows: si
     try { $brTest = ($brOut -join "`n") | ConvertFrom-Json } catch { $brTest = $null }
     Check 'board rows: test-board-rows.mjs exits 0 and reported at least 10 checks' ($brExit -eq 0 -and @($brTest).Count -ge 10)
     foreach ($t in @($brTest)) { if ($t) { Check "board rows: $($t.name)" ($t.pass -eq $true) } }
+    # task 30, D-11 readable everywhere: every tab and sheet crawled at 412x900 and 360x740 (no bare id, markdown, path or JSON; AA contrast
+    # in both looks; no sideways scroll; nothing under the nav), Jordan's seven phone items of 10-27 (pass-app/test-readable.mjs)
+    $rdOut = & node (Join-Path $repo 'pass-app\test-readable.mjs') 2>$null; $rdExit = $LASTEXITCODE; $rdTest = $null
+    try { $rdTest = ($rdOut -join "`n") | ConvertFrom-Json } catch { $rdTest = $null }
+    Check 'readable: test-readable.mjs exits 0 and reported at least 25 checks' ($rdExit -eq 0 -and @($rdTest).Count -ge 25)
+    foreach ($t in @($rdTest)) { if ($t) { Check "readable: $($t.name)" ($t.pass -eq $true) } }
     # D-4 the WebGL2 renderer in a real browser (pass-app/test-scene-gl-screen.mjs: a throwaway server, headless Chrome or Edge with and without the graphics chip)
     $glOut = & node (Join-Path $repo 'pass-app\test-scene-gl-screen.mjs') 2>$null; $glExit = $LASTEXITCODE; $glTest = $null
     try { $glTest = ($glOut -join "`n") | ConvertFrom-Json } catch { $glTest = $null }
