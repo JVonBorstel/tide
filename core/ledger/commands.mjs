@@ -34,20 +34,29 @@ export function parseArgs(argv) {
   return o;
 }
 
-/** The live state folder (the Yard's own); a write into it needs the ledger switch past "old". */
-export function liveStateDir() { return path.resolve(process.env.LEDGER_LIVE_STATE || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'brain-kitchen')); }
+/**
+ * The live state folders a write needs the ledger switch past "old" for: always the Yard's own (%LOCALAPPDATA%\brain-kitchen), plus
+ * LEDGER_LIVE_STATE when it is set (ops: guard a second state folder) and any folder a caller passes (tests). An extra folder adds a
+ * guard; nothing removes the default one.
+ * @param {string[]} [extra]
+ */
+export function liveStateDirs(extra = []) {
+  const def = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'brain-kitchen');
+  return [...new Set([def, process.env.LEDGER_LIVE_STATE || '', ...extra].filter(Boolean).map((p) => path.resolve(p)))];
+}
 /** @param {string} p @param {string} dir */
 const inside = (p, dir) => { const r = path.relative(dir, path.resolve(p)); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
 
-/** Refuse a write into the live state folder while the switch is old. @param {string[]} targets */
-export function guardLive(targets) {
-  const live = liveStateDir();
-  if (!targets.some((t) => inside(t, live))) return;
-  let sw = 'old';
-  for (const f of [path.join(live, 'kitchen.json'), path.join(REPO_ROOT, 'kitchen', 'kitchen.json')]) {
-    if (fs.existsSync(f)) { sw = readSwitches(f).switches.ledger; break; }   // an unreadable file reads as all old (upgrade.mjs)
+/** Refuse a write into a live state folder while the switch is old. @param {string[]} targets @param {string[]} [extra] */
+export function guardLive(targets, extra = []) {
+  for (const live of liveStateDirs(extra)) {
+    if (!targets.some((t) => inside(t, live))) continue;
+    let sw = 'old';
+    for (const f of [path.join(live, 'kitchen.json'), path.join(REPO_ROOT, 'kitchen', 'kitchen.json')]) {
+      if (fs.existsSync(f)) { sw = readSwitches(f).switches.ledger; break; }   // an unreadable file reads as all old (upgrade.mjs)
+    }
+    if (sw === 'old') throw new UsageError(`refused: ${targets.join(', ')} is inside the live state folder ${live} and the ledger switch is "old"; use a scratch copy (moving the switch to shadow is Jordan's card)`);
   }
-  if (sw === 'old') throw new UsageError(`refused: ${targets.join(', ')} is inside the live state folder and the ledger switch is "old"; use a scratch copy (moving the switch to shadow is Jordan's card)`);
 }
 
 /** @param {string} p */
@@ -66,11 +75,11 @@ async function viewFrom(o) {
 }
 
 /** @param {any} o @param {(s: string) => void} say */
-async function build(o, say) {
+async function build(o, say, live = []) {
   if (!o.state) throw new UsageError('give --state <dir> (a scratch copy of the state folder)');
   if (!o.db) throw new UsageError('give --db <file> (the shadow event store, for example <scratch>\\tide.db)');
   const out = path.resolve(o.out || path.dirname(path.resolve(o.db)));
-  guardLive([o.db, out]);
+  guardLive([o.db, out], live);
   const now = nowOf(o);
   const store = await openStore(o.db);
   const report = /** @type {any} */ ({ added: {} });
@@ -79,7 +88,7 @@ async function build(o, say) {
     if (!o['no-github']) {
       const cache = readJson(path.join(o.state, 'towers-github.json'));
       const repos = o.github ? String(o.github).split(',').map((s) => s.trim()).filter(Boolean) : Object.keys(cache?.repos || {});
-      const g = importGithub({ repos, state: o.state, out, now }); report.github = g.report; report.added.github = store.append(g.events).added;
+      const g = importGithub({ repos, state: o.state, out, now, last: (f) => store.lastValue(f) }); report.github = g.report; report.added.github = store.append(g.events).added;
     } else report.github = { state: 'skipped (--no-github)' };
     const repos = (o.repo.length ? o.repo : [`tide=${REPO_ROOT}`]).map((/** @type {string} */ s) => { const i = s.indexOf('='); if (i < 1) throw new UsageError(`--repo is name=path, not ${s}`); return { name: s.slice(0, i), path: s.slice(i + 1) }; });
     const l = importLocal({ repos, plans: o.plans, work: o.work, now }); report.local = l.report; report.added.local = store.append(l.events).added;
@@ -98,7 +107,7 @@ async function build(o, say) {
 
 /**
  * @param {string[]} argv
- * @param {{ out?: (s: string) => void }} [io]
+ * @param {{ out?: (s: string) => void, liveState?: string[] }} [io] liveState: more folders to guard (tests)
  * @returns {Promise<number>}
  */
 export async function main(argv, io = {}) {
@@ -108,7 +117,7 @@ export async function main(argv, io = {}) {
     o = parseArgs(argv);
     const cmd = o._[0] || 'build';
     const emit = (/** @type {any} */ obj, /** @type {() => void} */ text) => { if (o.json) say(JSON.stringify(obj)); else text(); };
-    if (cmd === 'build') { const r = await build(o, o.json ? () => { } : say); if (o.json) say(JSON.stringify({ ok: true, ...r })); return 0; }
+    if (cmd === 'build') { const r = await build(o, o.json ? () => { } : say, io.liveState || []); if (o.json) say(JSON.stringify({ ok: true, ...r })); return 0; }
     if (cmd === 'show') {
       const id = String(o._[1] || ''); if (!id) throw new UsageError('give an id: show WO-312 (or J312)');
       const { events, view } = await viewFrom(o); const wo = /^J\d+$/.test(id) ? woOfJob(id) : id;
@@ -157,7 +166,7 @@ export async function main(argv, io = {}) {
     }
     if (cmd === 'backup') {
       if (!o.db || !o.to) throw new UsageError('give --db <file> --to <file>');
-      guardLive([o.to]);
+      guardLive([o.to], io.liveState || []);
       const store = await openStore(o.db, { readOnly: true }); try { store.backup(o.to); } finally { store.close(); }
       emit({ ok: true, to: o.to }, () => say(`copied to ${o.to}`)); return 0;
     }

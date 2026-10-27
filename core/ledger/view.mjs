@@ -49,7 +49,7 @@ export function fold(events) {
       case 'wo.created':
         if (w.goal === null) { w.goal = d.goal; w.stream = d.stream; w.createdAt = e.at; w.stageAt = w.stageAt < e.at ? w.stageAt : e.at; }
         if (d.plan && !w.plan) w.plan = d.plan; if (d.repo && !w.repo) w.repo = d.repo; if (d.alias) w.alias = d.alias; if (d.private) w.private = true; break;
-      case 'stage.entered': setStage(w, d.stage, e.at); if (e.proof && rank(d.stage) >= rank('merged')) w.closedProof = e.proof; break;
+      case 'stage.entered': setStage(w, d.stage, e.at); if (rank(d.stage) >= rank('merged')) { if (e.proof) w.closedProof = e.proof; } else w.closedProof = null; break;
       case 'step.started': case 'step.done': w.attempts = Math.max(w.attempts, d.attempt); if (e.kind === 'step.done') w.failed = null; break;
       case 'step.failed': w.attempts = Math.max(w.attempts, d.attempt); w.failed = d.retry ? null : { reason: d.reason, step: d.step, at: e.at }; break;
       case 'pr.opened':
@@ -143,12 +143,12 @@ export function buildView(events, o) {
       next = stage === 'merged' ? 'docs station: change note, glossary, names, MAP after the merge' : stage === 'docs' ? 'close the work order' : null;
     } else if (open.length) {
       const d = open.sort((/** @type {any} */ a, /** @type {any} */ b) => String(a.at).localeCompare(String(b.at)))[0];
-      state = 'waiting-on-jordan'; owner = 'jordan'; blockedOn = `Jordan: ${text(d.ask, 300)}`; next = `your tap on ${d.id}`;
+      state = 'waiting-on-jordan'; owner = 'jordan'; blockedOn = `Jordan: ${d.kind} card ${d.id}`; next = `your tap on ${d.id}`;
       if (rank(stage) < rank('jordan')) { stage = 'jordan'; stageAt = d.at; }
     } else if (ys === 'waiting-approval' || ys === 'needs-human') {
       state = 'waiting-on-jordan'; owner = 'jordan'; blockedOn = ys === 'needs-human' ? 'Jordan: the Yard order needs a person' : 'Jordan: the Yard order waits for your yes';
       next = 'your tap on the Board (Chef sign-off)';
-    } else if (w.failed || ys === 'quarantined' || ys === 'failed') {
+    } else if (w.yard ? ys === 'quarantined' || ys === 'failed' : w.failed) {   // a Yard order's own status decides; its failed step gives the reason
       state = 'stuck'; blockedOn = `set aside: ${text(w.failed?.reason || 'the Yard set it aside', 300)}`; next = 'retry with a fresh crew, re-plan, or drop (a card)';
     } else if (ys === 'closed' || ys === 'killed' || (ys === 'done' && !proof)) {
       const c = y.closed;
@@ -200,7 +200,7 @@ export function buildView(events, o) {
   }
   // the queue: open cards, oldest first
   const queueAll = [...decisions.values()].filter((d) => d.answer == null).sort((a, b) => String(a.at).localeCompare(String(b.at)) || String(a.id).localeCompare(String(b.id)))
-    .map((d) => { const r = byId.get(d.wo); return { decision: decisionOut(d), goal: text(r?.goal || d.ask, 2000), stream: r?.stream ?? null, ageH: hours(now - Date.parse(d.at)) }; });
+    .map((d) => { const r = byId.get(d.wo); return { decision: decisionOut(d), goal: text(r?.goal || `${d.kind} card ${d.id}`, 2000), stream: r?.stream ?? null, ageH: hours(now - Date.parse(d.at)) }; });
   // streams and WIP
   const groups = new Map();
   for (const r of rows) { if (!OPEN.has(r.state)) continue; if (!groups.has(r.stream)) groups.set(r.stream, []); groups.get(r.stream).push(r); }
@@ -259,7 +259,8 @@ export function exportLedgerJson(v, o = {}) {
   }));
   const ruleOwner = /** @type {Record<string,[string, number]>} */ ({ lost: ['Claude', 1], stale: ['Claude', 2], 'stack-too-deep': ['Claude', 2], 'no-plan': ['Claude', 3], 'no-decision': ['Jordan', 2], 'over-wip': ['Jordan', 2] });
   const flags = v.flags.map((f) => ({ id: f.wo || f.flag, rule: f.flag, owner: ruleOwner[f.flag]?.[0] || 'Claude', pri: ruleOwner[f.flag]?.[1] || 3, say: f.detail }))
-    .concat(v.queueAll.map((c) => ({ id: c.decision.id, rule: 'waiting-on-you', owner: 'Jordan', pri: 1, say: `${c.goal}: ${c.decision.ask} (waiting ${c.ageH} h)` })))
+    // ids and the goal only: the card's question stays in tide.db and on the Board (ledger.json is read by more than the Board, ZG-25)
+    .concat(v.queueAll.map((c) => ({ id: c.decision.id, rule: 'waiting-on-you', owner: 'Jordan', pri: 1, say: `${c.goal}: card ${c.decision.id} (${c.decision.kind}) waits on you (${c.ageH} h); the question is on the Board.` })))
     .sort((a, b) => a.pri - b.pri || String(a.id).localeCompare(String(b.id)));
   const n = (/** @type {string} */ s) => v.rows.filter((r) => r.state === s).length;
   return {

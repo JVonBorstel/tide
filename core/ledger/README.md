@@ -21,7 +21,9 @@ node core/ledger/cli.mjs backup --db <file> --to <file>                   # the 
 
 - `build` writes the store, `work.json` (rows, queue, streams, flags, flag values) and `ledger.next.json` (the old `ledger.json` shape),
   all in the `--db` folder (or `--out`). It prints the top line and how many events each source added. A rerun with nothing new adds 0.
-- **The live state folder is refused** while `upgrade.ledger` is `old`. Moving it to `shadow` is Jordan's card.
+- **The live state folder is refused** while `upgrade.ledger` is `old`. Moving it to `shadow` is Jordan's card. `LEDGER_LIVE_STATE=<folder>`
+  guards one more state folder the same way (ops); it never removes the guard on the Yard's own folder.
+- Node 22.5 or later is needed (`node:sqlite`); below that the command says so in plain words.
 - Exit codes: 0 fine, 1 the store or a source could not be read, 2 a usage error or a refused write, 3 parity found unexplained items.
 - Node 22 needs `--experimental-sqlite` for `node:sqlite`; Node 24 does not. `cli.mjs` checks and adds the flag only when needed.
 - `--json` on any command prints one JSON answer (`{ ok: false, code, error }` on failure).
@@ -30,7 +32,7 @@ node core/ledger/cli.mjs backup --db <file> --to <file>                   # the 
 
 | File | What it does |
 |---|---|
-| `store.mjs` | The only file that touches `node:sqlite` (so `better-sqlite3` can be swapped in). Append-only (triggers refuse UPDATE and DELETE), WAL, STRICT tables, schema version in `PRAGMA user_version`, every event checked against `core/contracts/event.schema.json`, source keys for idempotent imports. Errors: `corrupt`, `locked`, `newer-schema`, `missing`, `bad-event`, `append-only`, `unavailable`. |
+| `store.mjs` | The only file that touches `node:sqlite` (so `better-sqlite3` can be swapped in). It hands out no raw SQL. Append-only (triggers refuse UPDATE, DELETE and REPLACE; `recursive_triggers` on), WAL, STRICT tables, schema version in `PRAGMA user_version`, every event checked against `core/contracts/event.schema.json`, a `key` for one-time facts and a `family` + `value` for observations that can change back (written only when the value differs from the family's last one, so A -> B -> A keeps all three). Errors: `corrupt`, `locked`, `newer-schema`, `missing`, `bad-event`, `append-only`, `unavailable`. |
 | `import-yard.mjs` | `jobs\J*.json` + `jobs\archive\index.jsonl` + `events.jsonl` -> events. J312 becomes WO-312 (alias J312). Close reasons, replacements, quarantines, the PAUSED file. |
 | `import-github.mjs` | `gh pr list` (read only): open PRs of every Tower; merged PRs from the Board's G2 read (`towers-github.json`) when it is under 10 minutes old. A rate limit or offline keeps the last good read (`github-last.json` next to the store). |
 | `import-local.mjs` | `git worktree list`, branches merged into main, ids named on main (a revert marks undone), plan files (`wo:` lines and slice tokens like G4), `work/<WO>/BRIEF.md` and `REPORT.md` front matter. |

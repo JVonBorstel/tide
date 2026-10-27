@@ -91,15 +91,15 @@ export function importLocal(o) {
   for (const r of o.repos) {
     const f = repoFacts(r.path, r.name);
     report.repos.push({ repo: r.name, ok: f.ok, why: f.why, worktrees: f.worktrees.length, ids: Object.keys(f.ids).length });
-    events.push({ key: `local:repo:${r.name}:${hash(f)}`, at, actor: 'import', kind: 'x.local.repo', wo: null, data: f, proof: f.ok ? `git log ${f.main} at ${f.head}` : null });
+    events.push({ family: `local:repo:${r.name}`, value: hash(f), at, actor: 'import', kind: 'x.local.repo', wo: null, data: f, proof: f.ok ? `git log ${f.main} at ${f.head}` : null });
   }
   if (o.plans) {
     const p = planFacts(o.plans); report.plans = { ok: p.ok, files: p.plans.length, why: p.why };
-    events.push({ key: `local:plans:${hash(p)}`, at, actor: 'import', kind: 'x.local.plans', wo: null, data: p, proof: null });
+    events.push({ family: 'local:plans', value: hash(p), at, actor: 'import', kind: 'x.local.plans', wo: null, data: p, proof: null });
   }
   if (o.work) {
     const b = briefFacts(o.work); report.briefs = { ok: b.ok, items: b.items.length, why: b.why };
-    events.push({ key: `local:briefs:${hash(b)}`, at, actor: 'import', kind: 'x.local.briefs', wo: null, data: b, proof: null });
+    events.push({ family: 'local:briefs', value: hash(b), at, actor: 'import', kind: 'x.local.briefs', wo: null, data: b, proof: null });
   }
   return { events, report };
 }

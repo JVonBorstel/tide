@@ -15,6 +15,9 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+// node:sqlite exists from Node 22.5: below that, say so in plain words (node itself would only say "bad option")
+const [maj, min] = process.versions.node.split('.').map(Number);
+if (maj < 22 || (maj === 22 && min < 5)) { process.stdout.write(`ERROR (unavailable): the ledger needs Node 22.5 or later for node:sqlite; this is Node ${process.versions.node}\n`); process.exit(1); }
 let ok = true;
 try { await import('node:sqlite'); } catch { ok = false; }
 if (!ok && !process.env.LEDGER_SQLITE_RESPAWNED) {

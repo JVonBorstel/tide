@@ -6,7 +6,10 @@
 // only the events for the change.
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { woOfJob, isoOrNull, text } from './ids.mjs';
+
+const hashOf = (/** @type {unknown} */ v) => crypto.createHash('sha1').update(JSON.stringify(v)).digest('hex').slice(0, 16);
 
 /** @param {string} p */
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8').replace(/^﻿/, '')); } catch { return null; } }
@@ -50,6 +53,9 @@ export function importYard(state, opt = {}) {
   /** @type {any[]} */ const events = [];
   /** @param {string} key @param {string} at @param {string} kind @param {string} wo @param {object} data @param {string | null} [proof] */
   const add = (key, at, kind, wo, data, proof = null) => events.push({ key, at, actor: 'import', kind, wo, data, proof });
+  // an observation that can change and change back: written only when it differs from the family's last value (store.mjs)
+  /** @param {string} family @param {string} value @param {string} at @param {string} kind @param {string} wo @param {object} data @param {string | null} [proof] */
+  const obs = (family, value, at, kind, wo, data, proof = null) => events.push({ family, value, at, actor: 'import', kind, wo, data, proof });
 
   /** @param {any} j @param {boolean} archived @param {string} fileAt */
   function one(j, archived, fileAt) {
@@ -65,14 +71,14 @@ export function importYard(state, opt = {}) {
     const replacedBy = /^J\d+$/.test(String(j.replacedBy || '')) ? String(j.replacedBy) : c?.replacedBy || null;
     const facts = { status, recipe: text(j.recipe, 60) || 'unknown', attempt: Number(j.attempt) || 0, code: archived ? j.code === true : isCode(j), parent: /^J\d+$/.test(String(j.parent || '')) ? String(j.parent) : null,
       archived, ...(c ? { closed: c } : {}), ...(replacedBy ? { replacedBy } : {}) };
-    add(`yard:${id}:status:${status}:${facts.attempt}:${hist.length}:${c ? c.type : ''}`, lastAt, 'x.yard.status', wo, facts);
+    obs(`yard:${id}:status`, hashOf(facts), lastAt, 'x.yard.status', wo, facts);
     const stage = STAGE_OF_STATUS[status];
-    if (stage) add(`yard:${id}:stage:${stage}:${status}:${facts.attempt}`, lastAt, 'stage.entered', wo, { stage });
-    if (c?.proof) add(`yard:${id}:stage:closed:proof`, c.at || lastAt, 'stage.entered', wo, { stage: 'closed' }, `closed as done another way: ${c.proof}`);
-    if (status === 'done' && !facts.code) add(`yard:${id}:stage:closed:done`, lastAt, 'stage.entered', wo, { stage: 'closed' }, `order finished (${facts.recipe})`);
+    if (stage) obs(`yard:${id}:stage`, stage, lastAt, 'stage.entered', wo, { stage });
+    else if (c?.proof) obs(`yard:${id}:stage`, 'closed', c.at || lastAt, 'stage.entered', wo, { stage: 'closed' }, `closed as done another way: ${c.proof}`);
+    else if (status === 'done' && !facts.code) obs(`yard:${id}:stage`, 'closed', lastAt, 'stage.entered', wo, { stage: 'closed' }, `order finished (${facts.recipe})`);
     if (status === 'quarantined' || status === 'failed') {
       const st = Array.isArray(j.steps) ? j.steps[Math.min(Number(j.cursor) || 0, j.steps.length - 1)] : null;
-      add(`yard:${id}:failed:${facts.attempt}:${Number(j.cursor) || 0}`, lastAt, 'step.failed', wo, { step: stepName(st), attempt: clampAttempt(j.attempt), reason: quarantine.get(id) || 'set aside by the Yard', retry: false });
+      obs(`yard:${id}:failed`, `${facts.attempt}:${Number(j.cursor) || 0}:${quarantine.get(id) || ''}`, lastAt, 'step.failed', wo, { step: stepName(st), attempt: clampAttempt(j.attempt), reason: quarantine.get(id) || 'set aside by the Yard', retry: false });
     }
     if (replacedBy && replacedBy !== id) add(`yard:${id}:replaced:${replacedBy}`, c?.at || lastAt, 'replaced', wo, { by: /** @type {string} */ (woOfJob(replacedBy)), reason: c?.reason || `replaced by ${replacedBy}` });
   }
@@ -93,7 +99,7 @@ export function importYard(state, opt = {}) {
   // the Yard itself: paused or running (the PAUSED file), one event per change
   const pausedFile = path.join(state, 'PAUSED'); const paused = fs.existsSync(pausedFile);
   let pausedAt = null; if (paused) { try { pausedAt = isoOrNull(fs.readFileSync(pausedFile, 'utf8').trim()) || fs.statSync(pausedFile).mtime.toISOString(); } catch { } }
-  add(`yard:site:${paused ? `paused:${pausedAt}` : 'running'}`, pausedAt || now, 'x.yard.site', /** @type {any} */ (null), { paused, pausedAt });
+  obs('yard:site', paused ? `paused:${pausedAt}` : 'running', pausedAt || now, 'x.yard.site', /** @type {any} */ (null), { paused, pausedAt });
   report.paused = paused;
   return { events, report };
 }
