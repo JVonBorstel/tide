@@ -49,6 +49,17 @@ try {
 
     # 6. the real trial (a copy of pass-app on spare ports against a private kitchen root; the live Board is never touched)
     $app = Join-Path $root 'pass-app'; Copy-Item -LiteralPath (Join-Path $repo 'pass-app') -Destination $app -Recurse
+    # the server loads modules from outside pass-app (pass-app/work/*.mjs imports ../../core/...) and reads the repo's flags.json, so the
+    # copy also carries every top folder that pass-app's relative imports reach (derived from the code, never a hand list) and flags.json
+    $reach = @(foreach ($f in Get-ChildItem (Join-Path $repo 'pass-app') -Recurse -File -Include '*.mjs', '*.js' | Where-Object { $_.FullName -notmatch '\\node_modules\\' }) {
+            foreach ($m in [regex]::Matches([IO.File]::ReadAllText($f.FullName), '(?:\bfrom|\bimport\()\s*[''"]((?:\.\./)+[^''"]+)[''"]')) {
+                $to = [IO.Path]::GetFullPath((Join-Path $f.DirectoryName $m.Groups[1].Value))
+                if ($to.StartsWith($repo + '\', [StringComparison]::OrdinalIgnoreCase)) { $to.Substring($repo.Length + 1).Split('\')[0] }
+            }
+        }) | Where-Object { $_ -ne 'pass-app' } | Sort-Object -Unique
+    foreach ($d in $reach) { Copy-Item -LiteralPath (Join-Path $repo $d) -Destination (Join-Path $root $d) -Recurse }
+    Copy-Item -LiteralPath (Join-Path $repo 'flags.json') -Destination (Join-Path $root 'flags.json')
+    Check "the trial copy carries what the server loads from outside pass-app (folders: $($reach -join ', '); flags.json)" ($reach -contains 'core' -and (Test-Path -LiteralPath (Join-Path $root 'core\ship\flags.mjs')) -and (Test-Path -LiteralPath (Join-Path $root 'flags.json')))
     $kr = Join-Path $root 'kitchen'; New-Item -ItemType Directory -Force (Join-Path $kr 'jobs') | Out-Null
     $env:BRAIN_KITCHEN = $kr; $env:PASS_NO_TAILSCALE = '1'; $env:PASS_HOSTS = 'board-test.tailnet-test.example'; $env:BRAIN_NTFY_TOPIC = $null
     $env:KITCHEN_OLLAMA_URL = 'off'; $env:KITCHEN_AGY_EXE = 'off'; $env:TEMP = $root; $env:TMP = $root
@@ -63,6 +74,28 @@ try {
     Set-Content -LiteralPath $cIdx -Value ((Get-Content -LiteralPath $cIdx -Raw).Replace('<script src="/app.js" type="module">', '<script src="/app.js">')) -NoNewline
     $r = & $trial ($p + 3)
     Check 'real trial fails when the app script tag is gone' ($r.code -eq 1 -and $r.out -match 'did not serve the app \(missing <script src="/app\.js" type="module">\)' -and $r.out -notmatch 'trial ok:')
+
+    # 7. the restart decision: the server fingerprint covers every local module server.mjs reaches, not server.mjs alone
+    #    (a merge that changed only towers.mjs or work/api.mjs once left the live Board on old code)
+    $sid = Join-Path $repo 'pass-app\server-id.mjs'
+    Check 'update.ps1 asks server-id.mjs for the fingerprint, never hashes server.mjs alone' ($src -match 'server-id\.mjs' -and $src -notmatch 'Get-FileHash \$srv')
+    $fp = Join-Path $root 'fp'; New-Item -ItemType Directory -Force (Join-Path $fp 'app'), (Join-Path $fp 'lib') | Out-Null
+    Set-Content (Join-Path $fp 'app\entry.mjs') "import { a } from './a.mjs';`nconst b = await import('../lib/b.mjs');`nimport x from './missing.mjs';"
+    foreach ($f in 'app\a.mjs', 'lib\b.mjs', 'app\other.mjs') { Set-Content (Join-Path $fp $f) "export const v = 1;" }
+    $id = { "$(& node $sid (Join-Path $fp 'app\entry.mjs'))".Trim() }
+    $id0 = & $id
+    Check 'fingerprint is 12 hex and stable across runs' ($id0 -match '^[0-9a-f]{12}$' -and (& $id) -eq $id0)
+    Add-Content (Join-Path $fp 'app\a.mjs') '// changed'; $id1 = & $id
+    Check 'a change to a statically imported module changes the fingerprint' ($id1 -ne $id0)
+    Add-Content (Join-Path $fp 'lib\b.mjs') '// changed'; $id2 = & $id
+    Check 'a change to a dynamically imported module in another folder changes the fingerprint' ($id2 -ne $id1)
+    Add-Content (Join-Path $fp 'app\other.mjs') '// changed'
+    Check 'a change to a file the entry never imports leaves the fingerprint alone' ((& $id) -eq $id2)
+    Set-Content (Join-Path $fp 'lib\rule.schema.json') '{"type":"object"}'; $id3 = & $id
+    Add-Content (Join-Path $fp 'lib\rule.schema.json') ' '
+    Check 'a change to a *.schema.json beside a reached module changes the fingerprint' ($id3 -ne $id2 -and (& $id) -ne $id3)
+    $files = & node --input-type=module -e "import { serverFiles } from '$(([Uri]$sid).AbsoluteUri)'; console.log(serverFiles(process.argv[1]).join('\n'))" (Join-Path $repo 'pass-app\server.mjs')
+    Check 'the real server fingerprint covers towers.mjs, work/api.mjs and the core modules it reaches' ((@($files) -match 'pass-app[\\/]towers\.mjs$').Count -eq 1 -and (@($files) -match 'work[\\/]api\.mjs$').Count -eq 1 -and (@($files) -match '[\\/]core[\\/]').Count -ge 1 -and (@($files) -match 'contracts[\\/][^\\/]+\.schema\.json$').Count -ge 1)
 } finally {
     foreach ($n in $saved.Keys) { [Environment]::SetEnvironmentVariable($n, $saved[$n]) }
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue

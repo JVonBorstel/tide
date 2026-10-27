@@ -338,7 +338,8 @@ try {
     check('wf work: own worktree and branch, noreply identity, trailer, PR title from the public title only, PR body ending',
       w.includes('X:\\wt\\task-5') && w.includes('-b task/5 origin/main') && w.includes('user.email=204934145+JVonBorstel@users.noreply.github.com')
       && w.includes('Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>') && w.includes('--title "WO-TASK-5: Public 5"') && w.includes('🤖 Generated with [Claude Code](https://claude.com/claude-code)'));
-    check('wf work: privacy scan before every push counts "hits", never "live"; never force', /Before every push/.test(w) && w.includes('public-tide-scan.ps1') && /"hits" array/.test(w) && /never a hit count/.test(w) && /never --force/.test(w));
+    check('wf work: privacy scan before every push counts "hits" on added lines, never "oldHits"; never force', /Before every push/.test(w) && w.includes('scan-diff.ps1') && /"hits" array/.test(w) && /"oldHits" counts lines already on main; they do not block/.test(w) && /never --force/.test(w));
+    check('wf gate: privacy scans only the lines base..head adds', /scan-diff\.ps1" -Repo .* -Base <base> -Head origin\/main/.test(byLabel('gate (final)').prompt));
     check('wf rules: never close, reopen or approve a PR (builder, checks, reviewer, merge)', /never close, reopen, approve/.test(w) && /close, approve or merge/.test(byLabel('checks 5').prompt)
       && /close, approve or merge/.test(byLabel('review 5').prompt) && /never close or reopen a PR/.test(byLabel('merge 5').prompt));
     check('wf review: independent reviewer, read-only, records the head it reviews first', /INDEPENDENT REVIEWER/.test(byLabel('review 5').prompt) && /did not build it/.test(byLabel('review 5').prompt) && /FIRST record the commit you review/.test(byLabel('review 5').prompt));
@@ -348,6 +349,22 @@ try {
       && /not from anyone's report/.test(mp) && /note 5 --text "Board not redeployed/.test(mp) && !/touchesPassApp/.test(wfSrc));
     check('wf gate: privacy counts the scanner\'s "hits", never its "live" counts', /"hits" array/.test(byLabel('gate (final)').prompt) && !/sum of "live"/.test(wfSrc));
     check('wf: never sees or sends the private title (only public_title travels)', !r.calls.some((c) => /Private words/.test(c.prompt)));
+    // findings of the first live run: what a real builder met that the fake agent never did
+    check('wf live: a new task branch is made with --no-track, so it never has main as its upstream before its first push',
+      w.includes('worktree add --no-track X:\\wt\\task-5 -b task/5 origin/main') && /push -u origin task\/5/.test(w));
+    check('wf live: tests are named in public words for the behaviour they check, never in the task\'s own wording',
+      /in public words for the behaviour it checks/.test(w) && !/a test named after it/.test(w) && /no acceptance lines/.test(w));
+    check('wf live: docs/changes/task-<n>.md belongs to every task, so it is never listed as an outside path',
+      /docs\/changes\/task-5\.md is part of every task's paths/.test(w));
+    check('wf live: a builder never starts another orchestrator from inside a run (the lock refuses it)',
+      /Never start another orchestrator/.test(w) && /\/task-start/.test(w) && /\/task-orchestrate/.test(w));
+    check('wf live: the plan writes "Done means" lines in public words, because they name public tests', /Done means \(each line becomes a test name, so write it in public words/.test(promptOf(r, 'plan')));
+  }
+  {
+    const r = await runWf('', std(pickSeq([task(40, { public_title: 'Say "hi" to $HOME `now` \\ it\'s fine' })], [])));
+    const w = promptOf(r, 'work 40');
+    check('wf live: the PR title is shell-safe: no quote, $, backtick or backslash from the public title reaches the command',
+      w.includes('--title "WO-TASK-40: Say hi to HOME now it\'s fine"'), (/--title "[^\n]*/.exec(w) || [''])[0]);
   }
   {
     let reviews = 0;

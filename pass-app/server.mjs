@@ -17,14 +17,16 @@ import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { makeTowers } from './towers.mjs';
+import { serverId } from './server-id.mjs';
 import { isWorkPath, workRoute } from './work/api.mjs';   // L5 seam (the Work tab, WO-UPG-L5-1): lane L5 alone edits this line
 
 const VERSION = '2.10.0';
 const here = path.dirname(fileURLToPath(import.meta.url));
 // Seamless updates. BUILD is a hash of the app files; it is re-checked every 2 s, so a change to public/ goes live with no restart:
 // the next state on the stream carries the new build, and the phone swaps itself over the next time it is idle. SERVER is a hash
-// of this file as it was when the process started, so pass-app/update.ps1 can tell whether a restart is needed at all.
-const SERVER = crypto.createHash('sha256').update(fs.readFileSync(fileURLToPath(import.meta.url))).digest('hex').slice(0, 12);
+// of this file and every local module it imports (server-id.mjs) as they were when the process started, so pass-app/update.ps1
+// can tell whether a restart is needed at all.
+const SERVER = serverId(fileURLToPath(import.meta.url));
 const root = path.resolve(process.env.BRAIN_KITCHEN || path.join(process.env.LOCALAPPDATA || '', 'brain-kitchen'));
 const kitchenDir = path.resolve(here, '..', 'kitchen');
 const recipesDir = process.env.KITCHEN_RECIPES ? path.resolve(process.env.KITCHEN_RECIPES) : path.join(kitchenDir, 'recipes');

@@ -62,6 +62,47 @@ try {
     $o = & $st -Dir $d2 -SuiteTimeoutSec 60 -Soft -Impacted -ChangedFiles 'kitchen/zzz.ps1' *>&1 | Out-String
     Check 'a suite naming the changed file by its path is included' ((Ran $o 'Test-Mentions') -and -not (Ran $o 'Test-PassApp') -and -not (Ran $o 'Test-Foo'))
 
+    # a file outside the fixed table: its owners run (a suite naming its path, or its Test-<Name> suite); with none, the owners of the
+    # other files in its folder (shared core files left out); only then every suite
+    $d6 = New-Repo 'r6' 'Test-PassApp', 'Test-Foo', 'Test-Names', 'Test-MakeThing', 'Test-Sib', 'Test-Core'
+    Add-Content (Join-Path $d6 'tests\Test-Names.ps1') '# runs (Join-Path $PSScriptRoot ''..\scripts\owned.ps1'')'
+    Add-Content (Join-Path $d6 'tests\Test-Sib.ps1') '# covers scripts/sibling.ps1'
+    Add-Content (Join-Path $d6 'tests\Test-Core.ps1') '# runs scripts\run-bounded.ps1'
+    New-Item -ItemType Directory -Force -Path (Join-Path $d6 'scripts'), (Join-Path $d6 'other') | Out-Null
+    foreach ($f in 'scripts\sibling.ps1', 'scripts\lonely.ps1', 'scripts\run-bounded.ps1', 'other\x.ps1', 'other\none.ps1') { Set-Content (Join-Path $d6 $f) '# a file' }
+    $six = 'Test-PassApp', 'Test-Foo', 'Test-Names', 'Test-MakeThing', 'Test-Sib', 'Test-Core'
+    $o = & $st -Dir $d6 -SuiteTimeoutSec 60 -Soft -Impacted -ChangedFiles 'scripts/owned.ps1' *>&1 | Out-String
+    Check 'a suite that names a file owns it: a change to it runs that suite, not all' ((Ran $o 'Test-Names') -and @($six | Where-Object { Ran $o $_ }).Count -eq 1 -and $o -match 'impacted run: 1 of 6 suites' -and $o -match 'tests: PARTIAL PASS')
+    $o = & $st -Dir $d6 -SuiteTimeoutSec 60 -Soft -Impacted -ChangedFiles 'scripts/make-thing.ps1' *>&1 | Out-String
+    Check 'a suite that names a file owns it: its Test-<Name> suite runs, not all' ((Ran $o 'Test-MakeThing') -and @($six | Where-Object { Ran $o $_ }).Count -eq 1)
+    $o = & $st -Dir $d6 -SuiteTimeoutSec 60 -Soft -Impacted -ChangedFiles 'scripts/owned.ps1', 'pass-app/zzz.mjs' *>&1 | Out-String
+    Check 'a suite that names a file owns it: mixed with a table file, both owners run and nothing else' ((Ran $o 'Test-Names') -and (Ran $o 'Test-PassApp') -and @($six | Where-Object { Ran $o $_ }).Count -eq 2)
+    $o = & $st -Dir $d6 -SuiteTimeoutSec 60 -Soft -Impacted -ChangedFiles 'scripts\lonely.ps1' *>&1 | Out-String
+    Check 'when nothing maps, the owning suites of the parent folder run' ((Ran $o 'Test-Sib') -and @($six | Where-Object { Ran $o $_ }).Count -eq 1 -and $o -match 'no suite names scripts/lonely\.ps1; running the suites that own other files in scripts/ \(Test-Sib\)')
+    Check 'when nothing maps, a shared core file in the folder does not pull in its owners' (-not (Ran $o 'Test-Core') -and (Skipped $o 'Test-Core'))
+    $o = & $st -Dir $d6 -SuiteTimeoutSec 60 -Soft -Impacted -ChangedFiles 'other/none.ps1' *>&1 | Out-String
+    Check 'and only then all: no owner and no folder owner runs every suite with the reason' (@($six | Where-Object { Ran $o $_ }).Count -eq 6 -and $o -match 'impacted run: all 6 suites \(no suite is mapped to other/none\.ps1 or to another file in other/\)')
+    $o = & $st -Dir $d6 -SuiteTimeoutSec 60 -Soft -Impacted -ChangedFiles 'README.md' *>&1 | Out-String
+    Check 'and only then all: an unowned file at the top of the repo runs every suite' (@($six | Where-Object { Ran $o $_ }).Count -eq 6 -and $o -match 'no suite is mapped to README\.md\)')
+
+    # the case that ran every suite: a change to the rebase-orders script (and the Board's towers module), mapped against this repo's
+    # real suite texts. Each stub prints a pass and exits; the real text follows as comments, which is all the map reads. The two paths
+    # are built from parts so this suite does not name them itself (a suite that names a file owns it, and this one would run for them).
+    $ro = 'scripts/' + 'rebase-orders.ps1'; $tw = 'pass-app/' + 'towers.mjs'
+    $d7 = New-Repo 'r7' @()
+    $real = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter 'Test-*.ps1' -File)
+    foreach ($rf in $real) {
+        $body = @("Write-Output '$($rf.BaseName) : 1 passed, 0 failed'; exit 0") + @(Get-Content -LiteralPath $rf.FullName | ForEach-Object { "# $_" })
+        Set-Content -LiteralPath (Join-Path $d7 "tests\$($rf.Name)") -Value $body
+    }
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $o = & $st -Dir $d7 -SuiteTimeoutSec 60 -Soft -Impacted -ChangedFiles $ro *>&1 | Out-String
+    $sw.Stop(); $ranN = @([regex]::Matches($o, '(?m)^tests: PASS\s+(\S+)')).Count
+    Check "a change to $ro runs a handful of suites in minutes" ((Ran $o 'Test-RebaseOrders') -and $ranN -ge 1 -and $ranN -le 5 -and $real.Count -gt 20 -and $o -match "impacted run: $ranN of $($real.Count) suites" -and $sw.Elapsed.TotalSeconds -lt 300)
+    $o = & $st -Dir $d7 -SuiteTimeoutSec 60 -Soft -Impacted -ChangedFiles $ro, $tw *>&1 | Out-String
+    $ranN = @([regex]::Matches($o, '(?m)^tests: PASS\s+(\S+)')).Count
+    Check "a change to $ro runs a handful of suites in minutes: with $tw too, not all" ((Ran $o 'Test-RebaseOrders') -and (Ran $o 'Test-PassApp') -and $ranN -le 6 -and $o -notmatch 'impacted run: all')
+
     # a mapped suite that is not in the repo is named, and the run does not quietly shrink to nothing
     $d3 = New-Repo 'r3' 'Test-Foo', 'Test-Other'
     $o = & $st -Dir $d3 -SuiteTimeoutSec 60 -Soft -Impacted -ChangedFiles 'pass-app/server.mjs' *>&1 | Out-String

@@ -23,7 +23,8 @@ const WIP = 4 // build streams open at once (tools/task.mjs WIP_LIMIT; build-way
 const DEF = {
   lanes: 1, max: 40, gateEvery: 3, rounds: 3, planBatch: 5, planRounds: 10, task: 0, plan: true,
   repo: 'JVonBorstel/tide', checkout: '', wtRoot: '',
-  privacyScan: '%USERPROFILE%\\gemini-brain\\projects\\tide\\audits\\public-tide-scan.ps1',
+  // scan-diff.ps1 runs public-tide-scan.ps1 on a change's files and keeps only hits on lines the change adds
+  privacyScan: '%USERPROFILE%\\gemini-brain\\projects\\tide\\audits\\scan-diff.ps1',
   gitName: 'JVonBorstel', gitEmail: '204934145+JVonBorstel@users.noreply.github.com',
 }
 function options(a) {
@@ -76,11 +77,14 @@ const MERGE = { type: 'object', properties: {
 const GATE = { type: 'object', properties: {
   base: str, privacyRan: bool, privacyHits: int, testsOk: bool, tests: str, tidyTask: int, problems: strs, paused: bool,
 }, required: ['base', 'privacyRan', 'privacyHits', 'testsOk', 'tests', 'tidyTask', 'problems', 'paused'] }
-// The privacy scan's JSON has "live" (how many private values it LOADED per class: never zero, not hits) and "hits" (the findings).
-const HITS = 'privacy hits = the number of entries in the JSON\'s "hits" array (its "live" object only counts the private values the scan loaded; it is never a hit count)'
+// The scan prints {"files","hits","oldHits"}: "hits" are findings on lines the change adds; "oldHits" are on lines already on the base,
+// which were scanned when they landed, so they never block (an old form label once stopped every change to app.js).
+const HITS = 'privacy hits = the number of entries in the JSON\'s "hits" array ("oldHits" counts lines already on main; they do not block)'
 const sameHead = (a, b) => !!a && !!b && a.length >= 7 && b.length >= 7 && (a.startsWith(b) || b.startsWith(a))
 // text that goes into a CLI argument inside a prompt: no quotes, $, backticks or backslashes for a shell to read
 const shellSafe = (s, n) => String(s).replace(/["'`$\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n)
+// a PR title goes inside "..." on a command line: the same, but an apostrophe is harmless there and stays
+const titleSafe = (s) => String(s).replace(/["`$\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200)
 const PLAN = { type: 'object', properties: { milestone: int, raised: { type: 'array', items: int }, milestoneDone: bool, why: str }, required: ['milestone', 'raised', 'milestoneDone', 'why'] }
 const DONE = { type: 'object', properties: { ok: bool, why: str }, required: ['ok', 'why'] }
 
@@ -97,7 +101,7 @@ const RULES = `House rules (the repo's AGENTS.md, kitchen/CREED.md, kitchen/BUIL
 - no installs, no new remotes, no settings changes; report counts, not adjectives (CREED 5); unknown is written "unknown".`
 const wtOf = (t) => `${ctx.wtRoot}\\task-${t.id}`
 const branchOf = (t) => t.branch || `task/${t.id}`
-const titleOf = (t) => `WO-TASK-${t.id}: ${t.public_title || `task ${t.id}`}`
+const titleOf = (t) => `WO-TASK-${t.id}: ${titleSafe(t.public_title || '') || `task ${t.id}`}`
 
 // ---- PICK ---------------------------------------------------------------------------------------------------------------------------
 function pickPrompt(first) {
@@ -136,19 +140,23 @@ If a finding is wrong, do not "fix" it: say why in "blocked" only if you cannot 
 2. The worktree: ${wt} on branch ${br}. ${t.resume || t.pr ? `This task is being RESUMED (PR #${t.pr || 'none yet'}): reuse the worktree if it exists (\`git -C ${wt} status\`);
    if only the branch exists, \`git -C ${ctx.checkout} worktree add ${wt} ${br}\`; then continue from where it stopped. If the PR is
    open and the work is complete and pushed, change nothing and return its details.`
-   : `\`git -C ${ctx.checkout} fetch origin main\` then \`git -C ${ctx.checkout} worktree add ${wt} -b ${br} origin/main\` (if the branch already exists, add the worktree on it instead).`}
-3. Build it there, tests first: every acceptance line gets a test named after it. Touch only the task's paths (CREED 4); anything else
-   must be minimal and listed in outsidePaths with the reason. Add docs/changes/task-${t.id}.md (what, why, tests with counts, L1-L4 effect)
-   in public words only. Keep README/docs true where a neighbour option is documented.`
+   : `\`git -C ${ctx.checkout} fetch origin main\` then \`git -C ${ctx.checkout} worktree add --no-track ${wt} -b ${br} origin/main\` (if the branch already exists, add the worktree on it instead;
+   --no-track: the branch gets its own upstream at its first push, never main).`}
+3. Build it there, tests first: every acceptance line gets a test, named in public words for the behaviour it checks (test names are
+   public: never the task's own wording). A task with no acceptance lines: test what its goal asks and say so in the change note.
+   Touch only the task's paths (CREED 4); docs/changes/task-${t.id}.md is part of every task's paths. Anything else must be minimal and
+   listed in outsidePaths with the reason. Add docs/changes/task-${t.id}.md (what, why, tests with counts, L1-L4 effect) in public words
+   only. Keep README/docs true where a neighbour option is documented.
+   Never start another orchestrator from inside this run (/task-start, /task-orchestrate or the Workflow tool): the lock refuses it. If the
+   task asks for a live run of the orchestrator, this run is that live run: work from what it shows you.`
   return `${start}
 ${RULES}
 ${PRIVATE}
 ${keepAlive()}
 Before every push, in this order:
 a. Run the suites the change touches (and their counts go in "tests").
-b. Privacy: copy the files changed against origin/main (\`git -C ${wt} diff --name-only origin/main...HEAD\` plus uncommitted ones) into a
-   fresh temp folder with their relative paths, run \`pwsh -NoProfile -File "${O.privacyScan}" -Root <temp> -Json -Patterns ${wt}\\scripts\\secret-patterns.ps1\`
-   (expand %USERPROFILE%), delete the temp folder. ${HITS}. Any hit: do not push; set blocked="privacy scan: <classes and files, never the values>".
+b. Privacy: run \`pwsh -NoProfile -File "${O.privacyScan}" -Repo ${wt}\` (expand %USERPROFILE%; it scans the worktree's changes
+   against origin/main, uncommitted and untracked files included). ${HITS}. Any hit: do not push; set blocked="privacy scan: <classes and files, never the values>".
    If the scan script is missing: do not push; blocked="privacy scan not found at <path>". Put the counts line in privacyScan.
    Also read your own commit messages and PR text against the task file: no task text beyond the public title.
 c. Commit: \`git -C ${wt} -c user.name=${O.gitName} -c user.email=${O.gitEmail} commit\` with a plain message about the code, ending with a
@@ -287,9 +295,8 @@ async function gate(base, merged, final) {
   const g = await agent(`Workspace gate${final ? ' (end of run)' : ''} for ${O.repo}. Checkout ${ctx.checkout}. Merged since the last gate: ${merged.map((m) => `#${m.pr}`).join(', ') || 'none'}.
 First run ${beat()}.
 1. \`git -C ${ctx.checkout} fetch origin main\`; base = ${base || 'origin/main~' + Math.max(1, merged.length)}; head = origin/main. Return base = the head sha (the next gate starts there).
-2. Privacy: export the files changed in base..head (\`git -C ${ctx.checkout} diff --name-only <base> origin/main\`, as they are at origin/main via
-   \`git show origin/main:<path>\`) into a fresh temp folder, run \`pwsh -NoProfile -File "${O.privacyScan}" -Root <temp> -Json -Patterns <temp-or-checkout>\\scripts\\secret-patterns.ps1\`
-   (expand %USERPROFILE%; use the checkout's patterns file), delete the temp folder. ${HITS}; privacyHits = that number. If it is not 0:
+2. Privacy: run \`pwsh -NoProfile -File "${O.privacyScan}" -Repo ${ctx.checkout} -Base <base> -Head origin/main\` (expand %USERPROFILE%;
+   it scans the lines base..head adds). ${HITS}; privacyHits = that number. If it is not 0:
    run \`${cli()} pause --reason "privacy scan: hits after merges ${merged.map((m) => `#${m.pr}`).join(' ')}"\` and set paused=true. Never print a hit's text.
 3. Suites: ${final ? `run the repo's whole suite through verify-all with a one-repo config: write a temp JSON {"suites":[{"name":"tide","dir":"<checkout>","glob":"tests\\\\Test-*.ps1","timeoutSeconds":600,"maxMB":2000}]}
    and run \`pwsh -NoProfile -File ${ctx.checkout}\\scripts\\verify-all.ps1 -ConfigPath <temp json>\`; delete the temp file.` : `in a fresh worktree of origin/main (\`git -C ${ctx.checkout} worktree add --detach <temp folder> origin/main\`) run
@@ -316,7 +323,8 @@ function planPrompt() {
    (\`${cli()} list --json\`, those with that milestone), the repo as it is now (\`git -C ${ctx.checkout} log --oneline -15 origin/main\`, \`gh pr list -R ${O.repo}\`).
 3. If everything the milestone asks for is done or merged: \`${cli()} set <id> status=done\`, milestoneDone=true, raised=[].
 4. Otherwise raise at most ${O.planBatch} tasks that can START NOW (their dependencies done or in this batch), no duplicates of existing ones:
-   for each, write a body file (## Goal, ## Why (L1-L4), ## Done means (each line becomes a named test), ## Do not touch, ## Stop and ask when)
+   for each, write a body file (## Goal, ## Why (L1-L4), ## Done means (each line becomes a test name, so write it in public words: no
+   private names or plans), ## Do not touch, ## Stop and ask when)
    and run \`${cli()} new --title "<private title>" --public-title "<neutral public title, no private names>" --milestone <id> --paths <narrow comma list of files or globs> [--depends <numbers>] [--priority 1-9] --body-file <file>\`,
    then delete the body file. Paths must be narrow and honest: lanes run tasks in parallel only when their paths do not clash.
    Work that needs Jordan (a decision, an install, a setting, money, a publish) becomes a task with --depends jordan, saying exactly what he must decide.

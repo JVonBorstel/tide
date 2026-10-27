@@ -80,11 +80,18 @@ function automergedOf(root) {
   }
   return { auto, undone };
 }
-// a job file, live or archived (jobs\archive\<month>\J*.json)
+// id -> month of every archived order, from the archive's own index (jobs\archive\index.jsonl: one line per order, a later line for
+// the same id wins, as kitchen/jobs-lib.ps1 Read-KitchenJobArchive reads it). The jobs folder is never listed (tests/Test-JobsIndex.ps1).
+function archiveMonths(root) {
+  const by = new Map();
+  for (const o of jsonLines(path.join(root, 'jobs', 'archive', 'index.jsonl'))) if (JOB.test(String(o.id || '')) && /^\d{4}-\d{2}$/.test(String(o.month || ''))) by.set(o.id, o.month);
+  return by;
+}
+// a job file, live or archived (jobs\archive\<month>\J*.json, its month from archiveMonths); a jobs\ file wins, as in the store
 function jobFileOf(root, id, months) {
   const live = readJson(path.join(root, 'jobs', id + '.json')); if (live) return live;
-  for (const m of months) { const j = readJson(path.join(root, 'jobs', 'archive', m, id + '.json')); if (j) return j; }
-  return null;
+  const m = months.get(id); if (!m) return null;
+  return readJson(path.join(root, 'jobs', 'archive', m, id + '.json'));
 }
 function resultIds(root) {
   let files = []; try { files = fs.readdirSync(path.join(root, 'results')); } catch { return { merge: [], pr: [] }; }
@@ -123,7 +130,7 @@ export function localRecords(root, sites, jobs = [], github = new Map()) {
   }
   // 2. results\J*.merge.json: every merge a work order made (on GitHub through its PR, or locally with no PR)
   const am = automergedOf(root); const ids = resultIds(root); const live = new Map(jobs.map((j) => [j.id, j]));
-  let months = []; try { months = fs.readdirSync(path.join(root, 'jobs', 'archive')).filter((m) => /^\d{4}-\d{2}$/.test(m)).sort().reverse(); } catch {}
+  const months = archiveMonths(root);
   for (const id of ids.merge) {
     const mr = readJson(path.join(root, 'results', id + '.merge.json')); const at = isoOf(mr?.at); if (!mr || !at) continue;
     const job = live.get(id) || jobFileOf(root, id, months); const pr = mr.via === 'github' ? prRecord(root, id) : null;
@@ -351,7 +358,7 @@ export function makeTowers({ root, repoHome, run, jobs = () => [], isPrivate = (
     return (id) => {
       if (live.has(id)) return !!isPrivate(live.get(id));
       if (!archived.has(id)) {
-        months ??= (() => { try { return fs.readdirSync(path.join(root, 'jobs', 'archive')).filter((m) => /^\d{4}-\d{2}$/.test(m)).sort().reverse(); } catch { return []; } })();
+        months ??= archiveMonths(root);
         const j = jobFileOf(root, id, months); archived.set(id, j ? !!isPrivate(j) : null);
       }
       const p = archived.get(id); return p === null ? true : p;

@@ -62,11 +62,12 @@ function Move-Folder([string]$From, [string]$To) {
 }
 function Created($j) { $c = $j.created; if ($c -is [DateTime]) { return $c.ToUniversalTime() }; try { [DateTimeOffset]::Parse([string]$c).UtcDateTime } catch { $null } }
 
-# ---- the affected orders, derived from the jobs folder and git
+# ---- the affected orders, derived from the job store's live set (kitchen/jobs-lib.ps1, oldest first) and git
+. (Join-Path $kd 'jobs-lib.ps1')
 $affected = [ordered]@{}
-foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $kroot 'jobs') -Filter 'J*.json' -File -ErrorAction SilentlyContinue | Sort-Object { [int]($_.BaseName -replace '\D', '') })) {
-    if ($f.BaseName -notmatch '^J\d+$') { continue }
-    try { $j = Get-Content -LiteralPath $f.FullName -Raw | ConvertFrom-Json -AsHashtable } catch { Say "$($f.BaseName): job file unreadable, skipped"; continue }
+$store = Update-KitchenJobs $kroot 'live' -OnDamaged { param($file, $cause) Say "$($file.BaseName): job file unreadable ($cause), skipped" }
+foreach ($j in @($store.jobs)) {
+    $f = [IO.FileInfo]::new((Join-Path $kroot "jobs\$($j.id).json"))
     if ([string]$j.status -in 'done', 'closed' -or (JobRepo $j) -ne $Repo) { continue }
     $id = [string]$j.id; $branch = "kitchen/$id"
     $tip = "$(& git -C $Repo rev-parse --verify --quiet "refs/heads/$branch^{commit}" 2>$null)".Trim()
