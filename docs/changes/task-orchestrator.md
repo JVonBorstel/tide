@@ -24,4 +24,4 @@
 9. The reviewer records the head it reviewed; checks and review must agree on it, and the merge passes it as `scripts/merge-pr.ps1 -ExpectHead <sha>`, which refuses when the PR is anywhere else.
 Also: note text is made shell-safe; a merge sha of digits stays text; `--max` defaults to 40 (the 1000-agent cap).
 
-**Tests:** Task 130/0 (28 new: start, lock, rounds, held merges, pending CI, head pin, Board from the diff, hits). MergePr 46/0 (2 new: `-ExpectHead` merges at the head, refuses elsewhere).
+**Tests:** Task 131/0 (29 new; the lock is a lease renewed by every long-running agent, so a long build keeps it: start, lock, rounds, held merges, pending CI, head pin, Board from the diff, hits). MergePr 46/0 (2 new: `-ExpectHead` merges at the head, refuses elsewhere).

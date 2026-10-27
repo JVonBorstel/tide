@@ -120,6 +120,11 @@ other commands, no edits.`
 }
 
 // ---- WORK ---------------------------------------------------------------------------------------------------------------------------
+// The lock is a lease, not a fixed expiry: every agent that can run long renews it while it works, so a 3-hour build keeps it; only a run
+// that really stopped (a usage cap, a closed session) goes silent for 90 minutes and can be taken over.
+const keepAlive = () => `Keep this run's lock alive while you work: run \`${cli()} lock heartbeat --run ${ctx.run}\` when you start, before and after every
+suite run, before every push, and at least every 20 minutes during any long step (a lock silent for 90 minutes is free for another
+orchestrator to take). If it prints LOST, finish your current step, then stop and say so in "blocked".`
 function workPrompt(t, fix) {
   const wt = wtOf(t); const br = branchOf(t)
   const start = fix ? `FIX ROUND ${fix.round} of at most ${O.rounds} for task ${t.id}. The worktree ${wt} (branch ${br}, PR #${fix.pr}) exists.
@@ -138,6 +143,7 @@ If a finding is wrong, do not "fix" it: say why in "blocked" only if you cannot 
   return `${start}
 ${RULES}
 ${PRIVATE}
+${keepAlive()}
 Before every push, in this order:
 a. Run the suites the change touches (and their counts go in "tests").
 b. Privacy: copy the files changed against origin/main (\`git -C ${wt} diff --name-only origin/main...HEAD\` plus uncommitted ones) into a
@@ -165,7 +171,8 @@ close, approve or merge. First run ${beat()}.
 ${ciOnly ? 'CI only this time (the suites already ran): return testsPass=false, tests="(not rerun)", failing=[]; those three are ignored.' : `1. The suites this change touches: list the changed files with \`git -C ${b.worktree} diff --name-only origin/main...HEAD\`, then run
    \`pwsh -NoProfile -File ${ctx.checkout}\\kitchen\\stations\\tests.ps1 -Dir ${b.worktree} -Impacted -ChangedFiles <the files>\` (it bounds every
    suite itself). testsPass = its last line says PASS (PARTIAL PASS counts); tests = that line; failing = the failing suite names.`}
-2. CI: \`gh pr checks ${b.pr} -R ${O.repo}\` every 60 s until no check is pending, for at most 25 minutes. ci = green (every check passed or
+2. CI: \`gh pr checks ${b.pr} -R ${O.repo}\` every 60 s until no check is pending, for at most 25 minutes (beat the lock again every
+   10 minutes while you wait, and after the suites). ci = green (every check passed or
    skipped), red (any failed; ciFailing = their names), pending (still running after 25 min) or none (no checks at all).
 head = \`gh pr view ${b.pr} -R ${O.repo} --json headRefOid -q .headRefOid\` (the full sha).`
 }

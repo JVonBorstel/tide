@@ -329,6 +329,8 @@ try {
       && r.labels.join(',') === 'pick (resume),work 5,checks 5,review 5,merge 5,pick,plan,gate (final),unlock', r.error ? r.error.message : r.labels.join(','));
     check('wf models: pick and merge haiku, review and plan and gate sonnet, work inherits', byLabel('pick (resume)').opts.model === 'haiku' && byLabel('merge 5').opts.model === 'haiku'
       && byLabel('review 5').opts.model === 'sonnet' && byLabel('plan').opts.model === 'sonnet' && byLabel('gate (final)').opts.model === 'sonnet' && byLabel('work 5').opts.model === undefined);
+    check('wf lock is a lease: the builder renews it at start, around every suite run, before push and every 20 min of a long step; checks renew it while CI runs',
+      /lock heartbeat --run r1. when you start, before and after every\nsuite run, before every push, and at least every 20 minutes/.test(byLabel('work 5').prompt) && /every\n   10 minutes while you wait/.test(byLabel('checks 5').prompt));
     check('wf lock: the first pick takes the lock and resumes, later picks carry the run id, the end releases it',
       /next --lanes 1 --claim --resume --run new --json/.test(byLabel('pick (resume)').prompt) && /next --lanes 1 --claim --run r1 --json/.test(byLabel('pick').prompt)
       && /lock release --run r1/.test(byLabel('unlock').prompt) && /lock heartbeat --run r1/.test(byLabel('checks 5').prompt) && /lock heartbeat --run r1/.test(byLabel('merge 5').prompt));
