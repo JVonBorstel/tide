@@ -23,7 +23,7 @@ const RECENT_DAYS = 14;
  */
 export function ghRun(args) {
   try {
-    const out = execFileSync(process.env.LEDGER_GH || 'gh', args, { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, maxBuffer: 32 * 1024 * 1024 });
+    const out = execFileSync('gh', args, { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, maxBuffer: 32 * 1024 * 1024 });
     return { ok: true, data: JSON.parse(out) };
   } catch (e) {
     const err = /** @type {any} */ (e); const msg = `${err?.stderr || ''} ${err?.message || ''}`;
