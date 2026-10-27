@@ -1,6 +1,6 @@
 # brain-monitor: agent rules (vendor-neutral)
 0. Read `kitchen/CREED.md` first: the rules every agent (crew, reviewer, Claude session) acts under. The Yard (code: `kitchen/`) puts it in front of every crew's prompt (code: cook); the toolbox talk (code: `memory/BOOT.md`) puts it in front of every session.
-   Names: `gemini-brain/projects/tide/naming/GLOSSARY.md` is the only naming source. Old names are still live in code, paths, IDs and stored values; leave those as they are.
+   Names: `docs/GLOSSARY.md` is the only naming source (the Office keeps only private notes about names). Old names are still live in code, paths, IDs and stored values; leave those as they are.
 1. Read `README.md`. This repo monitors `%USERPROFILE%\gemini-brain`; follow the brain's own rules in its `AGENT_CONTEXT.md` first.
 2. Read-only on the brain. Output only into this repo's `data/`. Never open the brain's protected paths (listed in `scripts/memory-check.ps1`). Never print or store a secret value.
 3. No network, no installs, no scheduled tasks, no new git remote, no model downloads without Jordan's explicit yes. The home repo is the PUBLIC `JVonBorstel/tide` (remote `origin`); the old private repo is remote `private`, kept as history (its open PRs are ported, never merged there). Open PRs on tide; merge only with `scripts/merge-pr.ps1 -Repo JVonBorstel/tide -Pr N`.
