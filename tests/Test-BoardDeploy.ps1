@@ -77,6 +77,8 @@ try {
 
     # 7. the restart decision: the server fingerprint covers every local module server.mjs reaches, not server.mjs alone
     #    (a merge that changed only towers.mjs or work/api.mjs once left the live Board on old code)
+    # 8. the swap never asks a still-Running task to start (a no-op: 10-27 the Board sat offline 45 s until the watchdog restarted it)
+    Check 'update.ps1 starts the Board task only through Start-BoardTask, which waits for the old run to end and stops it if it has not' (([regex]::Matches($src, 'Start-ScheduledTask')).Count -eq 1 -and $src -match "(?s)function Start-BoardTask.*?State -eq 'Running'.*?Stop-ScheduledTask -TaskName \`$name.*?Start-ScheduledTask -TaskName \`$name" -and ([regex]::Matches($src, 'Start-BoardTask \$boardTask')).Count -eq 2)
     $sid = Join-Path $repo 'pass-app\server-id.mjs'
     Check 'update.ps1 asks server-id.mjs for the fingerprint, never hashes server.mjs alone' ($src -match 'server-id\.mjs' -and $src -notmatch 'Get-FileHash \$srv')
     $fp = Join-Path $root 'fp'; New-Item -ItemType Directory -Force (Join-Path $fp 'app'), (Join-Path $fp 'lib') | Out-Null

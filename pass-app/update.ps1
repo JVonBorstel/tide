@@ -25,6 +25,15 @@ function Get-BoardTaskName([string]$path) {
   $names[0]
 }
 
+# Start the Board's task. The task runs start-hidden.vbs, which waits on node, so it reads "Running" until wscript notices node is gone;
+# starting a task that is still Running does nothing (10-27: a deploy sat 45 s offline until the watchdog restarted it).
+# Wait up to 5 s for the old run to end, stop it if it has not, then start.
+function Start-BoardTask([string]$name) {
+  for ($i = 0; $i -lt 20 -and (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue).State -eq 'Running'; $i++) { Start-Sleep -Milliseconds 250 }
+  if ((Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue).State -eq 'Running') { Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue }
+  Start-ScheduledTask -TaskName $name
+}
+
 if ($CheckPage) {
   $miss = @(Get-MissingMarkers (Get-Content -LiteralPath $CheckPage -Raw))
   if ($miss.Count) { Fail "the page lacks $($miss -join ' and ')" }
@@ -73,10 +82,10 @@ if ($TrialOnly) { 'trial only: the live server was not touched'; exit 0 }
 $sw = [Diagnostics.Stopwatch]::StartNew()
 try { Invoke-RestMethod "http://127.0.0.1:$Port/api/bye" -Method Post -Headers $auth -TimeoutSec 3 | Out-Null; Start-Sleep -Milliseconds 300 } catch {}
 Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
-Start-ScheduledTask -TaskName $boardTask
+Start-BoardTask $boardTask
 $new = $null; foreach ($i in 1..60) { $new = Health $Port; if ($new -and $new.server -eq $want) { break }; Start-Sleep -Milliseconds 250 }
 if (-not $new -or $new.server -ne $want) {
-  Start-ScheduledTask -TaskName $boardTask; Start-Sleep 3; $new = Health $Port
+  Start-BoardTask $boardTask; Start-Sleep 3; $new = Health $Port
   if (-not $new) { Fail 'Chef did not come back; the supervisor watchdog will keep trying every minute. Check pass-app logs.' }
 }
 "Chef $($new.version) live (build $($new.build)); offline for $([Math]::Round($sw.Elapsed.TotalSeconds,1)) s; phones reconnect on their own."
