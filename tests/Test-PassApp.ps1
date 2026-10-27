@@ -1136,6 +1136,11 @@ console.log(JSON.stringify({ banners: siteStopBanners(items, { when }), rows: si
     try { $slTest = ($slOut -join "`n") | ConvertFrom-Json } catch { $slTest = $null }
     Check 'status line: test-status-line.mjs exits 0 and reported at least 25 checks' ($slExit -eq 0 -and @($slTest).Count -ge 25)
     foreach ($t in @($slTest)) { if ($t) { Check "status line: $($t.name)" ($t.pass -eq $true) } }
+    # D-4 the WebGL2 renderer in a real browser (pass-app/test-scene-gl-screen.mjs: a throwaway server, headless Chrome or Edge with and without the graphics chip)
+    $glOut = & node (Join-Path $repo 'pass-app\test-scene-gl-screen.mjs') 2>$null; $glExit = $LASTEXITCODE; $glTest = $null
+    try { $glTest = ($glOut -join "`n") | ConvertFrom-Json } catch { $glTest = $null }
+    Check 'WebGL2 screen: test-scene-gl-screen.mjs exits 0 and reported at least 6 checks' ($glExit -eq 0 -and @($glTest).Count -ge 6)
+    foreach ($t in @($glTest)) { if ($t) { Check "WebGL2 screen: $($t.name)" ($t.pass -eq $true) } }
     Check 'City_TowersNeedsKey: /api/towers needs the key' ((Get-Code "$base/api/towers") -eq 401)
     $twRaw = (Invoke-WebRequest "$base/api/towers" -Headers $auth).Content; $tw = $twRaw | ConvertFrom-Json
     Check 'City_TowersRoute: ok, this repo as its one building (no bootRepos here), with a 12-hex version' ($tw.ok -and @($tw.towers).Count -eq 1 -and $tw.v -match '^[0-9a-f]{12}$' -and @($tw.towers)[0].kind -in @('tower', 'lot'))
