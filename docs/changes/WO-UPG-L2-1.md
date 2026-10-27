@@ -18,13 +18,44 @@
 - Build-way 2.1 and 2.2: a durable record that finishes the work, so no chat has to remember a retry, a freshen or Jordan's tap.
 - Jordan picked Temporal (build-way 10.2). The parts that do not depend on the engine come first. Temporal plugs in behind the same interface after the installs.
 
+**Review fixes** (from the verifier, 2026-10-26: `audits/review-tide-33-34-2026-10-26.md`):
+- **Governor.**
+  - Within 60 min of the 5-hour reset, it uses everything that is left: 90 % used 30 min before the reset runs. Otherwise the bands apply.
+  - The weekly limit is now enforced: hold from 85 %, stop from 95 %.
+  - A missing weekly number is unknown, which means hold.
+- **Steps that change things** write an intent before the effect. After a crash, a probe decides: done is recorded, not done is rerun, and unknown is held with a card. Merge's probe asks GitHub.
+- **A verdict** with no builder, no reviewer, or the same crew in both now moves nothing, even in a log edited by hand.
+- **Stale commands.** A command that is no longer the order's next one is not carried out, so a retried Temporal activity cannot ask a second card.
+- **The Temporal workflow** counts a wake before each read of the log, so a signal that lands during a read is not lost.
+- **The worker** takes `--repos` (each repo's local checkout). It refuses `--mode new` unless the switch `engine.adopted` is `"new"`.
+- **Exit 3** (adopt's refusal) is now held, not retried.
+- **`appendAll`** writes several events all or none.
+
 **Tests:**
-- Engine 95/0 with 3 skipped. The 3 skipped are Temporal's live tests (CLI and packages not installed). Run through run-bounded on Windows.
-- **wo:** every stage edge has a named test (26 edges, plus a check that none lacks one). Merge only after a "Yes" on this WO's own card for this head: named cases, plus 3,000 seeded random event orders, 72 of which reached a merge. After 2 retries the order is stuck and asks one re-plan-or-drop card.
-- **runner:** two real kill tests. A child process is killed mid-step, after the result is stored and during the step. It resumes exactly once. A timer fires after a restart, in a new process. A signal from another process wakes a waiting order. Backoff caps at 3600 s.
-- **governor:** it holds heavy crews at and above 70 %, stops at 85 %, and treats 7 kinds of unknown reading as hold.
-- **activity:** one call per key, on disk too. The station refusals are tested. One real station double runs through `run-bounded.ps1`: its exit 11 is kept, and a time limit comes back as 124.
-- **Not run:** the 3 Temporal live tests. They have never run on this PC: UNVERIFIED until the installs.
+- **Totals:** Engine 119/0 with 4 skipped. The 4 skipped are Temporal's live tests (the CLI and packages are not installed). KitchenSupervisor 222/0. Both ran through run-bounded on Windows.
+- **wo:**
+  - every stage edge has a named test (26 edges), plus a check that none lacks one;
+  - merge only after a "Yes" on this WO's own card for this head: named cases plus 3,000 seeded random event orders;
+  - 5 hand-edited verdicts move nothing;
+  - after 2 retries, one card.
+- **runner:**
+  - real kill tests on a child process. The read-only step is killed after its result is stored, and during the step;
+  - the merge is killed after its effect, before its effect, and with no probe. In all three it merges once in total, and the no-probe case holds with a card;
+  - a timer fires after a restart;
+  - a signal wakes a waiting order;
+  - backoff caps at 3600 s;
+  - appendAll writes all or none.
+- **governor:** the burn window, the week, the bands, and 9 kinds of unknown reading.
+- **activity:**
+  - intent and probe: done, not done, unknown, and no probe;
+  - ghMergeProbe's answers;
+  - the station refusals, including a repo with no checkout;
+  - one real station double through run-bounded.
+- **temporal, always run:**
+  - the workflow raced under a stand-in for `@temporalio/workflow`, with a wake sent during `loadEvents`. The old code waited forever; the fixed code ships;
+  - the stale retry;
+  - the switch check.
+- **Not run:** the 4 Temporal live tests. They have never run on this PC: UNVERIFIED until the installs.
 
 **L1-L4:**
 - **Person:** Jordan's tap stays the only way to merge. The engine cannot merge without a Yes on the card for that exact head.

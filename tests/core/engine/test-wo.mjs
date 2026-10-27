@@ -121,10 +121,21 @@ function testStuckCard() {
   check('stuck: while stuck, progress events do not move the order (only the card does)', asked.state === 'stuck' && asked.stage === 'review', `${asked.state} ${asked.stage}`);
 }
 
+// The log is a file a hand can edit: a verdict that skipped the sink's contract check must still not move the order.
+function testFairVerdict() {
+  const l = log().created().opened(H1);
+  const raw = (data) => ({ v: '1.0', seq: 99, at: '2030-01-07T10:00:00Z', actor: 'crew:verifier-1', kind: 'review.verdict', wo: l.wo, data: { verdict: 'ship', reasons: 'x', head: H1, ...data }, proof: null });
+  const cases = { 'no builder': raw({ reviewer: 'crew:verifier-1' }), 'reviewer is the builder': raw({ reviewer: 'crew:a', builder: 'crew:a' }), 'empty builder': raw({ reviewer: 'crew:verifier-1', builder: '' }),
+    'no reviewer': raw({ builder: 'crew:builder-1' }), 'not a crew': raw({ reviewer: 'jordan', builder: 'crew:builder-1' }) };
+  const moved = Object.entries(cases).filter(([, e]) => reduce([...l.events, e], l.wo).stage !== 'review').map(([k]) => k);
+  check('reviewer is never the builder: a SHIP with no builder, no reviewer, the same crew or a non-crew moves nothing (5 tampered lines)', moved.length === 0, moved.join(', '));
+  check('reviewer is never the builder: a fix verdict with no builder does not use a retry either', reduce([...l.events, { ...cases['no builder'], data: { ...cases['no builder'].data, verdict: 'fix' } }], l.wo).retries === 0);
+}
+
 function testShape() {
   const schema = JSON.parse(fs.readFileSync(path.join(repo, 'core/contracts/common.schema.json'), 'utf8'));
   check('STAGES in wo.mjs equals the contract stage enum (common.schema.json)', JSON.stringify(STAGES) === JSON.stringify(schema.$defs.stage.enum), STAGES.join());
-  check('classify: 0 ok, 11 later, 10 held, 127 not-built, 1/124/125 failed', [0, 11, 10, 127, 1, 124, 125].map(classify).join() === 'ok,later,held,not-built,failed,failed,failed');
+  check('classify: 0 ok, 11 later, 10 and 3 (a refusal) held, 127 not-built, 1/124/125 failed', [0, 11, 10, 3, 127, 1, 124, 125].map(classify).join() === 'ok,later,held,held,not-built,failed,failed,failed');
   const s0 = initial('WO-2101');
   check('step ignores another WO\'s event', step(s0, { ...log('WO-2199').created().events[0] }) === s0);
   check('wo.mjs is pure: no import of node: modules or files (it runs inside a Temporal workflow)', !/from 'node:|require\(/.test(fs.readFileSync(path.join(repo, 'core/engine/wo.mjs'), 'utf8')));
@@ -132,4 +143,4 @@ function testShape() {
   check('every command says why', all.every((l) => typeof nx(l).why === 'string' && nx(l).why.length > 0));
 }
 
-export function run() { testEdges(); testMergeGate(); testStuckCard(); testShape(); }
+export function run() { testEdges(); testMergeGate(); testStuckCard(); testFairVerdict(); testShape(); }

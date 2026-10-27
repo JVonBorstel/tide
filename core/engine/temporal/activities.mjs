@@ -17,7 +17,7 @@ export function createActivities(ports) {
     /** Carry out one lifecycle command (activity, ask, close, drop); returns the events written and any governor hold. */
     async runCommand(/** @type {string} */ wo, /** @type {any} */ cmd) {
       const r = await execute(wo, cmd, { ...ports, clock });
-      return { events: r.events, hold: r.hold || null, replayed: !!r.replayed };
+      return { events: r.events, hold: r.hold || null, replayed: !!r.replayed, stale: r.stale || null };
     },
     /** A durable timer fired (retry backoff, a ci-wait poll): record it so the lifecycle moves on. */
     async addTimer(/** @type {string} */ wo, /** @type {number} */ sec, /** @type {string} */ why) {

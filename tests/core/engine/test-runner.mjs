@@ -20,8 +20,8 @@ const runChild = (dir, mode, env = {}) => {
   try { return JSON.parse(r.stdout.trim().split('\n').pop()); } catch { return { status: 'child failed', why: `${r.status} ${r.stderr.slice(-300)}` }; }
 };
 // Start the child with CRASH set, wait for its marker (it is now inside the step), kill it hard, and say whether it was killed.
-async function killMidStep(dir, crash, env = {}) {
-  const p = spawn(process.execPath, [child, dir, WO, 'start'], { env: { ...process.env, ...env, CRASH: crash }, stdio: 'ignore' });
+async function killMidStep(dir, crash, env = {}, mode = 'start') {
+  const p = spawn(process.execPath, [child, dir, WO, mode], { env: { ...process.env, ...env, CRASH: crash }, stdio: 'ignore' });
   const marker = path.join(dir, `${crash}.marker`);
   for (let i = 0; i < 400 && !fs.existsSync(marker); i++) await new Promise((r) => setTimeout(r, 50));
   const reached = fs.existsSync(marker);
@@ -42,8 +42,29 @@ async function testKill() {
       const effects = count(dir, 'ci-wait');
       const once = kinds(dir, 'step.started', 'ci-wait') === 1 && kinds(dir, 'step.done', 'ci-wait') === 1 && kinds(dir, 'ci.result') === 1;
       const want = crash === 'after-store' ? 1 : 2; // killed after the result was stored: replayed, not rerun; killed during: the unfinished run is redone
-      check(`kill test (${crash}): a crash mid-step resumes exactly once (one step.started, one step.done, one ci.result; ${want} run(s) of the step)`,
+      check(`kill test (${crash}): a crash mid-step resumes and is recorded exactly once (one step.started, one step.done, one ci.result; ${want} run(s) of this read-only step)`,
         reached && once && effects === want && after.stage === 'jordan', `marker ${reached}; started ${kinds(dir, 'step.started', 'ci-wait')} done ${kinds(dir, 'step.done', 'ci-wait')} ci ${kinds(dir, 'ci.result')}; runs ${effects}; ${JSON.stringify(after)}`);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+}
+
+// A crash during a merge (a step that changes things): the restart probes the outside world and never merges twice.
+async function testKillMerge() {
+  const cases = [
+    ['merge-after-effect', {}, 'done', 1, 'shipped'],     // merged, then killed before the result was stored: probe says done, no second merge
+    ['merge-before-effect', {}, 'not-done', 1, 'shipped'], // killed before the merge happened: probe says not done, it runs once
+    ['merge-after-effect', { PROBE: 'none' }, 'held', 1, 'stuck'], // no way to check: held for Jordan with a card, never merged twice
+  ];
+  for (const [crash, env, want, merges, state] of cases) {
+    const dir = tmp(`kill-${crash}`);
+    try {
+      runChild(dir, 'start', env);
+      const reached = await killMidStep(dir, crash, env, 'signal-yes');
+      const after = runChild(dir, 'drive', env);
+      const asked = events(dir).filter((e) => e.kind === 'decision.asked').map((e) => e.data.decision.kind);
+      check(`kill during merge (${crash}${env.PROBE ? ', no probe' : ''}): the restart ${want === 'held' ? 'holds it with a re-plan-or-drop card' : `probes (${want})`} and the merge happens ${merges} time(s) in all`,
+        reached && count(dir, 'merge') === merges && kinds(dir, 'merged') === (state === 'shipped' ? 1 : 0) && after.state === state && (state !== 'stuck' || asked.includes('question')),
+        `marker ${reached}; merges ${count(dir, 'merge')}; merged events ${kinds(dir, 'merged')}; ${JSON.stringify(after)}; cards ${asked.join()}`);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 }
@@ -112,6 +133,11 @@ async function testLogAndShape() {
     let msg = ''; try { sink.append({ at: 'x', actor: 'engine', kind: 'wo.created', wo: WO, data: {}, proof: null }); } catch (err) { msg = err.message; }
     check('event log: an event the contract refuses is never written', /not valid/.test(msg) && sink.all().length === 2, msg.slice(0, 120));
     check('event log: no lock file left behind', !fs.existsSync(`${file}.lock`));
+    const timer = (n, at = '2030-01-07T09:03:00Z') => ({ at, actor: 'engine', kind: 'x.engine.timer', wo: WO, data: { sec: n }, proof: null });
+    let batchErr = ''; try { sink.appendAll([timer(1), { ...timer(2), at: 'bad' }]); } catch (err) { batchErr = err.message; }
+    const two = sink.appendAll([timer(3), timer(4)]);
+    check('event log: appendAll writes all or none (one bad event writes nothing), with seq in order', /not valid/.test(batchErr) && two.map((x) => x.seq).join() === '3,4' && sink.all().length === 4,
+      `${batchErr.slice(0, 60)}; ${sink.all().length} lines`);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   const eng = createFakeEngine({ sink: memorySink() });
   check(`adapter: the fake engine has every adapter method (${ADAPTER_METHODS.join(', ')})`, ADAPTER_METHODS.every((m) => typeof eng[m] === 'function'));
@@ -120,4 +146,4 @@ async function testLogAndShape() {
   check('drive never loops forever: past maxSteps it stops and says why', r.status === 'stopped' && /maxSteps|more than 1 steps/.test(r.why), r.why);
 }
 
-export async function run() { await testKill(); await testTimer(); await testSignal(); await testBackoff(); await testGovernorGate(); await testLogAndShape(); }
+export async function run() { await testKill(); await testKillMerge(); await testTimer(); await testSignal(); await testBackoff(); await testGovernorGate(); await testLogAndShape(); }

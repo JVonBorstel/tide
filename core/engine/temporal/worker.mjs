@@ -3,7 +3,10 @@
 // engine's own folder (<state>\engine: events.jsonl, activities\). Needs Jordan's two install taps (INSTALL.md); without them it exits 3
 // naming what is missing. Registering it as a task at logon is a separate card (build-way 10.3), never done here.
 //   node core/engine/temporal/worker.mjs --state <folder> [--address 127.0.0.1:7233] [--namespace default] [--queue tide-engine]
-//        [--mode shadow|new] [--impls <module exporting impls(options)>]
+//        [--mode shadow|new] [--repos <json: {"owner/name": "<local checkout>"}>] [--kitchen-json <kitchen.json>] [--impls <module>]
+// --repos: the local checkout of each repo (stations take -Repo as a path); a repo missing from it makes its station steps wait (127).
+// --mode new is refused unless the kitchen.json upgrade switch engine.adopted is "new" (default file: this repo's kitchen/kitchen.json),
+// so an operator flag alone can never make the engine change things.
 // --address must be this PC (127.0.0.1, localhost or ::1): the dev server is "not for production" (relaxed checks), so it is never
 // reached over a network from here. --impls swaps the station activities for test doubles (tests/core/engine/temporal-impls.mjs).
 // Exit: 0 stopped cleanly, 2 bad arguments, 3 Temporal not installed or not reachable.
@@ -14,13 +17,15 @@ import { fileSink } from '../events.mjs';
 import { fileStore, stationActivities } from '../activity.mjs';
 import { readUsage } from '../governor.mjs';
 import { cardsIn } from '../cards.mjs';
+import { readSwitches } from '../../contracts/upgrade.mjs';
+import fs from 'node:fs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULTS = { address: '127.0.0.1:7233', namespace: 'default', queue: 'tide-engine', mode: 'shadow' };
 const LOOPBACK = /^(127\.0\.0\.1|localhost|\[::1\]|::1):[0-9]{2,5}$/;
 
 export function parseArgs(argv) {
-  const o = { ...DEFAULTS, state: '', impls: '' };
+  const o = { ...DEFAULTS, state: '', impls: '', repos: '', 'kitchen-json': path.join(here, '..', '..', '..', 'kitchen', 'kitchen.json') };
   for (let i = 0; i < argv.length; i += 2) {
     const k = String(argv[i]).replace(/^--/, ''); const v = argv[i + 1];
     if (!(k in o) || v === undefined) return { error: `unknown or empty option ${argv[i]}` };
@@ -29,6 +34,10 @@ export function parseArgs(argv) {
   if (!o.state) return { error: '--state <folder> is required (a scratch folder in tests; never the live state folder while the switch is old)' };
   if (!LOOPBACK.test(o.address)) return { error: `--address ${o.address} is not this PC; only 127.0.0.1, localhost or ::1` };
   if (!['shadow', 'new'].includes(o.mode)) return { error: `--mode ${o.mode}: shadow or new` };
+  if (o.mode === 'new') {
+    const sw = readSwitches(o['kitchen-json']);
+    if (sw.switches['engine.adopted'] !== 'new') return { error: `--mode new needs the upgrade switch engine.adopted = "new" in ${o['kitchen-json']} (it is "${sw.switches['engine.adopted']}"${sw.error ? `; ${sw.error}` : ''}); moving it is Jordan's card` };
+  }
   return { o };
 }
 
@@ -46,7 +55,12 @@ export async function main(argv) {
   try { w = await load('worker'); } catch (err) { console.log(`worker: ${/** @type {Error} */ (err).message}`); return 3; }
   const dir = path.join(o.state, 'engine');
   const sink = fileSink(path.join(dir, 'events.jsonl'));
-  const base = stationActivities({ mode: o.mode, kitchen: o.state, answered: answeredYes(sink) });
+  let repos = {};
+  if (o.repos) {
+    try { repos = JSON.parse(fs.readFileSync(o.repos, 'utf8')); } catch (err) { console.log(`worker: --repos does not read: ${/** @type {Error} */ (err).message}`); return 2; }
+    if (!repos || typeof repos !== 'object' || Object.values(repos).some((p) => typeof p !== 'string' || !p)) { console.log('worker: --repos must map "owner/name" to a checkout path'); return 2; }
+  }
+  const base = stationActivities({ mode: o.mode, kitchen: o.state, answered: answeredYes(sink), repoPath: (r) => (Object.prototype.hasOwnProperty.call(repos, r) ? repos[r] : null) });
   const impls = o.impls ? { ...base, ...(await import(pathToFileURL(path.resolve(o.impls)).href)).impls({ state: o.state }) } : base;
   const activities = createActivities({ sink, store: fileStore(path.join(dir, 'activities')), impls, usage: () => readUsage(path.join(o.state, 'plan-usage.json')) });
   let connection;

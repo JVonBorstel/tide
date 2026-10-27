@@ -7,11 +7,11 @@ The engine carries each work order (WO) from build to closed. It retries, waits 
 | File | What it does |
 |---|---|
 | `wo.mjs` | The WO lifecycle as data: the stage edges of build-way 2.1 (`EDGES`), `reduce(events)` to get a state and `next(state)` to get the one next command. Pure code (no files, no clock), so the same code runs inside Temporal. |
-| `activity.mjs` | The activity contract (`core/contracts/activity*.schema.json`). `once()` runs a step at most once per idempotency key. Yard stations run as activities through `scripts/run-bounded.ps1`; the stations themselves are never edited. |
+| `activity.mjs` | The activity contract (`core/contracts/activity*.schema.json`). `once()` never runs a finished step again (one result per idempotency key). It checks before rerunning a step that changes things (see below). Yard stations run as activities through `scripts/run-bounded.ps1`; the stations themselves are never edited. |
 | `driver.mjs` | Carries out one command: run an activity, ask a card, close or drop. It writes the contract events that record it. Both engines use it. |
 | `events.mjs` | The event sink. `fileSink` writes `<state>\engine\events.jsonl` (append-only, contract-checked, locked). `memorySink` is for tests. |
 | `cards.mjs` | Decision cards (`decision.schema.json`) and the standing-yes lookup. |
-| `governor.mjs` | May a crew start now? It reads `<state>\plan-usage.json`. Below 70 %: run. From 70 %: hold. From 85 %: stop. Unknown: hold. |
+| `governor.mjs` | May a crew start now? It reads `<state>\plan-usage.json`. Unknown readings, including a missing weekly number, mean hold. The week: from 85 % hold, from 95 % stop. In the last 60 min before the 5-hour window resets: run until 100 %, because what is left is lost at the reset. Otherwise: below 70 % run, from 70 % hold, from 85 % stop. |
 | `engine.mjs` | The adapter interface (`start`, `signal`, `query`, `close`), `openEngine()` and `temporalStatus()`. |
 | `fake.mjs` | The in-process engine. It needs no install and keeps everything in files in its own folder. It is used by the tests and as the stand-in until Temporal runs. |
 | `temporal/` | The Temporal engine: the workflow, the activities, the worker and the client. It needs Jordan's two installs (`temporal/INSTALL.md`). |
@@ -26,7 +26,13 @@ The engine carries each work order (WO) from build to closed. It retries, waits 
   - While the switch is `shadow`, the merge station does not run at all.
 - **Retries stop at 2.** After 2 retries (each with a fresh crew), the order is stuck. It asks one card: "Re-plan or drop?"
 - **Stations that change things only run when the switch is `new`.** In `shadow`, only read-only stations (ci-wait) run.
-- **Exactly once.** A crash mid-step resumes the step exactly once: one `step.started`, one `step.done`. A step whose result was already stored is replayed from the store, not run again.
+  - The worker's `--mode new` is refused unless `kitchen.json` says `engine.adopted: "new"`.
+  - Each repo's local checkout comes from `--repos`. A repo with no checkout listed waits (exit 127).
+- **The reviewer is never the builder.** A verdict moves the order only when it names a crew reviewer and a different crew builder. This holds even in a log edited by hand.
+- **A finished step never runs twice.** A crash mid-step resumes it under the same key and records it once: one `step.started`, one `step.done`. A result that was already stored is replayed, not rerun.
+  - A read-only step (ci-wait) interrupted mid-run just runs again.
+  - A step that changes things (merge, freshen, verify) writes an intent before it starts. After a crash, a probe checks the outside world first. For merge, it asks GitHub whether the PR is merged.
+  - Done: recorded, not run again. Not done: run. Unknown, or no probe: held for Jordan with a card, never a blind second run.
 
 ## Commands
 
