@@ -153,6 +153,9 @@ The plan is gemini-brain `projects/tide/` (02-the-watch.md). What the Yard runs,
   (weekly): last night's off-drive backup restored into TEMP and every file parsed. The doctor alerts only when the findings change.
 - **Every watcher writes a heartbeat** (`name`, `lastRun`, `everyMin`, `checked`, `found`). The Board's server, a separate process, raises an
   alarm when the tick or any heartbeat is late, so a dead tick is still seen. Tests: `Test-Ledger`, `Test-Watch`, `Test-PassApp`.
+- **The new ledger (upgrade lane L1, switched off):** `node core/ledger/cli.mjs build|show|queue|streams|flags|parity|backup` builds an
+  append-only event store (`tide.db`) from the Yard, GitHub, worktrees and plans, on a scratch copy only while `upgrade.ledger` is `old`.
+  `parity` checks it against `ledger.ps1`. See `core/ledger/README.md`. Tests: `Test-CoreLedger`.
 
 ## The Dispatcher (code: `sous-chef.ps1`)
 Every AI step asks it which crew (code: cook) to use, and it answers with one choice and its reasons (shown in the step log, the Board app and the status board):
