@@ -24,3 +24,11 @@
 
 **Tests:** `tests/core/ledger/test-ledger.mjs`: 214/0 (28 new, named `l4: ...`, adversarial: each pattern, its near misses, the public
 repo and ordinary links kept). Secret-shaped test values are built at run time, so the CI secret scan stays clean.
+
+**Follow-up (review of #38, 2026-10-26):**
+- F1: a 40 or 64 hex git id given to a key that names one (`sha=`, `commit:`, `head:`, `tree:`, `merge_sha`, `headSha`, `sha256:`) is no longer `<secret>`; other hex values still are.
+- F2: remotes followed by `,` `;` `>` `|` `*` or a full stop are redacted; nested `git@host:grp/sub/repo` paths; `ssh://[user@]host:port/...` (the port is no longer read as the owner); `git://`, `git+https://`.
+- F3: remotes in any case (`HTTPS://GITHUB.COM`, `GIT@`); `api.github.com/repos/o/r`, `raw.githubusercontent.com/o/r`, `codeload.github.com`, `dev.azure.com/.../_git/r`; a user part other than `git@` is dropped from a remote. A bare `Owner/repo` is redacted after `gh repo clone`, `--repo`, `-R`, `repo:`, as `Owner/repo#12` or `@sha`, with the public owner (`JVonBorstel/` anything but the public repo), or when shaped like one (Capitalized owner, repo with a dash, dot, underscore or digit). A plain lower-case `owner/repo` with no cue is not guessed (it would hit paths): the private words list covers it.
+- F4: secret keys quoted in JSON (`"token": "..."`, `"apiKey":"..."`, escaped `\"token\":\"...\"`).
+- F6: a tailnet name needs a digit (`tail-fade`, `tail-dead`, `tailadded` stay; `tail1a2b3c`, `tail-9f8e7d` and `*.ts.net` go).
+- Tests (ledger suite now 343/0): `testRedactionHardening` in `tests/core/ledger/test-ledger.mjs` (`l4f: ...`): git ids kept, odd hex still redacted, private remote shapes, bare/cased/api/raw shapes, the public repo in many forms, near misses, JSON keys, tailnet words, idempotence, long-input timing. Placeholders only (`Example/private-repo`).

@@ -686,8 +686,69 @@ async function testSecrets() {
   check('l4: public code, warning and example use neutral words ("private topics", no job-search words)', /private topics/.test(src) && !/job[- ]?(hunt|search)/i.test(src));
 }
 
+// ---- WO-UPG-L1-4 follow-up (review of #38): git ids, more remote shapes, JSON-quoted keys, tailnet-like words ----
+// fixtures are synthetic and built at run time; repo names are placeholders (Example/private-repo), never a real private name
+async function testRedactionHardening() {
+  const { makeRedactor, MARK } = await import('../../../core/ledger/share.mjs');
+  const r = makeRedactor(); const sha1 = 'a1b2c3d4e5'.repeat(4), sha256 = 'f00dcafe'.repeat(8), short = 'a1b2c3d', mid = 'a1b2c3d4e5f6';
+  // F1: a git id stays under every key that names one
+  const keep = [`merged at ${sha1} (head: ${sha1})`, `sha=${sha1}`, `commit: ${sha1}`, `tree: ${sha1}`, `head=${sha1}`, `HEAD: ${sha1}`, `merge_sha=${sha1}`, `headSha: ${sha1}`, `rev=${sha256}`,
+    `sha256:${sha256}`, `{"head":"${sha1}"}`, `{"commit": "${sha256}"}`, `commit: ${short}`, `sha=${mid}`, `tree: ${mid}`, `see commit ${sha1} on main`];
+  for (const t of keep) check(`l4f: a git id stays (${t.slice(0, 18)})`, r(t) === t, r(t));
+  const odd = [`session=${sha1}`, `sha=${'a1b2c3d4e5'.repeat(5)}`, `commit: ${'a1b2c3d4e5'.repeat(3)}ab`, `nonce:${sha1}`];   // not a git id: wrong key or wrong length
+  for (const t of odd) check(`l4f: a hex value that is not a git id is still a secret (${t.slice(0, 14)})`, r(t).includes(MARK.secret) && !r(t).includes('a1b2c3d4e5a1b2c3d4e5'), r(t));
+  // F2: remotes followed by punctuation, nested paths, ssh with a port
+  for (const [name, t] of [['comma', 'see https://github.com/Example/private-repo, then'], ['gt', '<https://github.com/Example/private-repo>'], ['semicolon', 'a https://github.com/Example/private-repo; b'],
+    ['star', '*https://github.com/Example/private-repo*'], ['pipe', 'https://github.com/Example/private-repo|x'], ['brace', '{"u":"https://github.com/Example/private-repo"}'], ['period', 'clone https://github.com/Example/private-repo.'],
+    ['colon', 'url https://github.com/Example/private-repo:'], ['git@ nested', 'git@gitlab.com:grp/sub/private-repo.git'], ['git@ deep', 'git@host.example:a/b/c/private-repo'], ['ssh port', 'ssh://git@host.example:2222/team/private-repo.git'],
+    ['ssh port no user', 'ssh://host.example:2222/team/private-repo.git'], ['git://', 'git://host.example/team/private-repo.git'], ['git+https', 'git+https://host.example/team/private-repo.git#v1'], ['gitlab nested', 'https://gitlab.com/grp/sub/private-repo/-/issues/3'],
+    ['azure', 'https://dev.azure.com/org/proj/_git/private-repo'], ['userinfo', 'https://someuser:pw@github.com/Example/private-repo.git'], ['scp semicolon', 'git@github.com:Example/private-repo.git;']]) {
+    const out = r(t); check(`l4f: private remote redacted (${name})`, !out.includes('private-repo') && !out.includes('Example') && out.includes(MARK.repo), out);
+  }
+  check('l4f: a private remote keeps its tail and punctuation', r('see https://github.com/Example/private-repo/pull/7, ok') === `see https://github.com/${MARK.repo}/pull/7, ok`, r('see https://github.com/Example/private-repo/pull/7, ok'));
+  check('l4f: ssh port is not read as the owner', r('ssh://git@host.example:2222/team/private-repo.git') === `ssh://git@host.example:2222/${MARK.repo}.git`, r('ssh://git@host.example:2222/team/private-repo.git'));
+  // F3: case, api and raw hosts, bare owner/repo
+  for (const [name, t] of [['HTTPS GITHUB', 'HTTPS://GITHUB.COM/Example/private-repo'], ['GIT@', 'GIT@GITHUB.COM:Example/private-repo.git'], ['mixed', 'Git+SSH://Git@Host.Test/team/private-repo.git'],
+    ['api', 'https://api.github.com/repos/Example/private-repo/pulls/4'], ['API upper', 'HTTPS://API.GITHUB.COM/REPOS/Example/private-repo'], ['raw', 'https://raw.githubusercontent.com/Example/private-repo/main/a.md'],
+    ['codeload', 'https://codeload.github.com/Example/private-repo/zip/main'],
+    ['gh clone', 'gh repo clone Example/private-repo'], ['--repo', 'gh pr view 3 --repo Example/private-repo'], ['--repo=', '--repo=Example/private-repo'], ['-R', 'gh issue list -R Example/private-repo'],
+    ['repo:', 'repo: Example/private-repo'], ['issue ref', 'fixes Example/private-repo#12'], ['commit ref', 'Example/private-repo@a1b2c3d'], ['bare shape', 'pushed to Example/private-repo today'], ['bare sentence end', 'pushed to Example/private-repo.'],
+    ['bare in parens', '(Example/private-repo)'], ['public owner, other repo', 'JVonBorstel/other-repo'], ['public owner lower', 'jvonborstel/Other_Repo'], ['public owner, tide lookalike', 'JVonBorstel/tide-private']]) {
+    const out = r(t); check(`l4f: ${name} is redacted`, !out.includes('private-repo') && !out.includes('Example') && !/other-repo|other_repo|tide-private/i.test(out) && out.includes(MARK.repo), out);
+  }
+  for (const t of ['https://github.com/JVonBorstel/tide', 'HTTPS://GITHUB.COM/JVONBORSTEL/TIDE.git', 'GIT@GITHUB.COM:JVonBorstel/tide.git', 'git@github.com:jvonborstel/tide.git', 'ssh://git@github.com/JVonBorstel/tide.git',
+    'https://api.github.com/repos/JVonBorstel/tide/pulls/38', 'https://raw.githubusercontent.com/JVonBorstel/tide/main/README.md', 'gh pr view 38 --repo JVonBorstel/tide', 'JVonBorstel/tide', 'JVonBorstel/tide#38', 'jvonborstel/Tide.',
+    'https://github.com/JVonBorstel/tide/pull/38', 'see https://github.com/JVonBorstel/tide, then']) check(`l4f: the public repo stays (${t.slice(0, 40)})`, r(t) === t, r(t));
+  check('l4f: a user part is dropped from a public https remote, "git@" is kept', r('https://someuser@github.com/JVonBorstel/tide.git') === 'https://github.com/JVonBorstel/tide.git' && r('ssh://git@github.com/JVonBorstel/tide.git') === 'ssh://git@github.com/JVonBorstel/tide.git');
+  // near misses: paths, files, ordinary words and links are not repos
+  for (const t of ['core/ledger/share.mjs', 'see tests/core/ledger/test-ledger.mjs', 'docs/changes/WO-UPG-L1-4.md', 'ART/CITY/BOARD', 'ART/CITY', 'and/or', 'N/A', 'TCP/IP', 'Notes/README.md', 'Docs/guide.md', 'WO-UPG-L1-4/L1-5',
+    'https://docs.example.org/guide/start', 'https://example.org/Guide/start-here', 'https://api.github.com/rate_limit', 'see Example in docs/Example-notes', 'a/b/c']) check(`l4f: not a repo, stays (${t})`, r(t) === t, r(t));
+  // F4: secret keys inside JSON text
+  const v = ['abc123', 'def456', 'ghi789', 'jkl012'].join(''), pw = ['Sup3r', 'S3cret', '!'].join('');
+  for (const [name, t, bad] of [['token', `{"token": "${v}"}`, v], ['apiKey', `{"apiKey":"${v}"}`, v], ['API_KEY', `{"API_KEY": "${v}", "x": 1}`, v], ['password', `{"password":"${pw}"}`, pw], ['client_secret', `{'client_secret': '${v}'}`, v],
+    ['escaped', `{"body":"{\\"token\\":\\"${v}\\",\\"n\\":1}"}`, v], ['nested', `{"a":{"b":{"accessToken":"${v}"}}}`, v], ['hex value', `{"session":"${'f00d'.repeat(10)}"}`, 'f00d'.repeat(10)], ['spaces', `{ "secret" : "${v}" }`, v]]) {
+    const out = r(t); check(`l4f: JSON-quoted ${name} is redacted`, !out.includes(bad) && out.includes(MARK.secret), out);
+  }
+  check('l4f: JSON keeps its shape around a redacted secret', r(`{"token": "${v}", "n": 1}`) === `{"token": "${MARK.secret}", "n": 1}`, r(`{"token": "${v}", "n": 1}`));
+  check('l4f: JSON words that are not secrets stay', r('{"token":"expired","auth":"required","note":"password policy"}') === '{"token":"expired","auth":"required","note":"password policy"}');
+  // F6: tailnet words
+  for (const t of ['tail-fade', 'tail-dead', 'tailadded', 'tail-beef', 'tailface', 'tail-cafe is open', 'tailwind', 'tail -f log', 'tailored', 'detail1a2b3c', 'tail-latency', 'tail-base']) check(`l4f: ordinary word is not a tailnet (${t})`, r(t) === t, r(t));
+  for (const t of ['tail1a2b3c', 'tail-1a2b3c', 'Tail-1A2B3C', 'tail-9f8e7d', 'tail-deadbeef0', 'tail-fade.ts.net', 'host.tail1a2b3c.ts.net']) check(`l4f: tailnet shape is redacted (${t})`, !r(t).includes('1a2b3c') && !r(t).includes('9f8e7d') && !r(t).includes('deadbeef') && !/\.ts\.net/i.test(r(t)) && r(t).includes(MARK.host), r(t));
+  // a proof string with ids and the public link stays whole
+  const proof = `merged https://github.com/JVonBorstel/tide/pull/38 at ${sha1} (tree: ${sha1}, sha=${sha1}); branch wo/upg-l1-4-secrets`;
+  check('l4f: a proof string with ids and the public link is untouched', r(proof) === proof, r(proof));
+  // idempotent: redacting twice changes nothing more
+  const mixed = `see https://github.com/Example/private-repo, ${'ghp'}_${'A1b2'.repeat(9)} {"token":"${v}"} tail1a2b3c Example/private-repo#3`;
+  check('l4f: redacting twice equals redacting once', r(r(mixed)) === r(mixed), r(r(mixed)));
+  // linear time on long single tokens for the new rules
+  for (const [name, s] of [['slashes', 'a/'.repeat(30000)], ['git@ path', `git@h.example:${'a/'.repeat(10000)}`], ['long url', `https://github.com/${'a'.repeat(50000)}`], ['quotes', 'token"'.repeat(10000)], ['backslashes', `token=${'\\'.repeat(20000)}`], ['Caps', 'Aa/'.repeat(10000)], ['gh', 'gh repo clone '.repeat(3000)]]) {
+    const t0 = Date.now(); r(s); check(`l4f: long input is fast (${name})`, Date.now() - t0 < 1500, `${Date.now() - t0} ms`);
+  }
+}
+
 try {
   await testSecrets();
+  await testRedactionHardening();
   await testShare37();
   await testShare();
   await testLegacy();
