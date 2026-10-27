@@ -343,7 +343,7 @@ export function drawStage(ctx, st, kit) {
   return D.n;
 }
 // a frame for the loop: one draw, then the stage notes the picture it shows and when the next step is due (stageDirty, stageWait)
-export function paintStage(ctx, st, kit) { CLOCK.next = Infinity; const n = drawStage(ctx, st, kit); st.next = CLOCK.next; st.drawn = st.rev; return n; }
+export function paintStage(ctx, st, kit) { CLOCK.next = Infinity; const n = drawStage(ctx, st, kit); ctx.flush?.(); st.next = CLOCK.next; st.drawn = st.rev; return n; }   // flush: gl.js draws its frame
 // the tap targets and the words: real links over the canvas, one per work-order card, crew member and runner (the canvas is aria-hidden)
 // o: P = sprites.js (the props' sizes), k = CSS px per art px, W = the room's width, wave = the tapped crew member (its words show for 3 s)
 export function hitItems(L, ox = 0, o = {}) {
@@ -367,7 +367,7 @@ export function hitHtml(it, W = STAGE.w) {
 }
 
 // ---- in the page ----
-let PX = null, KIT = null, CANVAS_OK = null;
+let PX = null, KIT = null, CANVAS_OK = null, GLM = null;
 const mounted = new Set();
 // the legend sheet for a mounted scene
 export const sceneLegend = (el) => legendHtml(legendRows(el?._px?.st.L || (el?._args && layoutScene(...el._args))));
@@ -428,8 +428,9 @@ function mountPixel(el, L) {
     dropStage(sc);
     el.innerHTML = `<div class="px-stage${L.compact ? ' compact' : ''}" role="group"><canvas class="px-canvas" width="${STAGE.w}" height="${STAGE.h}" aria-hidden="true"></canvas><div class="px-hit"></div>`
       + '<button class="px-info" type="button" aria-haspopup="dialog" aria-label="What am I looking at?">i</button></div>';
-    const root = el.firstElementChild, canvas = root.querySelector('canvas');
-    sc = el._px = { root, canvas, ctx: canvas.getContext('2d'), hit: root.querySelector('.px-hit'), st: stageNew(), compact: L.compact };
+    // gl.js (behind its flag) or Canvas2D; gl.js leaves a fresh canvas in place when it gives up after taking one
+    const root = el.firstElementChild, gl = GLM?.glStage(root.querySelector('canvas'), remount), canvas = root.querySelector('canvas');
+    sc = el._px = { root, canvas, ctx: gl || canvas.getContext('2d'), hit: root.querySelector('.px-hit'), st: stageNew(), compact: L.compact };
     sc.ctx.imageSmoothingEnabled = false;
     // the (i) chip: app.js opens the legend sheet
     root.querySelector('.px-info').addEventListener('click', () => el.dispatchEvent(new CustomEvent('scene-legend', { bubbles: true })));
@@ -449,6 +450,17 @@ function mountPixel(el, L) {
   paint(sc);
   sc.loop.start();
 }
+// the WebGL2 renderer (gl.js, SCENE.md "Renderer"): ?gl in the address or Settings > About (kept on this phone); ?gl=0 turns it off
+export const glWanted = (q, kept) => !/[?&]gl=0\b/.test(q) && (/[?&]gl\b/.test(q) || kept === '1');
+export const sceneRenderer = () => GLM?.INFO || null;
+export function sceneGl(on) {
+  let kept = null; try { if (on !== undefined) localStorage.setItem('board.webgl2', on ? '1' : '0'); kept = localStorage.getItem('board.webgl2'); } catch { /* private mode: this visit */ }
+  if (on === undefined) return kept === '1';
+  (on ? import('./gl.js') : Promise.resolve(null)).then((m) => { GLM = m; remount(); }).catch(() => {});
+  return on;
+}
+// every pixel stage built again (a renderer switched on or off, or a lost WebGL2 context)
+const remount = () => { for (const el of mounted) if (el._px) { dropStage(el._px); el._px = null; if (el.isConnected) mountScene(el, ...el._args); } };
 export function sceneApproved() { for (const el of mounted) if (el._px) { approveFx(el._px.st); el._px.loop.start(); } }
 // the interface chrome: the sprites become CSS variables (--px-load, --px-tab-pass, --px-panel ...) and <html class="px"> turns them on.
 // Tab icons follow the colour scheme: in dark mode --px-tab-<name>(-on) holds the -dark sprite (cream outline), switched live.
@@ -466,13 +478,14 @@ function installChrome(P) {
   root.classList.add('px');
 }
 if (typeof document !== 'undefined' && typeof window !== 'undefined') {
-  let keep = false; try { keep = localStorage.getItem('board.frameMeter') === '1'; } catch { /* no storage: off */ }
+  let keep = false, glk = null; try { keep = localStorage.getItem('board.frameMeter') === '1'; glk = localStorage.getItem('board.webgl2'); } catch { /* no storage: off */ }
+  const glm = glWanted(location.search, glk) ? import('./gl.js').catch(() => null) : null;   // loaded with the sprites, never without the flag
   METER.wake = () => { for (const el of mounted) el._px?.loop.start(); };
   if (keep || /[?&](hud|fps=hud)\b/.test(location.search)) (document.body ? meter(true) : addEventListener('DOMContentLoaded', () => meter(true), { once: true }));
   else if (/[?&]fps\b/.test(location.search)) import('./frame-meter.js').catch(() => {});
   watchDpr();
-  import('./sprites.js').then((P) => {
-    PX = P; KIT = makeKit(P, mkCanvas); installChrome(P);
+  import('./sprites.js').then(async (P) => {
+    GLM = await glm; PX = P; KIT = makeKit(P, mkCanvas); installChrome(P);
     for (const el of mounted) if (el.isConnected && el._args) mountScene(el, ...el._args);
   }).catch(() => { /* no sprites (offline before the first load): the still card stays */ });
   document.addEventListener('visibilitychange', () => { for (const el of mounted) if (!el.isConnected) { dropStage(el._px); mounted.delete(el); } else el._px?.loop.start(); });
