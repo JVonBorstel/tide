@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tide.example/ship/flags.schema.json",
+  "title": "flags.json",
+  "description": "Tide's feature flags. Each flag is declared once with its default, which is always off: unfinished or unapproved work merges switched off, and Jordan's yes turns it on (a decision.answered event, then flag.set).",
+  "type": "object",
+  "properties": {
+    "$comment": { "type": "string" },
+    "version": { "const": 1 },
+    "flags": {
+      "type": "object",
+      "maxProperties": 200,
+      "patternProperties": {
+        "^[a-z][a-z0-9.-]*$": { "$ref": "#/$defs/flag" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["version", "flags"],
+  "additionalProperties": false,
+  "$defs": {
+    "flag": {
+      "type": "object",
+      "properties": {
+        "default": { "description": "Always false: a flag is off until a decision turns it on.", "const": false },
+        "what": { "description": "What turning it on changes, in plain words.", "type": "string", "minLength": 10, "maxLength": 300 },
+        "lane": { "description": "The upgrade lane that owns the switched code.", "type": "string", "pattern": "^L[0-9]$" }
+      },
+      "required": ["default", "what", "lane"],
+      "additionalProperties": false
+    }
+  }
+}
