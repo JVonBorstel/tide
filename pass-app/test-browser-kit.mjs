@@ -62,7 +62,7 @@ export async function boardPage({ root, tmp, towers, shotsDir = '' }) {
   const open = async (hash = '#/pass', names = 6) => {
     await send('Page.navigate', { url: 'about:blank' }); await sleep(80); await send('Page.navigate', { url: `${base}/${hash}` });
     await until('document.readyState === "complete" && location.href.startsWith("http")');
-    await until(`!/Connecting/.test(document.getElementById('pulse-text')?.textContent || 'Connecting') && document.querySelectorAll('#city-names a').length >= ${Number(names)}`, 15000);
+    await until(`/^(Live|Paused)/.test(document.getElementById('pulse-text')?.textContent || '') && document.querySelectorAll('#city-names a').length >= ${Number(names)}`, 15000);   // live, not a stale offline copy
     await sleep(700);
   };
   const shot = async (name) => { if (!shotsDir) return; fs.mkdirSync(shotsDir, { recursive: true }); const r = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(shotsDir, name), Buffer.from(r.data, 'base64')); };
