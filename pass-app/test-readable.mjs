@@ -40,6 +40,8 @@ const extra = [
   job('J50', 'improve: Make the example sky warmer at dusk', 'quarantined', now - 40 * 60e3, { history: [{ at: iso(now - 40 * 60e3), step: 1, outcome: 'fail', detail: 'exit 1: C:\\example\\repo\\kitchen\\stations\\lint.ps1 threw {"code":1,"rule":"no-tabs"} at line 12' }] }),
   job('J51', 'roadmap-item: B-48', 'quarantined', now - 3 * H),
   job('J52', 'J52', 'pending', now - H, { history: [] }),
+  // one order stopped by hand inside the last day: a stopped order is counted too, so the number's words must say "or stopped" (round 1)
+  job('J53', 'improve: Example order stopped by hand', 'killed', now - 2 * H),
 ];
 for (const j of extra) fs.writeFileSync(path.join(root, 'jobs', j.id + '.json'), JSON.stringify(j));
 // one sign-off, so the headline has one order to open (the fixture's J7 and J8: make J8 a plain step so the headline reads 2)
@@ -161,6 +163,28 @@ const SIZES = `((scope) => {
     if (px < (body ? 14 : 12)) small.push({ text: t.nodeValue.trim().slice(0, 40), px, where: el.tagName.toLowerCase() + '.' + String(el.className || '').split(' ')[0] }); }
   return small;
 })`;
+// nothing clipped in a button (D-3): every visible .btn's last text line ends above its padding box's bottom minus 3 px (a pixel-look
+// primary button draws a 3 px edge there, inset 0 -3px); measured on the text's own boxes (Range rects), so tall glyphs like "(" count
+const BTNCLIP = `((scope) => {
+  const rootEl = scope ? document.querySelector(scope) : document.body; const bad = [];
+  for (const b of rootEl.querySelectorAll('.btn')) { if (!b.getClientRects().length || getComputedStyle(b).visibility === 'hidden') continue; const br = b.getBoundingClientRect(); if (br.width <= 1 || br.height <= 1) continue;
+    const limit = br.bottom - parseFloat(getComputedStyle(b).borderBottomWidth) - 3; let low = -Infinity;
+    const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT); for (let t = w.nextNode(); t; t = w.nextNode()) { if (!t.nodeValue.trim() || !t.parentElement.getClientRects().length) continue;
+      const r = document.createRange(); r.selectNodeContents(t); for (const q of r.getClientRects()) if (q.width > 0 && q.height > 0) low = Math.max(low, q.bottom); }
+    if (low > limit + 0.5) bad.push({ text: b.textContent.replace(/\\s+/g, ' ').trim().slice(0, 60), textBottom: Math.round(low * 10) / 10, limit: Math.round(limit * 10) / 10 }); }
+  return bad;
+})`;
+// the gutter (D-3): visible text in a sheet's body starts at least 12 px from either edge of the screen (the house gutter is 16 px); text
+// inside a box that scrolls sideways is left out (it may run past the edge on purpose)
+const GUTTER = `((id) => {
+  const bad = []; const vw = innerWidth;
+  for (const body of document.querySelectorAll('#' + id + ' .sheet-scroll')) { const w = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    for (let t = w.nextNode(); t; t = w.nextNode()) { const el = t.parentElement; if (!t.nodeValue.trim() || !el || !el.getClientRects().length || el.closest('.sr-only')) continue;
+      let side = false; for (let e = el; e && e !== body; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.visibility === 'hidden' || cs.display === 'none') { side = true; break; } if (/auto|scroll/.test(cs.overflowX) && e.scrollWidth > e.clientWidth + 1) { side = true; break; } } if (side) continue;
+      const r = document.createRange(); r.selectNodeContents(t);
+      for (const q of r.getClientRects()) if (q.width > 0 && q.height > 0 && (q.left < 12 || q.right > vw - 12)) { bad.push({ text: t.nodeValue.trim().slice(0, 50), left: Math.round(q.left), right: Math.round(q.right), vw, where: el.tagName.toLowerCase() + '.' + String(el.className || '').split(' ')[0] }); break; } } }
+  return bad;
+})`;
 // the last thing on a tab, scrolled to the bottom: fully above the nav (and nothing under the header at the top)
 const BOTTOM = `(async (scope) => { scrollTo(0, document.scrollingElement.scrollHeight); await new Promise((r) => setTimeout(r, 350));
   const nav = document.querySelector('nav.bar').getBoundingClientRect(); const rootEl = document.querySelector(scope);
@@ -191,9 +215,11 @@ try {
   // ---------- every tab and sheet: 412x900 dark and light, 360x740 dark. Pictures (412), what the crawl finds, contrast, sizes ----------
   // The Ledger first (the Work tab takes the Ledger's place once board.work is on), then the Work tab with its flag on.
   const CONFIGS = [[412, 900, true], [412, 900, false], [360, 740, true]];
-  const found = { 412: [], 360: [] }, hs = [], bottoms = [], contrastBad = [], small = [];
+  const found = { 412: [], 360: [] }, hs = [], bottoms = [], contrastBad = [], small = [], clipped = [], gutter = [];
   const record = async (w, dark, name, scope, isSheet) => {
     const look = dark ? 'dark' : 'light'; const c = await crawl(scope); const k = await contrast(scope); const z = dark && w === 412 ? await sizes(scope) : [];
+    for (const b of await ev(`${BTNCLIP}(${JSON.stringify(scope)})`)) clipped.push({ screen: `${name} ${w} ${look}`, ...b });
+    if (w === 360 && isSheet) for (const g of await ev(`${GUTTER}(${JSON.stringify(scope.slice(1))})`)) gutter.push({ screen: name, ...g });
     audit.screens[`${name} ${w} ${look}`] = { issues: c.issues, contrast: k.bad, small: z };
     if (dark) for (const i of c.issues) found[w].push({ screen: name, ...i });
     if (w === 412) for (const b of k.bad) contrastBad.push({ look, screen: name, ...b });
@@ -244,6 +270,9 @@ try {
   const under = bottoms.filter((b) => b.lastBottom > b.navTop);
   check('LastItem_AboveNav360: at 360x740, scrolled to the bottom, the last item on every tab is fully visible above the nav', bottoms.length === SCREENS.length && !under.length, JSON.stringify(under.length ? under : bottoms.slice(0, 2)));
   check('BodyText14: body text on every tab and sheet is at least 14 px (ids, times and counts at least 12 px)', !small.length, JSON.stringify(small.slice(0, 8)));
+  check('Buttons_NothingClipped: on every tab and sheet, in both looks and both sizes, every button\'s last text line ends above its bottom edge (padding box minus 3 px), so the Retry button\'s reason line is never cut',
+    !clipped.length, JSON.stringify(clipped.slice(0, 6)));
+  check('SheetGutter360: at 360x740 visible text in every sheet\'s body starts at least 12 px from the screen edge (the notice sheet too)', !gutter.length, JSON.stringify(gutter.slice(0, 6)));
   await phone(412, 900, { dark: true, hour: 13 }); await open('#/pass', 4);
 
   // ---------- Jordan's phone, 10-27: the seven items ----------
@@ -257,12 +286,16 @@ try {
   check('Home_StatsOneGrid: home stats sit in one grid of equal cells (no ragged second row), and the plain-words line ("Nothing handed over today") is on its own line under them',
     !!hs1 && hs1.display === 'grid' && hs1.cells.length >= 4 && sameW(hs1.cells) && rowsOf(hs1.cells) <= 2 && !hs1.noteInside && hs1.noteTop >= hs1.statsBottom && /handed over/.test(hs1.note || ''), JSON.stringify(hs1));
   const fail = await ev(`(() => { const a = [...document.querySelectorAll('#summary .home-stats a, #summary .home-stats button')].find((x) => /fail|stop/i.test(x.textContent)); const older = document.querySelector('#sec-aside [data-older]');
-    return { stat: a?.textContent.replace(/\\s+/g, ' ').trim() || '', older: older?.textContent.replace(/\\s+/g, ' ').trim() || '', asideRows: document.querySelectorAll('#sec-aside .rows > li').length }; })()`);
-  check('Home_FailedMeansNow: the red failed number counts only recent failures not dealt with (3 here, not the 7 days-old ones), says what it is in plain words, and the older ones are one tap away in "Cleared / older"',
-    /^3 failed in the last day$/i.test(fail.stat) && /older/i.test(fail.older) && /7/.test(fail.older) && fail.asideRows === 3, JSON.stringify(fail));
+    return { stat: a?.textContent.replace(/\\s+/g, ' ').trim() || '', older: older?.textContent.replace(/\\s+/g, ' ').trim() || '', asideRows: document.querySelectorAll('#sec-aside .rows > li').length,
+      head: document.querySelector('#sec-aside .sec-head')?.textContent.replace(/\\s+/g, ' ').trim() || '', stopped: [...document.querySelectorAll('#sec-aside .rows > li')].some((li) => /stopped by hand/i.test(li.textContent)) }; })()`);
+  // the label and the count agree: the number is every row of the section it opens (failed, and stopped by hand, in the last day: J50, J51,
+  // the fixture's recent one and the killed J53), and its words name both, as the section's own heading does
+  const failN = Number((/^(\d+) /.exec(fail.stat) || [])[1]);
+  check('Home_FailedMeansNow: the red number counts only recent failed or stopped orders not dealt with (4 here, a stopped one among them, not the 7 days-old ones), its words say "failed or stopped in the last day" like the section it opens, and the older ones are one tap away in "Cleared / older"',
+    /^4 failed or stopped in the last day$/i.test(fail.stat) && failN === fail.asideRows && fail.stopped && /^failed or stopped/i.test(fail.head) && /older/i.test(fail.older) && /7/.test(fail.older), JSON.stringify(fail));
   await ev(`document.querySelector('#sec-aside [data-older]')?.click()`); await settle(400);
   const olderOpen = await ev(`document.querySelectorAll('#sec-aside .rows > li').length`);
-  check('Home_OlderOneTap: one tap on "Cleared / older" lists the days-old failed or stopped orders (3 recent + 7 older)', olderOpen === 10, String(olderOpen));
+  check('Home_OlderOneTap: one tap on "Cleared / older" lists the days-old failed or stopped orders (4 recent + 7 older)', olderOpen === 11, String(olderOpen));
   await ev(`document.querySelector('#sec-aside [data-older]')?.click()`); await settle(200);
   const signBtn = await ev(`(() => { const b = document.querySelector('#summary [data-signoff]'); return b ? { text: b.textContent.trim(), tag: b.tagName } : null; })()`);
   await ev(`document.querySelector('#summary [data-signoff]')?.click()`); await settle(900);

@@ -359,7 +359,7 @@ function renderPass() {
   const sign = needs.length ? `<button class="btn primary signoff-btn" type="button" data-signoff="${needs.length === 1 ? esc(needs[0].id) : ''}">${needs.length === 1 ? 'Open the sign-off' : `Open the ${needs.length} sign-offs`}${icon('chev')}</button>` : '';
   const stat = (num, words, attrs, bad = false) => `<a href="#/pass" class="stat${bad ? ' bad' : ''}" ${attrs}><b>${num}</b> <span>${words}</span></a>`;
   const stats = [stat(cooking.length, low(L.running), 'data-jump="cooking"'), stat(rail.length, low(L.pending), 'data-jump="rail"'),
-    stat(hs.recent.length, `${low(L.failed)} in the last day`, 'data-jump="aside"', hs.recent.length > 0),
+    stat(hs.recent.length, `${asideWord} in the last day`, 'data-jump="aside"', hs.recent.length > 0),
     s.leads ? stat(Number(s.leads), s.leads > 1 ? 'leads' : 'lead', 'data-clients-open') : stat('', 'Clients', 'data-clients-open'),
     s.ideas ? stat(Number(s.ideas), s.ideas > 1 ? 'ideas' : 'idea', 'data-ideas-open') : stat('', 'Ideas', 'data-ideas-open'), stat('', 'Brief', 'data-brief-open')];
   const platedToday = plated.filter((j) => isToday(j.updated)).length;

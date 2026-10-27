@@ -26,7 +26,7 @@ Every tab and sheet was opened at 412 x 900, dark and light, against a throwaway
 | New work order (light) | The Spec glyphs are under AA. | `order-sheet-412-light-before.png` |
 | Talk at 360 x 740 | The message box sits 14 px under the nav. | (crawl) |
 
-Talk, Settings and the notice sheet had no finding at 412 px.
+Talk and Settings had no finding at 412 px. The review (round 1) found two more: the notice sheet's words and Clear button sat 6 px from the screen edge, and the Retry button's reason line ran under its 3 px bottom edge.
 
 ## What changed
 
@@ -42,7 +42,7 @@ Talk, Settings and the notice sheet had no finding at 412 px.
   - The full text is one tap away: The full detail (on the sheet), History and Logs.
 - **The home** (Jordan's phone, 10-27, items 1-3):
   - The headline has its one action under it, Open the sign-off. One order opens its sheet; more jump to Needs sign-off.
-  - Under it sits one grid of six equal cells: building, queued, failed in the last day, leads or Clients, ideas, Brief.
+  - Under it sits one grid of six equal cells: building, queued, failed or stopped in the last day, leads or Clients, ideas, Brief.
   - The plain-words line ("1 handed over today", follow-ups due) sits on its own line under the grid.
   - The red number counts only orders that failed or stopped in the last day (`public/plain.js` `homeStats`). The older ones are under Show cleared / older in the same section, one tap away, with Clear old.
 - **The tower view** (items 4, 5 and 7):
@@ -60,15 +60,17 @@ Talk, Settings and the notice sheet had no finding at 412 px.
   - Row times read "10 min ago" and "2 h ago"; a tap shows the exact time.
   - Titles, asks and meta lines wrap; nothing cuts the meaning with an ellipsis.
   - Body text is at least 14 px, and small labels (ids, times, counts, headings) at least 12 px.
+- **Nothing clipped, one gutter** (round 1): a button that carries its reason (Retry) gets padding above its bottom edge, and the notice sheets sit on the same 16 px gutter as the other sheets.
 - **Contrast AA in both looks:** cook badges and the Live tags use dark letters, the idle desks are no longer faded, and the red counts, lobe badges and light Spec glyphs are darker. Palette colours only.
 
 ## Tests
 
-`pass-app/test-readable.mjs` (new; run by `tests/Test-PassApp.ps1`) has 25 checks, one named after each acceptance line and each of Jordan's seven items:
+`pass-app/test-readable.mjs` (new; run by `tests/Test-PassApp.ps1`) has 27 checks, one named after each acceptance line and each of Jordan's seven items:
 
 - The crawl: `Crawl412_NoBareId`, `Crawl412_NoMarkdown`, `Crawl412_NoPathNoJson`, and the same three at 360 x 740. They cover every tab (Board, a tower, a floors list, Talk, Activity, Live, Ledger, World, Work) and the sheets (work order, Settings, New work order, notice).
 - `ContrastAA_BothLooks`: every visible text element, dark and light.
 - `NoHScroll360`, `LastItem_AboveNav360` and `BodyText14`.
+- `Buttons_NothingClipped` (every button's last text line ends above its bottom edge minus 3 px) and `SheetGutter360` (text in a sheet's body starts at least 12 px from the screen edge).
 - The seven items: `Home_StatsOneGrid`, `Home_FailedMeansNow`, `Home_OlderOneTap`, `Home_SignOffAction`, `Tower_TitlesWrap_PlainStatus`, `Tower_LastRowAboveNav412x900`, `Tower_LastRowAboveNav360x740`, `Floors_TitleWhatWhen`, `Floors_RealNamesOnOwnBoard` and `Tower_SceneFitsContent`.
 - Also `Times_WordsExactOnTap`, `PlainWords_Status` and `HomeStats_RecentOnly`.
 - Speed: `SpeedBudget_NotWorse` (no canvas, animation or loop added) and `SpeedBudget_Cutaway` (2,000 floors build their 70 shown rows in under 5 ms).

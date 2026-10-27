@@ -210,6 +210,9 @@ dialog::backdrop{background:rgba(17,17,16,.45)}
 .action-bar{flex:none;display:flex;gap:8px;padding:12px var(--gutter) calc(12px + var(--bottom));border-top:1px solid var(--line);background:var(--bg)}
 .action-bar:empty{display:none}
 .action-bar .btn{flex:1;min-height:52px}
+/* task 30 (D-3 nothing clipped): a button that carries its reason (.btn-why, app.js retryLabel) is taller than 52 px; give its lines room
+   above the 3 px bottom edge of a pixel-look primary button, so the last line's descenders are never under it */
+.action-bar .btn:has(.btn-why){flex-direction:column;gap:2px;height:auto;padding:8px 12px 11px}
 
 /* job detail */
 .ticket{padding:4px var(--gutter) 16px}
@@ -1367,6 +1370,9 @@ html.lobe-px .lobe-box{border:12px solid transparent;border-image:var(--lobe-dlg
 html.px .notice-chip{clip-path:var(--px-notch-s)}
 .notice-text{margin:4px 0 12px;font-size:16px;line-height:24px;color:var(--ink);overflow-wrap:anywhere}
 .notice-act{display:flex;flex-wrap:wrap;gap:8px}.notice-act .btn{min-height:44px;text-decoration:none;display:inline-flex;align-items:center}
+/* task 30 (D-3): the notice sheets' words and buttons sit on the same 16 px gutter as every other sheet; their .note already lives inside it */
+#notice-body,#notices-body{padding-left:var(--gutter);padding-right:var(--gutter)}
+#notice-body .note,#notices-body .empty-line{padding-left:0;padding-right:0}
 /* the City gets the space back: edge to edge (city.js scales the picture to the box), its words keep the gutter, every name whole
    (names wrap to a second row or line, never an ellipsis); D-3: Look A (crisp pixels as drawn) by day, lit at dusk and night (B's lighting) */
 .city{margin:2px 0 10px}
