@@ -12,6 +12,10 @@
 #   60 s of tick wait, not work). A HEAVY station with 3+ sampled runs is MEASURED: it may use the scaled limit when the free RAM after a
 #   1,024 MB reserve and the unclaimed weight of the running heavy steps (p90, else 400 MB, minus what each already uses) fits its p90.
 #   Anything not measured keeps today's rule: at most maxConcurrent heavy steps (W2 safety: no more than 4 until weights exist).
+# Per Tower (TD-10, multi-site design 2.5): a run of an order with a Tower is also kept under "<station>@<tower>" (the Tower's main
+#   checkout folder name, lower case: tests@demo-project), so a Demo Project tests run and a TD tests run stop sharing one weight. A step
+#   is judged by its Tower's entry once that entry has 3+ runs; until then (and for an order with no Tower) by the station's own entry,
+#   which keeps learning from every run as before. A weights.json with no "@" entries admits exactly as it did before TD-10.
 # KITCHEN_FAKE_FREE_MB stands in for the reading in tests; test kitchens take no reading otherwise (their limit stays maxConcurrent).
 $script:ScalerLowMB = 1536; $script:ScalerHighMB = 2048; $script:ScalerWindowSec = 600; $script:ScalerGapSec = 120
 $script:WeightKeep = 20; $script:WeightMinRuns = 3; $script:LightMB = 150; $script:LightSec = 120; $script:HeavyDefaultMB = 400
@@ -67,21 +71,31 @@ function Test-ScalerHighWindow($Samples, [DateTime]$Now) {
 
 # ---- weights: the last runs of each station ----
 function Read-KitchenWeights([string]$Root) { $w = Read-ScalerJson (Join-Path $Root 'weights.json'); if ($w -is [hashtable]) { $w } else { @{} } }
-function Add-KitchenWeight([string]$Root, [string]$Station, $PeakMB, [double]$Sec) {
+function Add-KitchenWeight([string]$Root, [string]$Station, $PeakMB, [double]$Sec, [string]$Tower = '') {
     if (-not $Station) { return }
     $w = Read-KitchenWeights $Root
-    $e = if ($w[$Station] -is [hashtable]) { $w[$Station] } else { @{ mb = @(); sec = @() } }
-    $e.sec = @(@($e.sec) + [int][math]::Round($Sec) | Select-Object -Last $script:WeightKeep)
-    if ($null -ne $PeakMB -and [double]$PeakMB -gt 0) { $e.mb = @(@($e.mb) + [int][math]::Round([double]$PeakMB) | Select-Object -Last $script:WeightKeep) }
-    $w[$Station] = $e
+    $keys = @($Station); $tk = Get-WeightKey $Station $Tower; if ($tk -ne $Station) { $keys += $tk }
+    foreach ($key in $keys) {
+        $e = if ($w[$key] -is [hashtable]) { $w[$key] } else { @{ mb = @(); sec = @() } }
+        $e.sec = @(@($e.sec) + [int][math]::Round($Sec) | Select-Object -Last $script:WeightKeep)
+        if ($null -ne $PeakMB -and [double]$PeakMB -gt 0) { $e.mb = @(@($e.mb) + [int][math]::Round([double]$PeakMB) | Select-Object -Last $script:WeightKeep) }
+        $w[$key] = $e
+    }
     Save-ScalerJson (Join-Path $Root 'weights.json') $w
 }
+# the Tower part of a weight key: the main checkout's folder name, lower case ('' = no Tower: the station's own entry)
+function Get-WeightTower([string]$Repo) { $r = "$Repo".Trim().TrimEnd('\', '/'); if (-not $r) { return '' }; (Split-Path $r -Leaf).ToLowerInvariant() }
+function Get-WeightKey([string]$Station, [string]$Tower) { $t = Get-WeightTower $Tower; if ($t) { "$Station@$t" } else { $Station } }
 function Get-P90($xs) { $a = @($xs | ForEach-Object { [double]$_ } | Sort-Object); if (-not $a.Count) { return $null }; $a[[math]::Min($a.Count - 1, [int][math]::Ceiling(0.9 * $a.Count) - 1)] }
 $script:WMemoFor = $null; $script:WMemo = @{}   # (one pass asks for the same stations once per pending order: worked out once per weights read)
-function Get-StationWeight($Weights, [string]$Station) {
+function Get-StationWeight($Weights, [string]$Station, [string]$Tower = '') {
     if (-not [object]::ReferenceEquals($Weights, $script:WMemoFor)) { $script:WMemoFor = $Weights; $script:WMemo = @{} }
-    if ($script:WMemo.ContainsKey($Station)) { return $script:WMemo[$Station] }
-    $script:WMemo[$Station] = Get-StationWeightOf $Weights $Station; $script:WMemo[$Station]
+    $key = Get-WeightKey $Station $Tower
+    if ($script:WMemo.ContainsKey($key)) { return $script:WMemo[$key] }
+    # the Tower's own entry once it has 3+ runs, else the station's (every run still lands there)
+    $own = if ($key -ne $Station -and $Weights[$key]) { Get-StationWeightOf $Weights $key } else { $null }
+    $script:WMemo[$key] = if ($own -and $own.runs -ge $script:WeightMinRuns) { $own } else { Get-StationWeightOf $Weights $Station }
+    $script:WMemo[$key]
 }
 function Get-StationWeightOf($Weights, [string]$Station) {
     $e = $Weights[$Station]; $mb = @($e.mb | Where-Object { $null -ne $_ }); $sec = @($e.sec | Where-Object { $null -ne $_ })
@@ -89,20 +103,31 @@ function Get-StationWeightOf($Weights, [string]$Station) {
     $light = $sec.Count -ge $script:WeightMinRuns -and $p90Sec -le $script:LightSec -and ($null -eq $p90MB -or $p90MB -le $script:LightMB)
     @{ runs = $sec.Count; sampled = $mb.Count; p90MB = $p90MB; p90Sec = $p90Sec; light = $light; measured = (-not $light -and $mb.Count -ge $script:WeightMinRuns) }
 }
-# May a step of $Station start now? $Running: the running steps as @{station; mb} (mb = what the tree uses now). Returns @{ ok; light; why }.
-function Test-KitchenAdmit([string]$Station, $Weights, $Running, [int]$Limit, [int]$MaxConcurrent, $FreeMB, [int]$ReserveMB = 1024) {
+# May a step of $Station start now? $Running: the running steps as @{station; mb; site; tower} (mb = what the tree uses now; site, tower optional).
+# $Tower (TD-10): this step's order's Tower ('' = none: the station's own weight). Returns @{ ok; light; why }.
+# $Site / $SiteMaxHeavy (TD-7): the order's Site and that Site's registry maxHeavy; a heavy step waits while its Site already runs that many
+# heavy steps. No Site, or no maxHeavy for it ($null): no Site check, exactly the rule from before TD-7. Light steps never count.
+function Test-KitchenAdmit([string]$Station, $Weights, $Running, [int]$Limit, [int]$MaxConcurrent, $FreeMB, [int]$ReserveMB = 1024, [string]$Site = '', $SiteMaxHeavy = $null, [string]$Tower = '') {
     if ($MaxConcurrent -le 0) { return @{ ok = $false; light = $false; why = 'maxConcurrent is 0' } }
-    $w = Get-StationWeight $Weights $Station
+    $w = Get-StationWeight $Weights $Station $Tower
     if ($w.light) { return @{ ok = $true; light = $true; why = 'light step (outside the slots)' } }
-    $heavy = @($Running | Where-Object { -not (Get-StationWeight $Weights ([string]$_.station)).light })
+    $heavy = @($Running | Where-Object { -not (Get-StationWeight $Weights ([string]$_.station) ([string]$_.tower)).light })
     $byRam = $w.measured -and $null -ne $FreeMB
     $cap = if ($byRam) { $Limit } else { [math]::Min($Limit, $MaxConcurrent) }
     if ($heavy.Count -ge $cap) { return @{ ok = $false; light = $false; why = "all $cap slots busy" } }
+    if ($Site -and $null -ne $SiteMaxHeavy) {
+        $mine = @($heavy | Where-Object { [string]$_.site -ceq $Site }).Count
+        if ($mine -ge [int]$SiteMaxHeavy) { return @{ ok = $false; light = $false; why = "Site ${Site}: all $([int]$SiteMaxHeavy) of its heavy slots busy" } }
+    }
     if ($byRam) {
         $unclaimed = 0.0
-        foreach ($r in $heavy) { $rw = (Get-StationWeight $Weights ([string]$r.station)).p90MB; if ($null -eq $rw) { $rw = $script:HeavyDefaultMB }; $unclaimed += [math]::Max(0, $rw - [double]$r.mb) }
+        foreach ($r in $heavy) { $rw = (Get-StationWeight $Weights ([string]$r.station) ([string]$r.tower)).p90MB; if ($null -eq $rw) { $rw = $script:HeavyDefaultMB }; $unclaimed += [math]::Max(0, $rw - [double]$r.mb) }
         $room = [double]$FreeMB - $ReserveMB - $unclaimed
         if ($room -lt $w.p90MB) { return @{ ok = $false; light = $false; why = "RAM: $([int]$room) MB room after the $ReserveMB MB reserve and $([int]$unclaimed) MB still to come, needs $([int]$w.p90MB) MB" } }
     }
     @{ ok = $true; light = $false; why = '' }
 }
+
+# ---- the Sites registry (multi-site design TD-7): per-Site maxHeavy and share, read by kitchen/site-registry.ps1 (Get-KitchenSites,
+# Get-KitchenSiteShares, Get-YardSites), the one reader of kitchen.json "sites"
+if (-not (Get-Command Get-KitchenSites -ErrorAction SilentlyContinue)) { . (Join-Path $PSScriptRoot 'site-registry.ps1') }

@@ -2,6 +2,7 @@
 // pass-app/SCENE.md "Moments and juice"). Pure state on the stage model (st.fx), tested by pass-app/test-scene.mjs. No storage.
 import { STAGE, STATIONS, ticket, sx } from './scene.js';
 import { PLACE, bakeWorld } from './world.js';
+import { at, due } from './frame.js';
 // event type -> moment (every one is an event kitchen.ps1 writes; step.<kind> are its step failures)
 export const MOMENTS = { 'step.done': 'flip', 'step.rework': 'puff', 'job.quarantined': 'aside', 'approval.requested': 'bell', 'job.done': 'orderup',
   ...Object.fromEntries(['fail', 'crash', 'timeout', 'memcap', 'logflood', 'hung', 'taster'].map((k) => ['step.' + k, 'puff'])) };
@@ -46,39 +47,49 @@ export function fxSync(st, L, first, still) {
 }
 // a stage particle, from one shared pool of at most 48
 export function spawn(fx, p) { if (fx.parts.length >= FX.pool) return false; fx.parts.push(p); return true; }
-// one tick: hit-stop (Jordan's Approve) freezes the floor for 80 ms; moments end, the queue fills the free slots with fresh ones
+// one tick: hit-stop (Jordan's Approve) freezes the floor for 80 ms; moments end, the queue fills the free slots with fresh ones.
+// Lists are trimmed in place (no allocation per frame); any change moves st.rev, so the frame loop draws it (frame.js)
 export function fxTick(st, dt) {
-  const fx = (st.fx ||= fxNew()), now = wall(st);
-  if (fx.hit !== null && st.t - fx.hit > 400) fx.hit = null;
-  if (fx.wave && st.t > fx.wave.until) fx.wave = null;
-  fx.live = fx.live.filter((m) => st.t - m.t0 < LONG[m.kind]);
+  const fx = (st.fx ||= fxNew()), now = wall(st), n0 = fx.live.length + fx.parts.length; let ch = false;
+  if (fx.hit !== null && st.t - fx.hit > 400) { fx.hit = null; ch = true; }
+  if (fx.wave && st.t > fx.wave.until) { fx.wave = null; ch = true; }
+  let j = 0; for (let i = 0; i < fx.live.length; i++) if (st.t - fx.live[i].t0 < LONG[fx.live[i].kind]) fx.live[j++] = fx.live[i];
+  fx.live.length = j;
   while (fx.live.length < FX.atOnce && fx.queue.length) {
-    const m = fx.queue.shift(); if (now - m.ts > FX.fresh) continue;   // went stale in the queue (or while the tab was hidden)
+    const m = fx.queue.shift(); ch = true; if (now - m.ts > FX.fresh) continue;   // went stale in the queue (or while the tab was hidden)
     m.t0 = st.t; fx.live.push(m); tell(fx, m, now);
     if (m.kind === 'orderup') for (let i = 0; i < 10; i++) spawn(fx, { x: 140 + i * 2.2, y: 24, vx: (i - 4.5) * 9, vy: -40 - (i % 3) * 12, c: i % 3, t0: st.t });
   }
-  fx.parts = fx.parts.filter((p) => st.t - p.t0 < 1200);
+  j = 0; for (let i = 0; i < fx.parts.length; i++) if (st.t - fx.parts[i].t0 < 1200) fx.parts[j++] = fx.parts[i];
+  fx.parts.length = j;
+  if (ch || fx.live.length + fx.parts.length !== n0) st.rev = (st.rev || 0) + 1;
   return fx.hit !== null && st.t - fx.hit < FX.hitStop ? 0 : dt;   // the floor's own time step
 }
 export const fxBusy = (st) => !!st.fx && (st.fx.live.length > 0 || st.fx.queue.length > 0 || st.fx.parts.length > 0 || !!st.fx.wave || st.fx.hit !== null);
-export function approveFx(st) { (st.fx ||= fxNew()).hit = st.t; }
-export function tapChef(st, key) { (st.fx ||= fxNew()).wave = { key, until: st.t + FX.wave }; }
+export function approveFx(st) { (st.fx ||= fxNew()).hit = st.t; st.rev = (st.rev || 0) + 1; }
+export function tapChef(st, key) { (st.fx ||= fxNew()).wave = { key, until: st.t + FX.wave }; st.rev = (st.rev || 0) + 1; }
+const liveOf = (fx, kind, job) => { if (fx) for (const m of fx.live) if (m.kind === kind && (job === undefined || m.job === job)) return m; return null; };
 // how a crew member is drawn right now: the anticipation crouch, a hop with a landing squash (a brick is laid), or plain
+// (the poses are shared objects: the frame loop allocates nothing; read them before the next call)
+const CROUCH = { name: 'chef-crouch', dy: 0 }, SQUASH = { name: 'chef-squash', dy: 0 }, HOP = { name: '', dy: 0 };
 export function chefPose(st, a) {
-  if (a.cr > 0) return { name: 'chef-crouch', dy: 0 };
-  const m = st.fx?.live.find((x) => x.job === a.key && x.kind === 'flip'); if (!m) return null;
+  if (a.cr > 0) return CROUCH;
+  const m = liveOf(st.fx, 'flip', a.key); if (!m) return null;
   const e = st.t - m.t0;
-  return e < FX.crouch ? { name: 'chef-crouch', dy: 0 } : e < 480 ? { dy: -Math.round(4 * Math.sin(Math.PI * (e - FX.crouch) / 400)) } : e < 560 ? { name: 'chef-squash', dy: 0 } : null;
+  if (e < 480 && e >= FX.crouch) { HOP.dy = -Math.round(4 * Math.sin(Math.PI * (e - FX.crouch) / 400)); return HOP; }
+  return e < FX.crouch ? CROUCH : e < 560 ? SQUASH : null;
 }
-// the sign-off window after Jordan's Approve: a 1 px shake; the bell bounces when a work order needs him
+// the sign-off window after Jordan's Approve: a 1 px shake; the bell bounces when a work order needs him (one shared result object)
+const PF = { dx: 0, bell: 0 };
 export const passFx = (st) => {
-  const fx = st.fx, e = fx?.hit === null || !fx ? Infinity : st.t - fx.hit, b = fx?.live.find((m) => m.kind === 'bell');
-  return { dx: e >= FX.hitStop && e < 240 ? (Math.floor(e / 40) % 2 ? 1 : -1) : 0, bell: b ? -Math.round(3 * (1 - easeOutBack(clamp01((st.t - b.t0) / LONG.bell)))) : 0 };
+  const fx = st.fx, e = fx?.hit === null || !fx ? Infinity : st.t - fx.hit, b = liveOf(fx, 'bell');
+  PF.dx = e >= FX.hitStop && e < 240 ? (Math.floor(e / 40) % 2 ? 1 : -1) : 0; PF.bell = b ? -Math.round(3 * (1 - easeOutBack(clamp01((st.t - b.t0) / LONG.bell)))) : 0;
+  return PF;
 };
 // the moments' own sprites (each at most 20 draws; d is drawStage's counted draw)
 export function drawFx(st, kit, d, room) {
-  const fx = st.fx; if (!fx) return;
-  const g = (n) => kit.get(n, room), t = st.t, sink = sx(STATIONS.sink.x), A = st.actors;
+  const fx = st.fx; if (!fx || !(fx.after.length || fx.live.length || fx.parts.length || fx.wave)) return;   // (a calm frame: nothing made)
+  const g =(n) => kit.get(n, room), t = st.t, sink = sx(STATIONS.sink.x), A = st.actors;
   for (const a of fx.after) a.kind === 'sparkle' ? d(g('check'), 0, sink - 3, STAGE.top - 14) : d(g('banner'), 0, 125, 20);
   for (const m of fx.live) {
     const e = t - m.t0, p = clamp01(e / LONG[m.kind]), a = A.get(m.job), ax = a ? a.x : sx(STATIONS.plate.x), ay = a ? a.y : STAGE.aisle;
@@ -94,7 +105,7 @@ export function drawFx(st, kit, d, room) {
     if (m.kind === 'orderup') d(g('banner'), 0, 125, Math.round(-12 + 32 * easeOutBack(clamp01(e / 500))));
   }
   for (const pt of fx.parts) { const s = (t - pt.t0) / 1000; d(g('confetti'), pt.c, pt.x + pt.vx * s, pt.y + pt.vy * s + 60 * s * s); }
-  if (fx.wave) { const a = A.get(fx.wave.key); if (a) d(g('mitt'), 0, a.x + 6, a.y - 20 - (Math.floor(t / 150) % 2) * 2); }
+  if (fx.wave) { const a = A.get(fx.wave.key); due(fx.wave.until + 1); if (a) d(g('mitt'), 0, a.x + 6, a.y - 20 - at(2, 150, t) * 2); }   // the wave's steps and its end on the frame clock
 }
 // ---- where things stand ----
 // crew members one body (16 px) apart, never sharing a pixel column: each crowd is centred on the stations it wants, inside the floor

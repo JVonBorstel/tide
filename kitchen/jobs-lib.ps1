@@ -12,7 +12,8 @@ $script:JobsFinished = @('done', 'closed')   # statuses that leave the live set 
 function Test-JobLive($e) { ([string]$e.s -notin $script:JobsFinished) -or [int]$e.c -eq 1 }
 function Get-JobsIndexPath([string]$Root) { Join-Path $Root 'jobs-index.json' }
 
-# @{ ok; reason; jobs = id -> @{ s = status; t = write time ticks (UTC); n = bytes; p = parent; c = 1 when a Chef update waits } }
+# @{ ok; reason; jobs = id -> @{ s = status; t = write time ticks (UTC); n = bytes; p = parent; c = 1 when a Chef update waits;
+#    si = the order's stored Site code, only when it has one (vars.site, set at add: TD-3; an order without one has no si key) } }
 function Read-JobsIndexFile([string]$Root) {
     $p = Get-JobsIndexPath $Root
     if (-not (Test-Path -LiteralPath $p)) { return @{ ok = $false; reason = 'missing' } }
@@ -24,6 +25,7 @@ function Read-JobsIndexFile([string]$Root) {
     foreach ($k in $d.jobs.Keys) {
         $e = $d.jobs[$k]
         if ($k -notmatch '^J\d+$' -or $e -isnot [hashtable] -or $null -eq $e.s -or -not (Test-JobsNum $e.t) -or -not (Test-JobsNum $e.n)) { return @{ ok = $false; reason = 'damaged' } }
+        if ($e.ContainsKey('si') -and [string]$e.si -cnotin $script:RepoSiteCodes) { return @{ ok = $false; reason = 'damaged' } }
     }
     @{ ok = $true; reason = ''; jobs = $d.jobs }
 }
@@ -35,7 +37,9 @@ function Write-JobsIndexFile([string]$Root, [hashtable]$Jobs) {
     foreach ($k in $Jobs.Keys) {
         $e = $Jobs[$k]; if (-not $first) { [void]$sb.Append(',') }; $first = $false
         [void]$sb.Append('"').Append($k).Append('":{"s":').Append((ConvertTo-JsonText ([string]$e.s))).Append(',"t":').Append([long]$e.t).Append(',"n":').Append([long]$e.n)
-        [void]$sb.Append(',"p":').Append((ConvertTo-JsonText ([string]$e.p))).Append(',"c":').Append([int]$e.c).Append('}')
+        [void]$sb.Append(',"p":').Append((ConvertTo-JsonText ([string]$e.p))).Append(',"c":').Append([int]$e.c)
+        if ($e.si) { [void]$sb.Append(',"si":').Append((ConvertTo-JsonText ([string]$e.si))) }   # no Site, no key: the index reads as before TD-3
+        [void]$sb.Append('}')
     }
     [void]$sb.Append('}}')
     $p = Get-JobsIndexPath $Root; $t = "$p.tmp-$PID"
@@ -44,8 +48,50 @@ function Write-JobsIndexFile([string]$Root, [hashtable]$Jobs) {
         for ($i = 0; ; $i++) { try { [IO.File]::Move($t, $p, $true); break } catch { if ($i -ge 10) { throw }; Start-Sleep -Milliseconds (30 + (Get-Random -Maximum 60)) } }
     } catch { Remove-Item -LiteralPath $t -Force -ErrorAction SilentlyContinue }
 }
-function New-JobsIndexEntry($j, [IO.FileInfo]$f) { @{ s = [string]$j.status; t = $f.LastWriteTimeUtc.Ticks; n = $f.Length; p = [string]$j.parent; c = [int][bool]$j.chefUpdate } }
-function Test-SameEntry($a, $b) { $a -and $b -and [string]$a.s -eq [string]$b.s -and [long]$a.t -eq [long]$b.t -and [long]$a.n -eq [long]$b.n -and [string]$a.p -eq [string]$b.p -and [int]$a.c -eq [int]$b.c }
+function New-JobsIndexEntry($j, [IO.FileInfo]$f) {
+    $e = @{ s = [string]$j.status; t = $f.LastWriteTimeUtc.Ticks; n = $f.Length; p = [string]$j.parent; c = [int][bool]$j.chefUpdate }
+    $si = Get-JobStoredSite $j; if ($si) { $e.si = $si }
+    $e
+}
+function Test-SameEntry($a, $b) { $a -and $b -and [string]$a.s -eq [string]$b.s -and [long]$a.t -eq [long]$b.t -and [long]$a.n -eq [long]$b.n -and [string]$a.p -eq [string]$b.p -and [int]$a.c -eq [int]$b.c -and [string]$a.si -ceq [string]$b.si }
+
+# ---- the Site of an order (multi-site design TD-3) ----
+# kitchen.ps1 add stores vars.site from the order's Tower (its kitchen.repo.json "site", read from the main checkout; repo-config.ps1).
+# Orders added before that have none and are never rewritten for it: Get-KitchenJobSite derives theirs from the Tower when read.
+# '' = Unassigned (no Tower, a Tower that names no Site, or a config that will not load: a display tag never stops a reader).
+if ($null -eq $script:RepoSiteCodes -or -not (Get-Command Read-RepoConfig -ErrorAction SilentlyContinue)) { . (Join-Path $PSScriptRoot 'repo-config.ps1') }   # (its list must be in this script's scope)
+$script:JobSiteByTower = @{}   # Tower path -> its Site, once per process (a reader of 100 old orders reads each Tower's config once)
+function Get-JobVar($j, [string]$Name) { if ($j.vars -is [Collections.IDictionary]) { [string]$j.vars[$Name] } elseif ($j.vars) { [string]$j.vars.$Name } else { '' } }
+# The order's Tower (a local checkout): vars.repo, else the first step's Repo argument; a {{template}} not yet filled is no Tower.
+function Get-JobTower($j) {
+    $r = Get-JobVar $j 'repo'; if ($r -and $r -notmatch '\{\{') { return $r }
+    foreach ($s in @($j.steps)) { if ($s.args -and $s.args.Repo -and [string]$s.args.Repo -notmatch '\{\{') { return [string]$s.args.Repo } }
+    ''
+}
+# The Site the order carries itself (vars.site, a known code), '' when none. What jobs-index.json stores as si.
+function Get-JobStoredSite($j) { $s = Get-JobVar $j 'site'; if ($s -cin $script:RepoSiteCodes) { $s } else { '' } }
+# The Tower's Site; throws on a config that will not load (kitchen.ps1 add logs that). Get-TowerSite: the same for readers, cached, no git, '' on any error.
+function Read-TowerSite([string]$Tower) { [string](Get-RepoConfig $Tower).Site }
+# Readers never run git for a Site tag (kitchen.ps1 status must make no git call: Test-Freeze Status_DoesNotRunGit, 10-22's 145 s status;
+# TD-5 grouped status by Site through here). The main checkout is found from the files, the way pass-app/server.mjs mainOf does it: a
+# .git folder, or none, = the folder itself; a worktree's .git file names <main>\.git\worktrees\<name> (its commondir, when there is one).
+function Get-TowerMainNoGit([string]$Tower) {
+    $full = [IO.Path]::GetFullPath($Tower).TrimEnd('\', '/')
+    $g = Join-Path $full '.git'
+    if (-not (Test-Path -LiteralPath $g -PathType Leaf)) { return $full }
+    $m = [regex]::Match([IO.File]::ReadAllText($g), '(?m)^gitdir:\s*(.+?)\s*$'); if (-not $m.Success) { throw "$g names no gitdir" }
+    $gd = [IO.Path]::GetFullPath([IO.Path]::Combine($full, $m.Groups[1].Value))
+    $cf = Join-Path $gd 'commondir'
+    $common = if (Test-Path -LiteralPath $cf -PathType Leaf) { [IO.Path]::GetFullPath([IO.Path]::Combine($gd, [IO.File]::ReadAllText($cf).Trim())) } else { [IO.Path]::GetFullPath([IO.Path]::Combine($gd, '..', '..')) }
+    Split-Path -Parent $common.TrimEnd('\', '/')
+}
+function Get-TowerSite([string]$Tower) {
+    if (-not $Tower) { return '' }
+    if (-not $script:JobSiteByTower.ContainsKey($Tower)) { $script:JobSiteByTower[$Tower] = try { [string](Read-RepoConfig (Get-TowerMainNoGit $Tower)).Site } catch { '' } }
+    $script:JobSiteByTower[$Tower]
+}
+# For readers: the order's Site, stored or (an order from before TD-3) derived from its Tower on the fly. Never written back.
+function Get-KitchenJobSite($j) { $s = Get-JobStoredSite $j; if ($s) { $s } else { Get-TowerSite (Get-JobTower $j) } }
 
 # The jobs\ files as FileInfo, oldest id first (the one place the jobs folder is listed).
 function Get-JobFiles([string]$Root) {
@@ -108,14 +154,12 @@ function Save-KitchenJobsIndex([string]$Root) {
 function Get-JobsArchiveDir([string]$Root) { Join-Path $Root 'jobs\archive' }
 # One summary line per archived order: what the history readers (ledger, scoreboard, roadmap, Chef history) need without the file.
 function Get-JobArchiveLine($j, [DateTime]$endedUtc, [string]$month) {
-    $repo = ''
-    if ($j.vars -and $j.vars.repo -and [string]$j.vars.repo -notmatch '\{\{') { $repo = [string]$j.vars.repo }
-    else { foreach ($s in @($j.steps)) { if ($s.args -and $s.args.Repo -and [string]$s.args.Repo -notmatch '\{\{') { $repo = [string]$s.args.Repo; break } } }
+    $repo = Get-JobTower $j
     $idea = [regex]::Match([string]$j.vars.goal, '\(Idea (I\d+):'); $code = [bool](@($j.steps | Where-Object { [string]$_.script -match 'merge\.ps1$' }).Count)
     $created = if ($j.created -is [DateTime]) { $j.created.ToUniversalTime().ToString('o') } else { [string]$j.created }   # (the JSON reader turns ISO text into a DateTime)
     [ordered]@{ id = [string]$j.id; status = [string]$j.status; name = [string]$j.name; recipe = [string]$j.recipe; created = $created; ended = $endedUtc.ToString('o')
         costUsd = [double]$j.costUsd; repo = $repo; parent = [string]$j.parent; replacedBy = [string]$j.replacedBy; idea = $(if ($idea.Success) { $idea.Groups[1].Value } else { '' })
-        item = $(if ($j.vars -is [hashtable]) { [string]$j.vars['item'] } else { [string]$j.vars.item }); code = $code; month = $month; archivedAt = [DateTime]::UtcNow.ToString('o') }
+        item = (Get-JobVar $j 'item'); site = (Get-JobStoredSite $j); code = $code; month = $month; archivedAt = [DateTime]::UtcNow.ToString('o') }
 }
 # Finished orders (done, closed) whose file is untouched for OlderThanDays move to jobs\archive\yyyy-MM\ (month of their last write).
 # Call it holding the kitchen's state lock. The summary lines are appended before any file moves, so a stop half way leaves a line
@@ -157,6 +201,7 @@ function Read-KitchenJobArchive([string]$Root) {
 # step when it merged code), marked archived = $true. Enough for the ledger and the roadmap; read the file for anything else.
 function ConvertTo-ArchivedJob($s) {
     $vars = @{ repo = [string]$s.repo; item = [string]$s.item }; if ($s.idea) { $vars.goal = "(Idea $($s.idea): archived order)" }
+    if ($s.site) { $vars.site = [string]$s.site }   # (a line from before TD-3 has none: Get-KitchenJobSite derives it from repo)
     @{ id = [string]$s.id; status = [string]$s.status; name = [string]$s.name; recipe = [string]$s.recipe; created = [string]$s.created; ended = [string]$s.ended
         parent = [string]$s.parent; replacedBy = [string]$s.replacedBy; costUsd = [double]$s.costUsd; vars = $vars; history = @()
         steps = @(if ($s.code) { @{ script = 'merge.ps1'; args = @{ Repo = [string]$s.repo } } }); archived = $true; month = [string]$s.month }

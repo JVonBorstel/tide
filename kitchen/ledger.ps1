@@ -43,6 +43,7 @@ try {
     $ideas = @(if ($ideasDoc) { $ideasDoc.items })
     # every order ever: the jobs\ files plus one summary per archived order (jobs\archive\index.jsonl; kitchen/jobs-lib.ps1)
     . (Join-Path $PSScriptRoot 'jobs-lib.ps1')
+    . (Join-Path $PSScriptRoot 'site-registry.ps1')   # programs grouped by Site (TD-5)
     $jobs = @{}
     foreach ($j in (Get-KitchenJobs $root -WithArchive)) { if ($j.id) { $jobs[[string]$j.id] = $j } }
 } catch { Fail "cannot read the kitchen at ${root}: $($_.Exception.Message)" 1 }
@@ -80,11 +81,17 @@ if (Test-Path -LiteralPath $pa) {
 }
 
 # ---------- proof from each repo's main ----------
-function Repo-Of($j) { $r = [string]$j.vars.repo; if ($r) { [IO.Path]::GetFullPath($r).TrimEnd('\', '/') } else { $kitchenRepo.TrimEnd('\', '/') } }
+# (a Tower path that cannot be made full, such as one with a NUL in it, is kept as written: one bad Tower is a finding, not a crash; TD-5)
+function Repo-Of($j) { $r = [string]$j.vars.repo; if ($r) { (ConvertTo-SiteTowerKey $r) } else { $kitchenRepo.TrimEnd('\', '/') } }
+function Tower-Name([string]$repo) { @(($repo -replace '[\x00-\x1f]', '?') -split '[\\/]' | Where-Object { $_ })[-1] }   # the folder name, control characters shown as ?
 $repoProof = @{}
 function Get-RepoProof([string]$repo) {
     if ($repoProof.ContainsKey($repo)) { return $repoProof[$repo] }
     $o = @{ ok = $false; reverted = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase); ids =[Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase); changes = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase); branch = ''; head = '' }
+    try { Read-RepoProof $repo $o } catch { $o.ok = $false }   # an unreadable Tower: ok stays false and the flags below name it
+    $repoProof[$repo] = $o; $o
+}
+function Read-RepoProof([string]$repo, $o) {
     if (Test-Path -LiteralPath (Join-Path $repo '.git')) {
         $br = ''
         foreach ($b in 'main', 'master') { & git -C $repo rev-parse --verify --quiet "refs/heads/$b" *> $null; if ($LASTEXITCODE -eq 0) { $br = $b; break } }
@@ -101,7 +108,6 @@ function Get-RepoProof([string]$repo) {
             $o.ok = $true
         }
     }
-    $repoProof[$repo] = $o; $o
 }
 
 # ---------- orders ----------
@@ -178,16 +184,21 @@ foreach ($j in $jobs.Values) {
 }
 
 # ---------- roadmaps (repos that opt in) ----------
-$programs = [Collections.Generic.List[object]]::new()
+$programs = [Collections.Generic.List[object]]::new(); $towerFindings = [Collections.Generic.List[object]]::new()
 $repos = @($jobs.Values | ForEach-Object { Repo-Of $_ }) + @($kitchenRepo.TrimEnd('\', '/')) | Select-Object -Unique
 . (Join-Path $PSScriptRoot 'roadmap-lib.ps1')
-foreach ($repo in $repos) {
-    if (-not (Test-Path -LiteralPath $repo)) { continue }
-    try { $rm = Get-Roadmap $repo } catch { continue }
-    if (-not $rm) { continue }
+# the Sites registry (kitchen.json "sites", TD-7's; read here by site-registry.ps1): one that will not read is a finding, never a guess
+$siteReg = $null; try { $siteReg = Get-SiteList (Read-SiteRegistry $root) } catch { $towerFindings.Add([ordered]@{ id = 'kitchen.json'; rule = 'sites-registry-unreadable'; owner = 'Claude'; pri = 2; say = "The Sites registry could not be read ($($_.Exception.Message)); programs are grouped by each Tower's own Site only." }) }
+# One Tower's program and its open roadmap items, or a throw. Its Site: the Tower's kitchen.repo.json "site", else its Blueprint's
+# site block, else the registry entry listing it; '' = none.
+function Read-TowerProgram([string]$repo) {
+    $cfg = Get-RepoConfig $repo
+    if (-not $cfg.Roadmap) { return $null }
+    $rm = Get-Roadmap $repo
+    $site = [string]$cfg.Site; if (-not $site -and $rm.Site) { $site = [string]$rm.Site.code }; if (-not $site) { $site = Find-RegistrySite $siteReg $repo }
     $rp = Get-RepoProof $repo
     $st = @(Get-RoadmapState $rm $root)
-    $done = 0
+    $done = 0; $open = [Collections.Generic.List[object]]::new()
     foreach ($s in $st) {
         $rid = [string]$s.id
         $proof = ''
@@ -197,11 +208,24 @@ foreach ($repo in $repos) {
         if ($state -eq 'moving' -and $jobs[[string]$s.job] -and [string]$jobs[[string]$s.job].status -in $waitJ) { $state = 'waiting-on-jordan' }
         if ($state -eq 'shipped') { $done++; continue }
         $why = switch ($s.state) { 'blocked' { "waits for $(@($s.blockers) -join ', ')" } 'owner-only' { 'an owner step (protected files)' } 'cooking' { "order $($s.job)" } 'set-aside' { "order $($s.job) is set aside" } default { 'ready to build' } }
-        $items.Add([ordered]@{ id = $rid; kind = 'roadmap'; title = [string]$s.title; from = (Split-Path $repo -Leaf); jordans = $false; score = 0; size = [string]$s.item.size
+        $open.Add([ordered]@{ id = $rid; kind = 'roadmap'; title = [string]$s.title; from = (Split-Path $repo -Leaf); jordans = $false; score = 0; size = [string]$s.item.size
                 state = $state; owner = (Owner-Of $state); why = $why; proof = ''; listed = [string]$s.state; since = ''; ageDays = $null; wave = [string]$s.wave; chain = @(if ($s.job) { Order-Fact ([string]$s.job) }) })
     }
-    $programs.Add([ordered]@{ repo = (Split-Path $repo -Leaf); total = $st.Count; shipped = $done; stuck = @($items | Where-Object { $_.kind -eq 'roadmap' -and $_.from -eq (Split-Path $repo -Leaf) -and $_.state -eq 'stuck' }).Count })
+    $prog = [ordered]@{ repo = (Split-Path $repo -Leaf); total = $st.Count; shipped = $done; stuck = @($open | Where-Object { $_.state -eq 'stuck' }).Count }
+    if ($site) { $prog.site = $site }   # (no Site, no key: the program line reads exactly as before Sites)
+    @{ program = $prog; items = @($open) }
 }
+# One unreadable Tower (a damaged kitchen.repo.json or Blueprint, a path git cannot read) is a named finding; the other Towers still
+# report (TD-5; before, a bad Blueprint vanished silently and a bad path stopped the whole Ledger).
+foreach ($repo in $repos) {
+    try {
+        if (-not (Test-Path -LiteralPath $repo)) { continue }
+        $tp = Read-TowerProgram $repo; if (-not $tp) { continue }
+        foreach ($it in $tp.items) { $items.Add($it) }; $programs.Add($tp.program)
+    } catch { $towerFindings.Add([ordered]@{ id = (Tower-Name $repo); rule = 'tower-unreadable'; owner = 'Claude'; pri = 2; say = "Could not read the Tower $(Tower-Name $repo) ($($_.Exception.Message -replace '[\x00-\x1f]', '?')); its Floors are missing from the Ledger, the other Towers still report." }) }
+}
+# grouped by Site when any Tower has one: Sites by code, then the Towers with none, each by name; with no Site the order is unchanged
+if (@($programs | Where-Object { $_.Contains('site') }).Count) { $programs = [Collections.Generic.List[object]]@($programs | Sort-Object { if ($_.Contains('site')) { "0$($_.site)" } else { '1' } }, { [string]$_.repo }) }
 
 # ---------- drift between systems ----------
 $drift = [Collections.Generic.List[object]]::new()
@@ -213,7 +237,7 @@ foreach ($it in $items) {
 foreach ($j in $jobs.Values) {
     if ([string]$j.status -ne 'done' -or -not (Is-Code $j) -or $j.parent) { continue }
     $rp = Get-RepoProof (Repo-Of $j)
-    if ($rp.ok -and -not $rp.ids.ContainsKey([string]$j.id)) { $drift.Add(@{ id = [string]$j.id; what = "order finished, but no commit on main in $(Split-Path (Repo-Of $j) -Leaf) names it" }) }
+    if ($rp.ok -and -not $rp.ids.ContainsKey([string]$j.id)) { $drift.Add(@{ id = [string]$j.id; what = "order finished, but no commit on main in $(Tower-Name (Repo-Of $j)) names it" }) }
 }
 
 # ---------- flags (each with an owner and a plain sentence) ----------
@@ -246,7 +270,7 @@ function Decision-Proof([string]$did) {
     if ($replacedBy[$jid]) { return @{ kind = 'replaced'; order = $jid; say = "replaced by $($replacedBy[$jid])" } }
     $j = $jobs[$jid]; if (-not $j) { return @{ kind = 'unknown'; order = $jid; say = "unknown: no work order file for $jid" } }
     $rp = Get-RepoProof (Repo-Of $j)
-    if (-not $rp.ok) { return @{ kind = 'unknown'; order = $jid; say = "unknown: main in $(Split-Path (Repo-Of $j) -Leaf) could not be read" } }
+    if (-not $rp.ok) { return @{ kind = 'unknown'; order = $jid; say = "unknown: main in $(Tower-Name (Repo-Of $j)) could not be read" } }
     if ($rp.reverted.Contains($jid)) { return @{ kind = 'undone'; order = $jid; say = "undone: commit $($rp.ids[$jid]) on $($rp.branch) reverts it" } }
     if ($rp.ids.ContainsKey($jid)) { return @{ kind = 'on-main'; order = $jid; say = "still on main: commit $($rp.ids[$jid]) on $($rp.branch)" } }
     @{ kind = 'unknown'; order = $jid; say = "unknown: no commit on $($rp.branch) names $jid" }
@@ -276,7 +300,8 @@ if ($lf) {
     }
     $lobe.decisionsReady = @($flags | Where-Object { $_.rule -eq 'decision-ready' }).Count; $lobe.postMortemsDue = @($flags | Where-Object { $_.rule -eq 'post-mortem-due' }).Count
 } elseif (-not $lfr.missing) { $flags.Add([ordered]@{ id = 'flags.json'; rule = 'lobe-flags-unreadable'; owner = 'Claude'; pri = 2; say = "The lobe's $($lobe.why); decisions and post-mortems are unknown." }) }
-foreach ($rp in $repoProof.GetEnumerator()) { if (-not $rp.Value.ok) { $flags.Add([ordered]@{ id = (Split-Path $rp.Key -Leaf); rule = 'repo-unreadable'; owner = 'Claude'; pri = 2; say = "Could not read main in $($rp.Key); its orders can't be proved." }) } }
+foreach ($rp in $repoProof.GetEnumerator()) { if (-not $rp.Value.ok) { $flags.Add([ordered]@{ id = (Tower-Name $rp.Key); rule = 'repo-unreadable'; owner = 'Claude'; pri = 2; say = "Could not read main in $($rp.Key -replace '[\x00-\x1f]', '?'); its orders can't be proved." }) } }
+foreach ($tf in $towerFindings) { $flags.Add($tf) }   # one unreadable Tower, or an unreadable Sites registry (TD-5)
 # (scriptblock keys: a bare property name does not read the keys of an [ordered] dictionary, so "Sort-Object pri, id" left the flags in
 # $jobs hashtable order, which changes from one process to the next)
 $flags = @($flags | Sort-Object { [int]$_.pri }, { [string]$_.id })
@@ -289,6 +314,15 @@ $lobeTop = if ($lobe.ok) { "$($lobe.decisionsReady) decisions ready, $($lobe.pos
 $top = "Ledger: $($counts.waitingOnJordan) waiting on you, $lobeTop, $($counts.lost) lost, $($counts.claimed) claimed without proof, $($counts.stuck) stuck, $($counts.yourIdeasOpen) of your ideas open, $($counts.moving) moving, $($counts.shipped) shipped"
 $doc = [ordered]@{ ok = $true; updated = $now.ToString('o'); top = $top; counts = $counts; lobe = $lobe; programs = @($programs); flags = @($flags); drift = @($drift)
     items = @($items | Sort-Object @{ e = { @('waiting-on-jordan', 'lost', 'claimed', 'stuck', 'moving', 'not-started', 'shipped', 'dropped', 'replaced').IndexOf($_.state) } }, @{ e = { -[int]$_.jordans } }, @{ e = { -[int]$_.score } }, { [string]$_.id }) }
+# one line per Site (its Towers' programs added up), only when a Tower has a Site: no Site, no "sites" key (ledger.json as before)
+function Get-ProgramSum($Programs, [string]$Key) { $n = 0; foreach ($p in $Programs) { $n += [int]$p[$Key] }; $n }
+$progSites = @($programs | Where-Object { $_.Contains('site') } | ForEach-Object { [string]$_.site } | Sort-Object -Unique)
+if ($progSites.Count) {
+    $doc.sites = @(foreach ($sc in $progSites) {
+            $ps = @($programs | Where-Object { $_.Contains('site') -and $_.site -ceq $sc }); $sn = @($siteReg | Where-Object { $_ -and $_.code -ceq $sc } | ForEach-Object { $_.name }) | Select-Object -First 1
+            [ordered]@{ site = $sc; name = $(if ($sn) { [string]$sn } else { $sc }); towers = @($ps | ForEach-Object { $_.repo }); total = (Get-ProgramSum $ps 'total'); shipped = (Get-ProgramSum $ps 'shipped'); stuck = (Get-ProgramSum $ps 'stuck') }
+        })
+}
 
 if ($Action -eq 'show') {
     $it = $doc.items | Where-Object { $_.id -ieq $Id } | Select-Object -First 1

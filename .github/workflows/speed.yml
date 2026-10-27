@@ -1,0 +1,50 @@
+# The Board's phone speed budget (pass-app/SPEED.md): headless Chrome on a throttled phone profile (4x CPU, 40 ms, 10 Mbps) against
+# two throwaway Board servers on fixture Yards (pass-app/speed/fixture.mjs; no real data). Measures first useful paint, INP, scene
+# frame work p95/p99 (busy, during a view change, during a pinch zoom), the JS heap and idle wake-ups, plus a size report as information.
+# REPORT ONLY for now: numbers over budget are warnings and never fail this check (the frame-loop fix is landing in parallel).
+# To enforce, set "enforce": true in pass-app/speed/budget.json (one line, in its own PR). A broken run (server or browser) still fails.
+# Separate from ci.yml on purpose (lane L4 owns that file). Free tools only: playwright-core (Apache-2.0, pinned with a lockfile)
+# driving the Google Chrome already on the ubuntu runner; nothing is downloaded but that one npm package.
+name: speed
+on:
+  pull_request:
+    paths: ['pass-app/**', '.github/workflows/speed.yml']
+  push:
+    branches: [main]
+    paths: ['pass-app/**', '.github/workflows/speed.yml']
+  workflow_dispatch:
+concurrency:
+  group: speed-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+permissions:
+  contents: read
+jobs:
+  board:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Install the pinned measuring tool (playwright-core, from the lockfile, no install scripts)
+        working-directory: pass-app/speed
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Measure the speed budget (median of 3 runs; report only)
+        run: |
+          export CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || true)"
+          node pass-app/speed/run.mjs --out speed-report.json
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: speed-report
+          path: speed-report.json
+          if-no-files-found: ignore
+          retention-days: 30
