@@ -1475,5 +1475,5 @@ html.px .city-cut .city-t{font-family:var(--mono);font-size:14px}
 .fail-say{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;color:var(--ink);margin-top:2px}
 .row.cleared .fail-say{color:var(--ink-2)}
 .why-detail{position:relative;z-index:2;margin:8px 0 0;padding:8px 10px;max-height:12em;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px;font:400 13px/18px var(--mono);color:var(--ink-2);white-space:pre-wrap;overflow-wrap:anywhere}
-.fail-acts .btn{min-height:40px;padding:0 10px}
+.fail-acts{flex-wrap:wrap}.fail-acts .btn{flex:1 1 auto;padding:0 12px;white-space:nowrap}
 .g-cleared{color:var(--ink-3)}.g-cleared::before{content:"\2013"}
