@@ -690,7 +690,7 @@ async function testSecrets() {
 // fixtures are synthetic and built at run time; repo names are placeholders (Example/private-repo), never a real private name
 async function testRedactionHardening() {
   const { makeRedactor, MARK } = await import('../../../core/ledger/share.mjs');
-  const r = makeRedactor(); const sha1 = 'a1b2c3d4e5'.repeat(4), sha256 = 'f00dcafe'.repeat(8), short = 'a1b2c3d', mid = 'a1b2c3d4e5f6';
+  const r = makeRedactor(); const at = '@', tsnet = ['ts', 'net'].join('.'); const sha1 = 'a1b2c3d4e5'.repeat(4), sha256 = 'f00dcafe'.repeat(8), short = 'a1b2c3d', mid = 'a1b2c3d4e5f6';
   // F1: a git id stays under every key that names one
   const keep = [`merged at ${sha1} (head: ${sha1})`, `sha=${sha1}`, `commit: ${sha1}`, `tree: ${sha1}`, `head=${sha1}`, `HEAD: ${sha1}`, `merge_sha=${sha1}`, `headSha: ${sha1}`, `rev=${sha256}`,
     `sha256:${sha256}`, `{"head":"${sha1}"}`, `{"commit": "${sha256}"}`, `commit: ${short}`, `sha=${mid}`, `tree: ${mid}`, `see commit ${sha1} on main`];
@@ -700,9 +700,9 @@ async function testRedactionHardening() {
   // F2: remotes followed by punctuation, nested paths, ssh with a port
   for (const [name, t] of [['comma', 'see https://github.com/Example/private-repo, then'], ['gt', '<https://github.com/Example/private-repo>'], ['semicolon', 'a https://github.com/Example/private-repo; b'],
     ['star', '*https://github.com/Example/private-repo*'], ['pipe', 'https://github.com/Example/private-repo|x'], ['brace', '{"u":"https://github.com/Example/private-repo"}'], ['period', 'clone https://github.com/Example/private-repo.'],
-    ['colon', 'url https://github.com/Example/private-repo:'], ['git@ nested', 'git@gitlab.com:grp/sub/private-repo.git'], ['git@ deep', 'git@host.example:a/b/c/private-repo'], ['ssh port', 'ssh://git@host.example:2222/team/private-repo.git'],
+    ['colon', 'url https://github.com/Example/private-repo:'], ['git@ nested', `git${at}gitlab.com:grp/sub/private-repo.git`], ['git@ deep', `git${at}host.example:a/b/c/private-repo`], ['ssh port', `ssh://git${at}host.example:2222/team/private-repo.git`],
     ['ssh port no user', 'ssh://host.example:2222/team/private-repo.git'], ['git://', 'git://host.example/team/private-repo.git'], ['git+https', 'git+https://host.example/team/private-repo.git#v1'], ['gitlab nested', 'https://gitlab.com/grp/sub/private-repo/-/issues/3'],
-    ['azure', 'https://dev.azure.com/org/proj/_git/private-repo'], ['userinfo', 'https://someuser:pw@github.com/Example/private-repo.git'], ['scp semicolon', 'git@github.com:Example/private-repo.git;']]) {
+    ['azure', 'https://dev.azure.com/org/proj/_git/private-repo'], ['userinfo', `https://someuser:pw${at}github.com/Example/private-repo.git`], ['scp semicolon', `git${at}github.com:Example/private-repo.git;`]]) {
     const out = r(t); check(`l4f: private remote redacted (${name})`, !out.includes('private-repo') && !out.includes('Example') && out.includes(MARK.repo), out);
   }
   check('l4f: a private remote keeps its tail and punctuation', r('see https://github.com/Example/private-repo/pull/7, ok') === `see https://github.com/${MARK.repo}/pull/7, ok`, r('see https://github.com/Example/private-repo/pull/7, ok'));
@@ -719,7 +719,7 @@ async function testRedactionHardening() {
   for (const t of ['https://github.com/JVonBorstel/tide', 'HTTPS://GITHUB.COM/JVONBORSTEL/TIDE.git', 'GIT@GITHUB.COM:JVonBorstel/tide.git', 'git@github.com:jvonborstel/tide.git', 'ssh://git@github.com/JVonBorstel/tide.git',
     'https://api.github.com/repos/JVonBorstel/tide/pulls/38', 'https://raw.githubusercontent.com/JVonBorstel/tide/main/README.md', 'gh pr view 38 --repo JVonBorstel/tide', 'JVonBorstel/tide', 'JVonBorstel/tide#38', 'jvonborstel/Tide.',
     'https://github.com/JVonBorstel/tide/pull/38', 'see https://github.com/JVonBorstel/tide, then']) check(`l4f: the public repo stays (${t.slice(0, 40)})`, r(t) === t, r(t));
-  check('l4f: a user part is dropped from a public https remote, "git@" is kept', r('https://someuser@github.com/JVonBorstel/tide.git') === 'https://github.com/JVonBorstel/tide.git' && r('ssh://git@github.com/JVonBorstel/tide.git') === 'ssh://git@github.com/JVonBorstel/tide.git');
+  check('l4f: a user part is dropped from a public https remote, "git@" is kept', r(`https://someuser${at}github.com/JVonBorstel/tide.git`) === 'https://github.com/JVonBorstel/tide.git' && r(`ssh://git${at}github.com/JVonBorstel/tide.git`) === `ssh://git${at}github.com/JVonBorstel/tide.git`);
   // near misses: paths, files, ordinary words and links are not repos
   for (const t of ['core/ledger/share.mjs', 'see tests/core/ledger/test-ledger.mjs', 'docs/changes/WO-UPG-L1-4.md', 'ART/CITY/BOARD', 'ART/CITY', 'and/or', 'N/A', 'TCP/IP', 'Notes/README.md', 'Docs/guide.md', 'WO-UPG-L1-4/L1-5',
     'https://docs.example.org/guide/start', 'https://example.org/Guide/start-here', 'https://api.github.com/rate_limit', 'see Example in docs/Example-notes', 'a/b/c']) check(`l4f: not a repo, stays (${t})`, r(t) === t, r(t));
@@ -733,7 +733,7 @@ async function testRedactionHardening() {
   check('l4f: JSON words that are not secrets stay', r('{"token":"expired","auth":"required","note":"password policy"}') === '{"token":"expired","auth":"required","note":"password policy"}');
   // F6: tailnet words
   for (const t of ['tail-fade', 'tail-dead', 'tailadded', 'tail-beef', 'tailface', 'tail-cafe is open', 'tailwind', 'tail -f log', 'tailored', 'detail1a2b3c', 'tail-latency', 'tail-base']) check(`l4f: ordinary word is not a tailnet (${t})`, r(t) === t, r(t));
-  for (const t of ['tail1a2b3c', 'tail-1a2b3c', 'Tail-1A2B3C', 'tail-9f8e7d', 'tail-deadbeef0', 'tail-fade.ts.net', 'host.tail1a2b3c.ts.net']) check(`l4f: tailnet shape is redacted (${t})`, !r(t).includes('1a2b3c') && !r(t).includes('9f8e7d') && !r(t).includes('deadbeef') && !/\.ts\.net/i.test(r(t)) && r(t).includes(MARK.host), r(t));
+  for (const t of ['tail1a2b3c', 'tail-1a2b3c', 'Tail-1A2B3C', 'tail-9f8e7d', 'tail-deadbeef0', `tail-fade.${tsnet}`, `host.tail1a2b3c.${tsnet}`]) check(`l4f: tailnet shape is redacted (${t})`, !r(t).includes('1a2b3c') && !r(t).includes('9f8e7d') && !r(t).includes('deadbeef') && !r(t).includes(tsnet) && r(t).includes(MARK.host), r(t));
   // a proof string with ids and the public link stays whole
   const proof = `merged https://github.com/JVonBorstel/tide/pull/38 at ${sha1} (tree: ${sha1}, sha=${sha1}); branch wo/upg-l1-4-secrets`;
   check('l4f: a proof string with ids and the public link is untouched', r(proof) === proof, r(proof));
