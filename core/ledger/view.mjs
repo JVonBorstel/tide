@@ -5,13 +5,14 @@
 // export in the shape pass-app/server.mjs reads today.
 import { jobOfWo, text } from './ids.mjs';
 import { CONTRACT_V } from './store.mjs';
+import { legacyLedger } from './legacy.mjs';
 
 export const STAGES = ['build', 'review', 'ci', 'merge-ready', 'jordan', 'merged', 'docs', 'closed'];
 const rank = (/** @type {string} */ s) => STAGES.indexOf(s);
 const FINISHED = new Set(['shipped', 'dropped', 'replaced']);
 const OPEN = new Set(['moving', 'waiting-on-jordan', 'stuck', 'stale']);
-/** Streams that are not build streams for the WIP limit: the old Yard's own orders and dependency bumps. */
-export const NOT_BUILD_STREAMS = new Set(['YARD', 'DEPENDENCIES']);
+/** Streams that are not build streams for the WIP limit: the old Yard's own orders, dependency bumps, and PRs no rule places (OTHER). */
+export const NOT_BUILD_STREAMS = new Set(['YARD', 'DEPENDENCIES', 'OTHER']);
 export const WIP = { streams: 4, cardsPerStream: 3, stackDepth: 2, stackDepthFlagged: 0 };
 /** Streams where stacks are not allowed at all (flags, not stacks: build-way 3.3). */
 export const NO_STACK_STREAMS = new Set(['ART', 'CITY', 'BOARD']);
@@ -29,7 +30,8 @@ export function fold(events) {
   /** @type {Map<string, any>} */ const wos = new Map();
   /** @type {Map<string, any>} */ const decisions = new Map();
   /** @type {Map<string, any>} */ const flagSets = new Map();
-  const snap = { repos: /** @type {Map<string, any>} */ (new Map()), plans: /** @type {any} */ (null), briefs: /** @type {any} */ (null), site: /** @type {any} */ (null) };
+  const snap = { repos: /** @type {Map<string, any>} */ (new Map()), plans: /** @type {any} */ (null), briefs: /** @type {any} */ (null), site: /** @type {any} */ (null),
+    ideas: /** @type {any} */ (null), links: /** @type {any} */ (null), drops: /** @type {any} */ (null), roadmaps: /** @type {Map<string, any>} */ (new Map()), lobe: /** @type {any} */ (null) };
   const get = (/** @type {string} */ id, /** @type {string} */ at) => {
     let w = wos.get(id);
     if (!w) { w = { id, alias: jobOfWo(id), goal: null, stream: null, repo: null, createdAt: at, plan: null, stage: 'build', stageAt: at, attempts: 0, pr: null, branch: null, base: null, head: null, mergeable: null, prAt: at, ci: null, review: null, decisions: [], merged: null, closedProof: null, dod: {}, dropped: null, replacedBy: null, yard: null, failed: null, prClosed: false, lastSeq: 1 }; wos.set(id, w); }
@@ -42,6 +44,11 @@ export function fold(events) {
     if (e.kind === 'x.local.plans') { snap.plans = d; continue; }
     if (e.kind === 'x.local.briefs') { snap.briefs = d; continue; }
     if (e.kind === 'x.yard.site') { snap.site = d; continue; }
+    if (e.kind === 'x.yard.ideas') { snap.ideas = d; continue; }
+    if (e.kind === 'x.yard.links') { snap.links = d.links; continue; }
+    if (e.kind === 'x.yard.drops') { snap.drops = d.drops; continue; }
+    if (e.kind === 'x.local.roadmap') { snap.roadmaps.set(d.repo, d); continue; }
+    if (e.kind === 'x.lobe.flags') { snap.lobe = d; continue; }
     if (e.kind === 'flag.set') { flagSets.set(d.flag, { on: d.on, decision: d.decision, at: e.at, seq: e.seq }); continue; }
     if (!e.wo) continue;
     const w = get(e.wo, e.at); w.lastSeq = Math.max(w.lastSeq, Number(e.seq) || 1);
@@ -104,10 +111,19 @@ function planOf(/** @type {any} */ w, /** @type {any} */ brief, /** @type {any} 
   return { plan: null, why: byTok.length ? `${byTok.length} plans name ${tok}` : null };
 }
 
+/** The proof a work order shipped: a merge sha, a close with proof, or (a finished Yard code order) a commit on main naming it. @param {any} w @param {any} snap */
+export function proofFor(w, snap) {
+  const mp = w.yard?.status === 'done' && w.yard.code ? mainProof(w, snap.repos) : { proof: null, undone: null };
+  return { proof: w.merged ? `merge commit ${w.merged.sha} (${w.merged.pr})` : w.closedProof || mp.proof || null, undone: mp.undone };
+}
+
 /** Proof on main for a Yard order: the newest commit on main that names its alias (not a revert). */
-function mainProof(/** @type {any} */ w, /** @type {Map<string, any>} */ repos) {
+export function mainProof(/** @type {any} */ w, /** @type {Map<string, any>} */ repos) {
   if (!w.alias) return { proof: null, undone: null };
-  for (const r of repos.values()) {
+  // the order's own repo when it names one (vars.repo) and that checkout was read; else every repo read
+  const norm = (/** @type {string} */ p) => String(p).replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase();
+  const own = w.yard?.repoPath ? [...repos.values()].filter((r) => r?.dir && norm(r.dir) === norm(w.yard.repoPath)) : [];
+  for (const r of own.length ? own : repos.values()) {
     if (!r?.ok || !r.ids?.[w.alias]) continue;
     if (r.reverted?.includes(w.alias)) return { proof: null, undone: `commit ${r.ids[w.alias]} on ${r.main} in ${r.repo} reverts it` };
     return { proof: `commit ${r.ids[w.alias]} on ${r.main} in ${r.repo}`, undone: null };
@@ -131,9 +147,7 @@ export function buildView(events, o) {
     const y = w.yard; const ys = y?.status;
     if (y?.parent && !['waiting-approval', 'needs-human', 'quarantined', 'failed'].includes(ys)) continue;   // sub-orders show under their parent, as in kitchen/ledger.ps1
     let stage = w.stage, stageAt = w.stageAt, state = 'moving', owner = 'crew', blockedOn = /** @type {string|null} */ (null), next = /** @type {string|null} */ (null);
-    let proof = w.merged ? `merge commit ${w.merged.sha} (${w.merged.pr})` : w.closedProof || null;
-    const mp = ys === 'done' && y.code ? mainProof(w, snap.repos) : { proof: null, undone: null };
-    if (!proof && mp.proof) proof = mp.proof;
+    const pf = proofFor(w, snap); const proof = pf.proof; const mp = { undone: pf.undone };
     const open = openDec(w); const answered = w.decisions.map((/** @type {string} */ id) => decisions.get(id)).filter((/** @type {any} */ d) => d && d.answer != null);
     if (w.replacedBy) { state = 'replaced'; owner = 'nobody'; next = `continues as ${w.replacedBy}`; }
     else if (w.dropped) { state = 'dropped'; owner = 'nobody'; blockedOn = null; next = null; }
@@ -223,7 +237,7 @@ export function buildView(events, o) {
   const top = `Work: ${queueAll.length} cards and ${count('waiting-on-jordan')} orders waiting on Jordan, ${count('stale')} stale, ${count('stuck')} stuck, ${count('lost')} lost, ${count('moving')} moving; ${shipped24} shipped in the last 24 h; ${build.length} of ${WIP.streams} build streams open${paused ? '; the Yard is paused' : ''}`;
   const order = ['waiting-on-jordan', 'stale', 'stuck', 'lost', 'moving', 'shipped', 'dropped', 'replaced'];
   rows.sort((a, b) => order.indexOf(a.state) - order.indexOf(b.state) || b.ageH - a.ageH || a.id.localeCompare(b.id));
-  const internal = rows.map((r) => ({ planWhy: r._planWhy, createdAt: r._createdAt }));
+  const internal = { rowMeta: rows.map((r) => ({ planWhy: r._planWhy, createdAt: r._createdAt })), fold: { wos, decisions, snap } };
   for (const r of rows) { delete r._planWhy; delete r._createdAt; }
   return { at: o.now.toISOString(), top, queue: queueAll.slice(0, 7), queueTotal: queueAll.length, queueAll, streams, rows, flags, flagValues, paused, internal };
 }
@@ -251,21 +265,28 @@ export function flagProjection(defaults, sets) {
 export function exportLedgerJson(v, o = {}) {
   const recentH = o.recentH ?? 168;
   const ownerWord = /** @type {Record<string,string>} */ ({ crew: 'kitchen', jordan: 'Jordan', nobody: '' });
-  const items = v.rows.filter((r) => !FINISHED.has(r.state) || r.stageAgeH <= recentH).slice(0, 400).map((r) => ({
+  const lg = legacyLedger(/** @type {any} */ (v));
+  // the old ledger's ideas, roadmap items and unfinished orders first (its own rules), then every other row the old file never had
+  const rowItems = v.rows.filter((r) => !(r.alias && lg.inChain.has(r.alias)) && (!FINISHED.has(r.state) || r.stageAgeH <= recentH)).map((r) => ({
     id: r.alias || r.id, wo: r.id, kind: 'order', title: r.goal, from: r.stream, jordans: false, score: 0, size: '',
     state: r.state, owner: r.state === 'lost' || r.state === 'stuck' ? 'Claude' : ownerWord[r.owner] ?? '', why: r.blockedOn || '', proof: r.proof || '', listed: r.stage,
     since: new Date(Date.parse(v.at) - r.ageH * 3600000).toISOString(), ageDays: Math.round(r.ageH / 2.4) / 10,
     chain: [{ id: r.alias || r.id, status: r.stage, proof: r.proof || '', note: r.next || '', replacedBy: r.state === 'replaced' && r.next ? r.next.replace(/^continues as /, '') : '' }],
   }));
+  const items = [...lg.items, ...rowItems].slice(0, 400);
   const ruleOwner = /** @type {Record<string,[string, number]>} */ ({ lost: ['Claude', 1], stale: ['Claude', 2], 'stack-too-deep': ['Claude', 2], 'no-plan': ['Claude', 3], 'no-decision': ['Jordan', 2], 'over-wip': ['Jordan', 2] });
-  const flags = v.flags.map((f) => ({ id: f.wo || f.flag, rule: f.flag, owner: ruleOwner[f.flag]?.[0] || 'Claude', pri: ruleOwner[f.flag]?.[1] || 3, say: f.detail }))
-    .concat(v.queueAll.map((c) => ({ id: c.decision.id, rule: 'waiting-on-you', owner: 'Jordan', pri: 1, say: `${c.goal}: ${c.decision.ask} (waiting ${c.ageH} h)` })))
+  // the view's own flags for rows that are not Yard orders (the old rules flag those), Jordan's cards, then the old flags
+  const flags = v.flags.filter((f) => !f.wo || !jobOfWo(f.wo)).map((f) => ({ id: f.wo || f.flag, rule: f.flag, owner: ruleOwner[f.flag]?.[0] || 'Claude', pri: ruleOwner[f.flag]?.[1] || 3, say: f.detail }))
+    .concat(v.queueAll.map((c) => ({ id: c.decision.id, rule: 'waiting-on-you', owner: 'Jordan', pri: 1, say: `${c.goal}: ${c.decision.ask} (waiting ${c.ageH} h)` })), lg.flags)
     .sort((a, b) => a.pri - b.pri || String(a.id).localeCompare(String(b.id)));
-  const n = (/** @type {string} */ s) => v.rows.filter((r) => r.state === s).length;
+  // counts keep their old meaning (the old items); the rows the old file never had are counted under work
+  const n = (/** @type {string} */ s) => lg.items.filter((r) => r.state === s).length;
+  const rn = (/** @type {string} */ s) => rowItems.filter((r) => r.state === s).length;
   return {
     ok: true, updated: v.at, top: v.top, source: 'core/ledger (tide.db)',
-    counts: { waitingOnJordan: n('waiting-on-jordan'), lost: n('lost'), claimed: 0, stuck: n('stuck'), moving: n('moving'), notStarted: 0, shipped: n('shipped'), stale: n('stale'),
-      yourIdeasOpen: null, flags: flags.length, drift: 0, decisionsReady: v.queueTotal, postMortemsDue: null },
-    programs: [], flags, drift: [], items,
+    counts: { waitingOnJordan: n('waiting-on-jordan'), lost: n('lost'), claimed: n('claimed'), stuck: n('stuck'), moving: n('moving'), notStarted: n('not-started'), shipped: n('shipped'), stale: n('stale'),
+      yourIdeasOpen: lg.items.filter((x) => x.jordans && !['shipped', 'dropped'].includes(x.state)).length, flags: flags.length, drift: lg.drift.length, decisionsReady: lg.lobe.decisionsReady, postMortemsDue: lg.lobe.postMortemsDue, cards: v.queueTotal },
+    work: { rows: rowItems.length, lost: rn('lost'), stuck: rn('stuck'), stale: rn('stale'), moving: rn('moving'), shipped: rn('shipped'), waitingOnJordan: rn('waiting-on-jordan') },
+    lobe: lg.lobe, programs: lg.programs, flags, drift: lg.drift, items,
   };
 }

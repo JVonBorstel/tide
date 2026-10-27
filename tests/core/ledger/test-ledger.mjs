@@ -378,7 +378,89 @@ async function testParity(db) {
   check('parity: every row the old ledger has is present or explained -> exit 0', await main(['parity', '--db', db, '--old', oldFile, '--now', NOW.toISOString()], { out: (x) => lines.push(x) }) === 0 && /0 unexplained/.test(lines[0]));
 }
 
+// ---- WO-UPG-L1-2: ideas, manual links, Jordan's drops, roadmaps, the lobe's decisions, and the old ledger's items rebuilt ----
+async function testLegacy() {
+  const { importIdeas } = await import('../../../core/ledger/import-ideas.mjs');
+  const { importRoadmaps, importLobe } = await import('../../../core/ledger/import-roadmap.mjs');
+  const base = path.join(tmp, 'l2'); const state = path.join(base, 'state'); const r = path.join(base, 'gw-repo');
+  // a repo that opts in to a roadmap; B-01 has its change note on main; J5 is named on main; J6 was reverted
+  fs.mkdirSync(r, { recursive: true }); git(r, 'init', '-q', '-b', 'main');
+  W(path.join(r, 'kitchen.repo.json'), { roadmap: 'map/roadmap.json' });
+  W(path.join(r, 'map', 'roadmap.json'), { waves: [{ id: 'W1', goal: 'first', items: [
+    { id: 'B-01', title: 'Shipped item', why: 'x', depends_on: [], owns: ['a'], acceptance: ['a'], size: 'S' },
+    { id: 'B-02', title: 'Blocked item', why: 'x', depends_on: ['B-03'], owns: ['a'], acceptance: ['a'] },
+    { id: 'B-03', title: 'Owner item', why: 'x', depends_on: [], owns: ['a'], acceptance: ['a'], owner_only: true },
+    { id: 'B-04', title: 'Set aside item', why: 'x', depends_on: [], owns: ['a'], acceptance: ['a'] }] }] });
+  W(path.join(r, 'docs', 'changes', 'B-01.md'), 'note'); git(r, 'add', '.'); git(r, 'commit', '-q', '-m', 'B-01: shipped item');
+  git(r, 'commit', '-q', '--allow-empty', '-m', 'J5: a code order'); git(r, 'commit', '-q', '--allow-empty', '-m', 'Revert "J6: undone order"');
+  const job = (id, status, extra = {}) => W(path.join(state, 'jobs', `${id}.json`), { id, name: `order ${id}`, status, recipe: 'improve', created: '2030-01-01T00:00:00Z', attempt: 1, cursor: 0, parent: '', vars: { goal: `Goal of ${id}`, repo: r }, steps: [{ script: 'stations/merge.ps1' }], history: [], ...extra });
+  job('J1', 'done', { recipe: 'review', steps: [], vars: { goal: 'Build it (Idea I1: first idea)', repo: r } });   // a finished non-code order: shipped
+  job('J2', 'pending', { vars: { goal: 'Build it (Idea I2: second)', repo: r } });
+  job('J3', 'closed', { vars: { goal: 'Build it (Idea I3: third)', repo: r } });
+  job('J4', 'quarantined', { recipe: 'roadmap-item', vars: { goal: 'B-04', item: 'B-04', repo: r } });
+  job('J5', 'done'); job('J7', 'done');
+  W(path.join(state, 'jobs-index.json'), { v: 1, jobs: {} });
+  W(path.join(state, 'events.jsonl'), [{ ts: '2030-01-02T00:00:00Z', type: 'job.closed', job: 'J3', reason: 'done another way: integrated by hand' }, { ts: '2030-01-03T00:00:00Z', type: 'merge.undone', job: 'J7' }].map((x) => JSON.stringify(x)).join('\n') + '\n');
+  W(path.join(state, 'ideas.json'), { updated: '2030-01-01T00:00:00Z', nextId: 9, items: [
+    { id: 'I1', title: 'First idea', status: 'merged', source: 'Jordan (phone)', score: 50, size: 'S', at: '2030-01-01T00:00:00Z', job: 'J1' },
+    { id: 'I2', title: 'Second idea', status: 'building', source: 'coach', score: 95, size: 'M', at: '2030-01-01T00:00:00Z', job: 'J2' },
+    { id: 'I3', title: 'Third idea', status: 'failed', source: 'coach', score: 10, size: 'M', at: '2030-01-01T00:00:00Z', job: 'J3' },
+    { id: 'I4', title: 'Never built', status: 'new', source: 'Jordan (chat)', score: 10, size: 'M', at: '2029-12-01T00:00:00Z' },
+    { id: 'I5', title: 'Dropped in Chef', status: 'dropped', source: 'coach', score: 10, size: 'M', at: '2030-01-01T00:00:00Z' },
+    { id: 'I6', title: 'Dropped, not by Jordan', status: 'dropped', source: 'coach', score: 10, size: 'M', at: '2030-01-01T00:00:00Z' },
+    { id: 'I7', title: 'Linked by hand', status: 'new', source: 'coach', score: 10, size: 'M', at: '2030-01-01T00:00:00Z' }] });
+  W(path.join(state, 'ledger-links.json'), { I7: { proof: 'abc1234', why: 'built in a session', at: '2030-01-02T00:00:00Z', by: 'cli' } });
+  W(path.join(state, 'pass-actions.jsonl'), JSON.stringify({ ts: '2030-01-02T00:00:00Z', op: 'ideas-drop', id: 'I5', ok: true }) + '\n');
+  const lobeDir = path.join(base, 'lobe');
+  W(path.join(lobeDir, 'flags.json'), { updated: '2030-01-05T00:00:00Z', decisionReady: [{ id: 'D-lobe-1', ready_at: '2030-01-05T00:00:00Z' }],
+    postMortemDue: [{ id: 'S-J5-a', day: 30, due_at: '2030-01-05T00:00:00Z', expires_at: '2030-01-20T00:00:00Z' }, { id: 'S-J7-b', day: 60, due_at: '2030-01-05T00:00:00Z', expires_at: '2030-01-20T00:00:00Z' },
+      { id: 'S-J99-c', day: 90, due_at: '2030-01-05T00:00:00Z', expires_at: '2030-01-20T00:00:00Z' }, { id: 'S-J5-d', day: 45, due_at: '2030-01-05T00:00:00Z' }] });
+  const s = await openStore(':memory:');
+  const all = () => [...importYard(state, { now: NOW }).events, ...importLocal({ repos: [{ path: r, name: 'gw-repo' }], now: NOW }).events, ...importIdeas(state, { now: NOW }).events,
+    ...importRoadmaps({ repos: [{ path: r, name: 'gw-repo' }], now: NOW }).events, ...importLobe(state, { now: NOW, home: lobeDir }).events];
+  s.append(all());
+  check('l2: ideas, links, drops, roadmaps and the lobe import idempotently (a rerun adds 0 events)', s.append(all()).added === 0);
+  const v = buildView(s.events(), { now: NOW }); const ex = exportLedgerJson(v); const item = (id) => ex.items.find((i) => i.id === id);
+  check('l2: an idea shipped through its order (a finished non-code order)', item('I1')?.state === 'shipped' && /J1: order finished/.test(item('I1').proof));
+  check('l2: an idea whose order is pending is moving, owner kitchen', item('I2')?.state === 'moving' && item('I2').owner === 'kitchen');
+  check('l2: "done another way" with no proof is claimed (old rule), owner Claude', item('I3')?.state === 'claimed' && item('I3').owner === 'Claude' && ex.flags.some((f) => f.id === 'I3' && f.rule === 'claimed-no-proof'));
+  check('l2: an idea never built is not-started; Jordan\'s idea waiting 3+ days is flagged', item('I4')?.state === 'not-started' && ex.flags.some((f) => f.id === 'I4' && f.rule === 'your-idea-waiting'));
+  check('l2: Jordan\'s drop in Chef (pass-actions.jsonl) drops the idea', item('I5')?.state === 'dropped' && item('I5').why === 'you dropped it in Chef');
+  check('l2: a drop not by Jordan and never built is lost', item('I6')?.state === 'lost' && /not by you, and never built/.test(item('I6').why));
+  check('l2: a manual link (ledger-links.json) ships the idea', item('I7')?.state === 'shipped' && /^linked: abc1234/.test(item('I7').proof));
+  check('l2: drift: the idea list says failed, but... (I3 claimed: no drift); a finished code order with no commit on main is drift', !ex.drift.some((d) => d.id === 'I3') && ex.drift.some((d) => d.id === 'J7' && /no commit on main in gw-repo/.test(d.what)) && !ex.drift.some((d) => d.id === 'J5'));
+  check('l2: roadmap: an item with its change note on main is shipped (counted, not listed)', !item('B-01') && ex.programs[0]?.repo === 'gw-repo' && ex.programs[0].total === 4 && ex.programs[0].shipped === 1);
+  check('l2: roadmap: blocked, owner-only and set-aside items have the old states and words', item('B-02')?.why === 'waits for B-03' && item('B-03')?.why === 'an owner step (protected files)' && item('B-04')?.state === 'stuck' && item('B-04').why === 'order J4 is set aside' && ex.programs[0].stuck === 1);
+  const lf = (id) => ex.flags.find((f) => f.id === id);
+  check('l2: lobe: a decision ready is a flag for Jordan', lf('D-lobe-1')?.rule === 'decision-ready' && lf('D-lobe-1').owner === 'Jordan' && ex.counts.decisionsReady === 1);
+  check('l2: lobe: a post-mortem carries the proof: still on main', lf('S-J5-a')?.proofKind === 'on-main' && /still on main: commit/.test(lf('S-J5-a').proof));
+  check('l2: lobe: a post-mortem of an undone merge says undone', lf('S-J7-b')?.proofKind === 'undone');
+  check('l2: lobe: an order with no file is unknown; a day that is not 30/60/90 is skipped', lf('S-J99-c')?.proofKind === 'unknown' && !lf('S-J5-d') && ex.counts.postMortemsDue === 3);
+  check('l2: counts keep the old meaning; the new rows are counted under work', ex.counts.claimed === 1 && ex.counts.notStarted >= 3 && typeof ex.work.rows === 'number');
+  const noLobe = importLobe(state, { now: NOW, home: path.join(base, 'none') });
+  check('l2: lobe: no flags.json is unknown (null counts), never a made-up zero', noLobe.report.ok === false && noLobe.events[0].data.missing === true);
+  W(path.join(base, 'bad', 'flags.json'), '{ not json');
+  const bad = importLobe(state, { now: NOW, home: path.join(base, 'bad') }); const s2 = await openStore(':memory:'); s2.append(bad.events);
+  check('l2: lobe: an unreadable flags.json is a flag for Claude', exportLedgerJson(buildView(s2.events(), { now: NOW })).flags.some((f) => f.rule === 'lobe-flags-unreadable')); s2.close();
+  const none = importRoadmaps({ repos: [{ path: path.join(tmp, 'repo'), name: 'plain' }], now: NOW });
+  check('l2: a repo with no roadmap adds nothing', none.events.length === 0 && /no (kitchen\.repo\.json|roadmap)/.test(none.report[0].why));
+  W(path.join(base, 'broken', 'kitchen.repo.json'), { roadmap: 'map/roadmap.json' }); W(path.join(base, 'broken', 'map', 'roadmap.json'), { waves: [{ id: 'W1', items: [{ id: 'not an id' }] }] });
+  const broken = importRoadmaps({ repos: [{ path: path.join(base, 'broken'), name: 'broken' }], now: NOW });
+  check('l2: a broken roadmap says why and guesses no items (fail closed)', broken.events[0]?.data.ok === false && broken.events[0].data.items.length === 0 && /not like B-01/.test(broken.report[0].why));
+  check('l2: a missing ideas.json says so', importIdeas(path.join(tmp, 'nowhere'), { now: NOW }).report.ideas.why === 'missing');
+  // parity compares ideas and roadmap items item for item
+  const old = { items: [{ id: 'I2', kind: 'idea', state: 'moving' }, { id: 'B-02', kind: 'roadmap', state: 'not-started', from: 'gw-repo' }, { id: 'I4', kind: 'idea', state: 'lost' }, { id: 'B-09', kind: 'roadmap', state: 'stuck', from: 'other-repo' }] };
+  const p = compareLedgers(old, v, s.events()); const pi = (id) => p.items.find((i) => i.old === id);
+  check('l2: parity: an idea and a roadmap item are compared with the export\'s own item', pi('I2')?.verdict === 'same' && pi('B-02')?.verdict === 'same');
+  check('l2: parity: a different idea state with no reason is unexplained', pi('I4')?.verdict === 'unexplained');
+  check('l2: parity: a roadmap of a repo that was not imported is explained', pi('B-09')?.verdict === 'explained');
+  const { streamOf } = await import('../../../core/ledger/ids.mjs');
+  check('l2: a PR with no work order and no branch rule is in OTHER, which is not a build stream (was PR-TIDE)', streamOf('frame-loop', 'WO-PR-TIDE-5') === 'OTHER' && streamOf('x', 'WO-UPG-L1-3') === 'UPG-L1');
+  s.close();
+}
+
 try {
+  await testLegacy();
   await testStore(); await testYard(); await testGithub(); await testLocal(); testView(); testExport();
   const db = await testCli(); await testParity(db);
 } catch (e) { check(`the suite ran to the end (${String(e?.stack || e).split('\n').slice(0, 3).join(' | ')})`, false); }

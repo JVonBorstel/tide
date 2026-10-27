@@ -19,6 +19,8 @@ function git(repo, args) {
 }
 const hash = (/** @type {unknown} */ v) => crypto.createHash('sha1').update(JSON.stringify(v)).digest('hex').slice(0, 16);
 export const ID_IN_TEXT = /(?<![A-Za-z0-9-])(J\d{1,5}|WO-[A-Z0-9]+(?:-[A-Z0-9]+)*)(?![\dA-Za-z])/g;
+/** Other ids kitchen/ledger.ps1 reads on main: ideas (I12) and roadmap items (B-01). */
+export const OTHER_ID_IN_TEXT = /(?<![A-Za-z0-9])(I\d{1,5}|[A-Z][A-Za-z0-9]{0,5}-\d{1,4})(?![\d])/g;
 export const SLICE_TOKEN = /(?<![\w-])(S\d+[a-z]|G\d+|TD-\d+)(?![\w-])/g;
 
 /**
@@ -27,7 +29,7 @@ export const SLICE_TOKEN = /(?<![\w-])(S\d+[a-z]|G\d+|TD-\d+)(?![\w-])/g;
  * @param {string} name a short name for the row (tide)
  */
 export function repoFacts(repo, name) {
-  const out = { repo: name, ok: false, main: '', head: '', ids: /** @type {Record<string, string>} */ ({}), reverted: /** @type {string[]} */ ([]), mergedBranches: /** @type {string[]} */ ([]), worktrees: /** @type {Array<{path: string, branch: string}>} */ ([]), why: '' };
+  const out = { repo: name, dir: path.resolve(repo), ok: false, main: '', head: '', ids: /** @type {Record<string, string>} */ ({}), reverted: /** @type {string[]} */ ([]), mergedBranches: /** @type {string[]} */ ([]), changes: /** @type {string[]} */ ([]), worktrees: /** @type {Array<{path: string, branch: string}>} */ ([]), why: '' };
   if (!fs.existsSync(repo)) { out.why = 'the checkout folder does not exist'; return out; }
   let main = '';
   for (const ref of ['refs/heads/main', 'refs/heads/master', 'refs/remotes/origin/main']) if (git(repo, ['rev-parse', '--verify', '--quiet', ref]) !== null) { main = ref; break; }
@@ -37,8 +39,10 @@ export function repoFacts(repo, name) {
   for (const rec of log.split('\x1e')) {
     const parts = rec.trim().split('\x1f'); if (parts.length < 2) continue;
     const [h, subject] = parts; const textOf = parts.slice(1).join(' '); const rev = /^Revert\b/.test(subject);
-    for (const m of textOf.matchAll(ID_IN_TEXT)) { const k = m[1]; if (out.ids[k]) continue; out.ids[k] = h; if (rev) out.reverted.push(k); }
+    for (const re of [ID_IN_TEXT, OTHER_ID_IN_TEXT]) for (const m of textOf.matchAll(re)) { const k = m[1]; if (out.ids[k]) continue; out.ids[k] = h; if (rev) out.reverted.push(k); }
   }
+  // the change notes on main (docs/changes/<id>.md): a roadmap item's only proof of merge (kitchen/roadmap-lib.ps1)
+  out.changes = String(git(repo, ['ls-tree', '--name-only', `${main}:docs/changes`]) || '').split('\n').map((s) => s.trim()).filter((s) => /\.md$/.test(s)).map((s) => s.slice(0, -3)).sort();
   out.mergedBranches = String(git(repo, ['for-each-ref', `--merged=${main}`, '--format=%(refname:short)', 'refs/heads']) || '').split('\n').map((s) => s.trim()).filter(Boolean).sort();
   let cur = /** @type {any} */ (null);
   for (const l of String(git(repo, ['worktree', 'list', '--porcelain']) || '').split('\n')) {
