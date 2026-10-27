@@ -148,6 +148,15 @@ if ($Impacted) {
         $bs = $rel -replace '/', '\'; $own = "Test-$(ConvertTo-SuiteStem ([IO.Path]::GetFileNameWithoutExtension($rel)))"
         @($suites | Where-Object { $_.BaseName -eq $own -or (Get-SuiteText $_).IndexOf($rel, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or (Get-SuiteText $_).IndexOf($bs, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | ForEach-Object { $_.BaseName })
     }
+    # a file the fixed table does not map: its own owners, or (viaFolder) the owners of the other files in its folder, shared core files left out
+    function Get-LooseOwners([string]$rel) {
+        $own = @(Get-FileOwners $rel)
+        if ($own.Count) { return @{ owners = $own; folder = ''; viaFolder = $false } }
+        $folder = [IO.Path]::GetDirectoryName($rel) -replace '\\', '/'
+        $fp = if ($folder) { Join-Path $Dir $folder } else { '' }
+        $sibs = if ($fp -and (Test-Path -LiteralPath $fp -PathType Container)) { @(Get-ChildItem -LiteralPath $fp -File | ForEach-Object { "$folder/$($_.Name)" } | Where-Object { $_ -ne $rel -and $_ -notmatch $coreRx }) } else { @() }
+        @{ owners = @($sibs | ForEach-Object { Get-FileOwners $_ } | Sort-Object -Unique); folder = $folder; viaFolder = $true }
+    }
     if (-not $cfList.Count -or $cfList -contains 'unknown') { $fallback = 'the changed files are unknown' }
     foreach ($cf in $cfList) {
         if ($fallback) { break }
@@ -173,16 +182,10 @@ if ($Impacted) {
         # a file the table does not map: the suites that own it; with none, the suites that own the other files in its folder (shared
         # core files left out: every suite runs through them); with none of those either, all suites
         foreach ($rel in $loose) {
-            $own = @(Get-FileOwners $rel)
-            if (-not $own.Count) {
-                $folder = [IO.Path]::GetDirectoryName($rel) -replace '\\', '/'
-                $fp = if ($folder) { Join-Path $Dir $folder } else { '' }
-                $sibs = if ($fp -and (Test-Path -LiteralPath $fp -PathType Container)) { @(Get-ChildItem -LiteralPath $fp -File | ForEach-Object { "$folder/$($_.Name)" } | Where-Object { $_ -ne $rel -and $_ -notmatch $coreRx }) } else { @() }
-                $own = @($sibs | ForEach-Object { Get-FileOwners $_ } | Sort-Object -Unique)
-                if (-not $own.Count) { $fallback = if ($folder) { "no suite is mapped to $rel or to another file in $folder/" } else { "no suite is mapped to $rel" }; break }
-                Write-Output "tests: impacted map: no suite names $rel; running the suites that own other files in $folder/ ($($own -join ', '))"
-            }
-            foreach ($nm in $own) { $null = $pick.Add($nm) }
+            $lo = Get-LooseOwners $rel
+            if (-not $lo.owners.Count) { $fallback = if ($lo.folder) { "no suite is mapped to $rel or to another file in $($lo.folder)/" } else { "no suite is mapped to $rel" }; break }
+            if ($lo.viaFolder) { Write-Output "tests: impacted map: no suite names $rel; running the suites that own other files in $($lo.folder)/ ($($lo.owners -join ', '))" }
+            foreach ($nm in $lo.owners) { $null = $pick.Add($nm) }
         }
     }
     if (-not $fallback) {
