@@ -1364,6 +1364,8 @@ html.px .notice-chip{clip-path:var(--px-notch-s)}
 /* the City gets the space back: edge to edge (city.js scales the picture to the box), its words keep the gutter, every name whole
    (names wrap to a second row or line, never an ellipsis); D-3: Look A (crisp pixels as drawn) by day, lit at dusk and night (B's lighting) */
 .city{margin:2px 0 10px}
+/* until city.js draws, hold the picture's usual room (half the width: a City of about six buildings) so the Board below does not jump */
+.city:not(:has(.city-canvas)){min-height:calc(min(100vw,600px) / 2)}
 #city-names{padding:0 var(--gutter)}
 .city-names{flex-wrap:wrap}
 .city-names li{flex:1 1 auto}

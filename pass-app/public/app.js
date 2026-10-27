@@ -1048,6 +1048,7 @@ function noticesOf(markup) {
   });
 }
 function renderNotices(markup) {
+  const key = markup.join(''); if (key === S.noticeKey) return; S.noticeKey = key;   // most state patches change no notice: nothing to parse or draw
   const list = S.notices = noticesOf(markup);
   const bars = list.filter((n) => n.tone === 'broken').map((n) => `<div class="redbar"><span>${esc(n.text)}</span>${n.act}</div>`).join('');
   const chips = list.map((n, i) => (n.tone === 'broken' ? '' : `<button class="notice-chip" type="button" data-notice="${i}" data-tone="${n.tone}"${n.moon ? ' data-moon' : ''} aria-haspopup="dialog"><i aria-hidden="true"></i>${esc(n.chip)}</button>`)).join('');
