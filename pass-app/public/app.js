@@ -2104,7 +2104,7 @@ wireWorld($('world-body'), { post: (b) => api('/api/lobe', { method: 'POST', bod
 paintWorld(document.documentElement);   // the World tab's pixel icon, before the view is first opened
 import { syncList, windowed, WINDOW_FIRST, WINDOW_STEP } from './rows.js';
 // the City (city.js, loaded on its own: if it cannot load, the Board works without it): the Board's home, the strip on the other tabs
-import('./city.js').then((m) => { S.city = m.mountCity({ home: $('city'), names: $('city-names'), strip: $('city-strip'), cap: $('city-key'), api, go,
+import('./city.js').then((m) => { S.city = m.mountCity({ home: $('city'), names: $('city-names'), strip: $('city-strip'), cap: $('city-key'), api, go, buzz,
   get: () => ({ s: S.stale ? null : S.state, ev: S.events, view: S.view, lastSeen: S.sinceFrom }), legend: (html) => { $('legend-body').innerHTML = html; openSheet('legend-sheet'); } }); renderScene(); }).catch(() => {});
 function renderScene() {
   S.city?.update();

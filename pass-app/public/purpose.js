@@ -62,7 +62,8 @@ export const purposeOf = (id) => PURPOSE.find((r) => r.id === id);
 // ---- the City's Purpose Ledger (public/city.js, the Board's home; review F7): one row per mark the City draws ----
 // A data row names the model fields it shows (city.js cityOf: k, band, lots.*, gate.*, yard.*), where they come from (/api/towers or the
 // live state), its legend line (the start of a city.js legendRows line; null: a mark with no line yet) and what a missing field draws.
-// A ground row is structure with no field (capped by the tests); a words row is said in the caption, never drawn. pass-app/test-city.mjs
+// A ground row is structure with no field (capped by the tests); a words row is said in the caption, never drawn; a route row is drawn
+// from the City's own route (the hash), not from a record. pass-app/test-city.mjs
 // enforces it: every model field and every City sprite (city-art.js) has a row, every legend line is a row's, and every data row's
 // field changes the picture.
 const TW = 'GET /api/towers (towers.mjs)';
@@ -89,6 +90,7 @@ export const CITY_PURPOSE = [
   city('clock', [], ['gate.stalled'], STATE + ': stalled', null, 'no clock'),
   city('github', [], ['gate.github'], TW + ': githubAt, githubError', 'GH sign', 'no sign'),
   city('yard', [], ['yard.running', 'yard.queued', 'yard.waiting'], STATE + ': jobs with no Tower', 'Workshop by the gate', 'an empty workshop'),
+  { id: 'focus', kind: 'route', fields: [], from: 'the location hash (city-nav.js routeOf)', why: 'the building the route is on: dotted guides and an underline, at once on a tap' },
   { id: 'caption', kind: 'words', fields: ['loading', 'error'], why: 'said in the caption under the City (reading, could not be read), never drawn' },
   { id: 'sky', kind: 'ground', art: [], fields: ['sky'], why: 'the real hour\'s sky with the sun or the moon and stars' },
   { id: 'street', kind: 'ground', art: [], fields: [], why: 'the street, its kerb and dashes' },

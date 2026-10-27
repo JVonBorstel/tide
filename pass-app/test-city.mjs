@@ -386,7 +386,7 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   check(`CityPurpose_Declared: every field of the City's model (${paths.length}) and every City sprite (${artNames.length}: ${artNames.join(', ')}) has a ledger row, and every row names real fields and sprites`,
     paths.every((p) => declared.has(p)) && [...declared].every(has2) && artNames.every((n) => art.has(n)) && [...art].every((n) => n in ARTS), paths.filter((p) => !declared.has(p)).concat([...declared].filter((p) => !has2(p))).join(', '));
   check('CityPurpose_Bound: every data row says where its field comes from (/api/towers or the state) and what a missing field draws; ground (no field) is capped at 5 rows',
-    DATA.every((r) => /api\/(towers|state)/.test(r.from) && r.absent && r.fields.length) && CITY_PURPOSE.filter((r) => r.kind === 'ground').length <= 5 && CITY_PURPOSE.every((r) => ['data', 'ground', 'words'].includes(r.kind)));
+    DATA.every((r) => /api\/(towers|state)/.test(r.from) && r.absent && r.fields.length) && CITY_PURPOSE.filter((r) => r.kind === 'ground').length <= 5 && CITY_PURPOSE.every((r) => ['data', 'ground', 'words', 'route'].includes(r.kind)));
   const lines = CJ.legendRows(full); const owner = (line) => DATA.filter((r) => r.legend && line.startsWith(r.legend));
   check(`CityPurpose_Legend: every legend line (${lines.length} on a full City) is one data row's line`, lines.length >= 10 && lines.every((l) => owner(l).length === 1), lines.filter((l) => owner(l).length !== 1).join(' | '));
   const base = CJ.cityOf(towersOf(), { jobs: [] }, [], NOW); const L0 = base.lots[0];
@@ -401,12 +401,37 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   };
   const pic = (m) => CJ.paintCity(m, W, 13, ph).g.buf; const b0 = pic(base); const flat = DATA.filter((r) => !FLIP[r.id] || pic(FLIP[r.id]).every((v, i) => v === b0[i])).map((r) => r.id);
   check(`CityPurpose_Flips: each data row's field changes the picture (${Object.keys(FLIP).length} flips)${flat.length ? '; flat or missing: ' + flat.join(', ') : ''}`, flat.length === 0);
+  check('CityPurpose_Route: the focus mark (a route row) is drawn only for the building the route is on', CITY_PURPOSE.some((r) => r.id === 'focus' && r.kind === 'route') && CJ.paintCity(base, W, 13, { ...ph, focus: 'td' }).g.buf.some((v, i) => v !== b0[i]) && CJ.paintCity(base, W, 13, { ...ph, focus: 'nowhere' }).g.buf.every((v, i) => v === b0[i]));
   function BEACONK(k) { return ARTS.BEACON[k]; }
 }
 
+// ---- G5: navigation (public/city-nav.js): routes, Back, breadcrumb, gestures, camera ----
+{
+  const N = await import('./public/city-nav.js');
+  check('Nav_Routes: #/pass is the City, #/city/<key> one building, #/city/<key>/f/<pr> a floor; junk is the City', JSON.stringify([N.routeOf('#/pass'), N.routeOf('#/city/td'), N.routeOf('#/city/td/f/121'), N.routeOf('#/city/../x'), N.routeOf('#/city/TD')]) === JSON.stringify([{ level: 0, key: null, pr: null }, { level: 1, key: 'td', pr: null }, { level: 2, key: 'td', pr: 121 }, { level: 0, key: null, pr: null }, { level: 0, key: null, pr: null }]));
+  check('Nav_BackZoomsOut: Back from a floor is its building, from a building the City; a route and its hash go both ways', N.hashOf(N.upOf(N.routeOf('#/city/td/f/9'))) === '#/city/td' && N.hashOf(N.upOf(N.routeOf('#/city/td'))) === '#/pass' && ['#/pass', '#/city/td', '#/city/td/f/9'].every((h) => N.hashOf(N.routeOf(h)) === h));
+  check('Nav_SwipeNeighbour: a sideways swipe on a building goes to the next one and wraps around', N.neighbourOf(['a', 'b', 'c'], 'c', 1) === 'a' && N.neighbourOf(['a', 'b', 'c'], 'a', -1) === 'c' && N.neighbourOf(['a'], 'x', 1) === null);
+  const r0 = N.routeOf('#/pass'), r1 = N.routeOf('#/city/b'), keys = ['a', 'b', 'c'];
+  check('Nav_Gestures: tap a building = in one level (never the gate); pinch out = in on the building under the fingers; pinch in = out one level; swipe left = the next building',
+    N.gestureTo({ gesture: 'tap' }, r0, 'b', keys)?.key === 'b' && N.gestureTo({ gesture: 'tap' }, r0, 'gate', keys) === null && N.gestureTo({ gesture: 'pinch-out' }, r0, 'c', keys)?.key === 'c'
+    && N.gestureTo({ gesture: 'pinch-in' }, r1, 'b', keys)?.level === 0 && N.gestureTo({ gesture: 'swipe', dx: -80 }, r1, null, keys)?.key === 'c' && N.gestureTo({ gesture: 'swipe', dx: 80 }, r0, null, keys) === null);
+  const esc2 = (v) => String(v).replace(/</g, '&lt;');
+  const cr = N.crumbsHtml(N.routeOf('#/city/td/f/121'), (k) => (k === 'td' ? 'Tide' : k), esc2);
+  check('Nav_Breadcrumb: City › Tide › PR #121, every crumb but the last a link; none on the City itself', cr.includes('<a href="#/pass">City</a>') && cr.includes('<a href="#/city/td">Tide</a>') && cr.includes('<span aria-current="page">PR #121</span>') && N.crumbsHtml(r0, (k) => k, esc2) === '' && !N.crumbsHtml(N.routeOf('#/city/x'), () => '<b>', esc2).includes('<b>'));
+  let cut = 0; N.cameraMove({ animate: () => { throw new Error('animated under reduced motion'); } }, 0.5, true, true, () => cut++);
+  let anim = null; N.cameraMove({ animate: (k, o) => (anim = { k, o, onfinish: null }) }, 0.25, true, false, () => cut++); anim.onfinish(); let out = null; N.cameraMove({ animate: (k, o) => (out = o) }, 0.5, false, false, () => {});
+  check('Nav_Camera: zoom in 280 ms and out 220 ms toward the building, ease-out; an instant cut under reduced motion', cut === 2 && anim.o.duration === 280 && out.duration === 220 && anim.k[1].transformOrigin.startsWith('25%'));
+  // review F2: the gestures listen on the City's box, but only a pointer that starts on its canvas is one (a tap on the (i) key zoomed
+  // into the rightmost building; a tap on a name pushed a second, wrong route first)
+  const ls = {}; const got = []; N.attachGestures({ style: {}, addEventListener: (t, f) => { ls[t] = f; }, getBoundingClientRect: () => ({ left: 0, width: 300 }) }, { at: (x) => x, onGesture: (g) => got.push(g.gesture) });
+  const tap = (tagName, id) => { const target = { tagName }; for (const type of ['pointerdown', 'pointerup']) ls[type]({ type, pointerId: id, clientX: 290, clientY: 10, target }); };
+  tap('BUTTON', 1); tap('A', 2); tap('SPAN', 3); const offCanvas = got.length; tap('CANVAS', 4);
+  let menus = 0; ls.contextmenu({ target: { tagName: 'A' }, preventDefault: () => menus++ }); ls.contextmenu({ target: { tagName: 'CANVAS' }, preventDefault: () => menus++ });
+  check('Nav_GesturesOnCanvasOnly: a tap on the (i) key, a name link or a crumb is no gesture; a tap on the canvas is one; only the canvas keeps the long-press menu off', offCanvas === 0 && got.join() === 'tap' && menus === 1);
+}
 // ---- the City's frame loop (review F1): mountCity on a fake page, a fake clock and a fake 120 Hz screen for 2 s; frame.js's contract
 // (frame() returns the wait; Infinity stops the loop) makes a still City idle like the stage, and a moving one wake only for its steps ----
-async function cityLoop({ towers, s, rm = false, ms = 2000, api = async () => towers, every = 0, view = 'pass' }) {
+async function cityLoop({ towers, s, rm = false, ms = 2000, api = async () => towers, every = 0, view = 'pass', names = null, act = null }) {
   const CJ = await import('./public/city.js'); const T0 = Date.parse('2026-10-26T20:00:00Z'); let t = 0; let q = []; const timers = []; const n = { raf: 0, blits: 0 };
   const keep = { now: Date.now, st: globalThis.setTimeout, ct: globalThis.clearTimeout, si: globalThis.setInterval };
   const had = ['requestAnimationFrame', 'document', 'location', 'history', 'matchMedia'].map((k) => [k, Object.getOwnPropertyDescriptor(globalThis, k)]);
@@ -418,10 +443,11 @@ async function cityLoop({ towers, s, rm = false, ms = 2000, api = async () => to
     Date.now = () => T0 + t; globalThis.setInterval = () => 0;
     globalThis.setTimeout = (f, d) => { const h = { f, at: t + (Number(d) || 0) }; timers.push(h); return h; }; globalThis.clearTimeout = (h) => { const i = timers.indexOf(h); if (i >= 0) timers.splice(i, 1); };
     set('requestAnimationFrame', (f) => { q.push(f); return q.length; }); set('document', { hidden: false, createElement: canvas, addEventListener() {}, querySelector: () => null, activeElement: null });
-    set('location', { hash: '#/pass', replace() {} }); set('history', { back() {} }); set('matchMedia', () => ({ matches: rm }));
-    const page = { home: el(), strip: el(), names: el({ innerHTML: '' }) };
+    const loc = { hash: '#/pass', replace(h) { loc.hash = h; } }; set('location', loc); set('history', { back() {} }); set('matchMedia', () => ({ matches: rm }));
+    const page = { home: el(), strip: el(), names: names || el({ innerHTML: '' }) };
     const city = CJ.mountCity({ ...page, cap: null, api, go() {}, legend() {}, buzz() {}, get: () => ({ s, ev: [], view, lastSeen: null }) });
     city.update(); await new Promise((r) => keep.st(r, 5)); n.raf = 0; n.blits = 0;   // the towers read (a resolved promise) and its redraw
+    if (act) await act({ city, loc });
     for (let i = 0; t <= ms; i++, t = i * 1000 / 120) {   // one vsync: timers due, the state's own renders (every ms), then the frame callbacks asked for before it
       const due = timers.filter((x) => x.at <= t); for (const h of due) { timers.splice(timers.indexOf(h), 1); h.f(); }
       const tick = every && i % Math.round(every * 120 / 1000) === 0; if (tick) city.update();
@@ -450,6 +476,16 @@ async function cityLoop({ towers, s, rm = false, ms = 2000, api = async () => to
     at.length === 3 && gaps[0] === 30 && gaps[1] === 60 && !/could not be read/.test(re.names) && /Tide/.test(re.names));
   const off = await cityLoop({ towers, s: { towersV: 'v1', jobs: [] }, api: async () => ({ ok: false, error: 'x' }), view: 'cooks', ms: 100 });
   const on = await cityLoop({ towers, s: { towersV: 'v1', jobs: [] }, view: 'cooks', ms: 100 });
+  // review F5: following a City link rebuilds the names row; the focus stays on that link (it dropped to <body>), and a tap on the
+  // canvas never moves the focus into the row
+  const fakeNames = () => { const N = { html: '', focused: null, addEventListener() {}, contains: (a) => !!a?.inNames, get innerHTML() { return N.html; }, set innerHTML(v) { N.html = v; },
+    querySelector(sel) { const m = /^a(?:\[(href|aria-current)="([^"]*)"\])?$/.exec(sel); const links = m ? [...N.html.matchAll(/<a href="([^"]*)"([^>]*)>/g)].map((x) => ({ href: x[1], cur: x[2].includes('aria-current="page"') })) : [];
+      const hit = links.find((l) => !m[1] || (m[1] === 'href' ? l.href === m[2] : l.cur)); return hit ? { focus: () => { N.focused = hit.href; } } : null; } }; return N; };
+  const two = { ok: true, towers: [...towers.towers, { key: 'side', name: 'Side', kind: 'lot', folder: 'side', floors: [], open: [] }] };
+  const follow = (activeElement) => async ({ city, loc }) => { globalThis.document.activeElement = activeElement; loc.hash = '#/city/side'; city.update(); };
+  const viaLink = fakeNames(); await cityLoop({ towers: two, s: { towersV: 'v1', jobs: [] }, names: viaLink, ms: 50, act: follow({ inNames: true, getAttribute: () => '#/city/side' }) });
+  const viaCanvas = fakeNames(); await cityLoop({ towers: two, s: { towersV: 'v1', jobs: [] }, names: viaCanvas, ms: 50, act: follow({ inNames: false }) });
+  check(`City_FocusKept: after following the "Side" link the focus is back on it in the rebuilt row (${viaLink.focused}); after a tap on the canvas it is not moved`, viaLink.focused === '#/city/side' && /aria-current="page"[^>]*><b>Side/.test(viaLink.html) && viaCanvas.focused === null);
   check('Strip_HiddenUntilRead: on the other tabs the strip button stays hidden until the City is read (never an empty button with no name), then shows', off.stripHidden === true && on.stripHidden === false);
 }
 
