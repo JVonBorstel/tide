@@ -8,7 +8,9 @@
 # That file (and its testTimeoutSec) is read from the repo's MAIN checkout, never from this worktree: see kitchen\repo-config.ps1.
 # -Only: just the suites with these names (verify's second look at the ones that failed), picked from the same set.
 # -Impacted: only the suites the changed files map to (repair's loop runs); ends "PARTIAL PASS: N of M suites", never "ALL PASS", and writes no
-# results\<job>.tests.json unless it failed. Any shared core file, unmapped file or unknown change list runs all suites and says why.
+# results\<job>.tests.json unless it failed. Any shared core file or unknown change list runs all suites and says why. A file the fixed
+# table does not map is owned by the suites that name it (by its path, or Test-<Name> after its file name); with no owner, by the owners
+# of the other files in its folder; only a file with neither runs all suites (and says why).
 # -Only never writes a pass to results\<job>.tests.json either: a named few suites are never the job's whole result.
 # The repo's "inspector" block can make -Impacted the default for an order's own run ("local": "impacted"; see below and repo-config.ps1).
 # Suites run several at once (kitchen/suite-times-lib.ps1 has the rules): up to min(4, cores/2), longest first, each started only while
@@ -113,11 +115,14 @@ if (-not $cfList.Count) {
 }
 $baseNames = @($cfList | Where-Object { $_ } | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_).Trim() } | Where-Object { $_ } | Sort-Object -Unique)
 
+# each suite's text, read once (the score below and the -Impacted owners both search it)
+$suiteText = @{}
+function Get-SuiteText($s) { if (-not $suiteText.ContainsKey($s.FullName)) { $suiteText[$s.FullName] = try { [IO.File]::ReadAllText($s.FullName) } catch { '' } }; $suiteText[$s.FullName] }
 $suiteScores = @{}
 foreach ($s in $suites) {
     $score = 0
     if ($baseNames.Count) {
-        $content = try { [IO.File]::ReadAllText($s.FullName) } catch { '' }
+        $content = Get-SuiteText $s
         foreach ($bn in $baseNames) {
             if ($bn) {
                 if ($s.Name.IndexOf($bn, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { $score += 2 }
@@ -134,6 +139,15 @@ $partial = $false; $skippedSuites = @()
 if ($Impacted) {
     $coreRx = '^(scripts/(run-bounded|secret-patterns)\.ps1|kitchen/(repo-config|github-lib|tracker-lib|roadmap-lib|suite-times-lib)\.ps1|kitchen/kitchen\.json|kitchen/stations/(tests|lint)\.ps1|lint\.ps1|kitchen\.repo\.json|rust/kitchen-sandbox/|\.github/)'
     $fallback = ''; $must = [Collections.Generic.List[string]]::new(); $guess = [Collections.Generic.List[string]]::new(); $seen = [Collections.Generic.List[string]]::new()
+    $loose = [Collections.Generic.List[string]]::new()   # changed files the fixed table does not map: their owners decide
+    $suiteNames = @($suites | ForEach-Object { $_.BaseName })
+    # a-b-c -> ABC: the name of a file's own suite is Test-<that>
+    function ConvertTo-SuiteStem([string]$stem) { (($stem -split '-') | Where-Object { $_ } | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }) -join '' }
+    # a file's owners: the suites that name it by its path (either slash), and its own Test-<Name> suite
+    function Get-FileOwners([string]$rel) {
+        $bs = $rel -replace '/', '\'; $own = "Test-$(ConvertTo-SuiteStem ([IO.Path]::GetFileNameWithoutExtension($rel)))"
+        @($suites | Where-Object { $_.BaseName -eq $own -or (Get-SuiteText $_).IndexOf($rel, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or (Get-SuiteText $_).IndexOf($bs, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | ForEach-Object { $_.BaseName })
+    }
     if (-not $cfList.Count -or $cfList -contains 'unknown') { $fallback = 'the changed files are unknown' }
     foreach ($cf in $cfList) {
         if ($fallback) { break }
@@ -145,21 +159,33 @@ if ($Impacted) {
         elseif ($rel -eq 'scripts/memory-check.ps1') { $must.Add('Test-BrainMonitor'); $seen.Add($rel) }
         elseif ($rel -match '^kitchen/([^/]+\.ps1|stations/[^/]+\.ps1|(recipes|cooks)/.+)$') {
             $must.Add('Test-KitchenSupervisor'); $seen.Add($rel)
-            $pc = (($stem -split '-') | Where-Object { $_ } | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }) -join ''
+            $pc = ConvertTo-SuiteStem $stem
             foreach ($gn in "Test-$pc", "Test-Kitchen$pc", "Test-${pc}Station") { $guess.Add($gn) }
         }
-        else { $fallback = "no suite is mapped to $rel" }
+        else { $loose.Add($rel) }
     }
     $chosen = @()
     if (-not $fallback) {
-        $suiteNames = @($suites | ForEach-Object { $_.BaseName })
         $pick = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
         foreach ($nm in @($must) + @($guess)) { if ($nm -in $suiteNames) { $null = $pick.Add($nm) } }
         # a suite that names a changed file by its full path tests it; suites that failed last time are re-checked
-        foreach ($s in $suites) {
-            $content = try { [IO.File]::ReadAllText($s.FullName) } catch { '' }
-            foreach ($rel in $seen) { if ($content.IndexOf($rel, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or $content.IndexOf(($rel -replace '/', '\'), [StringComparison]::OrdinalIgnoreCase) -ge 0) { $null = $pick.Add($s.BaseName) } }
+        foreach ($rel in $seen) { foreach ($nm in Get-FileOwners $rel) { $null = $pick.Add($nm) } }
+        # a file the table does not map: the suites that own it; with none, the suites that own the other files in its folder (shared
+        # core files left out: every suite runs through them); with none of those either, all suites
+        foreach ($rel in $loose) {
+            $own = @(Get-FileOwners $rel)
+            if (-not $own.Count) {
+                $folder = [IO.Path]::GetDirectoryName($rel) -replace '\\', '/'
+                $fp = if ($folder) { Join-Path $Dir $folder } else { '' }
+                $sibs = if ($fp -and (Test-Path -LiteralPath $fp -PathType Container)) { @(Get-ChildItem -LiteralPath $fp -File | ForEach-Object { "$folder/$($_.Name)" } | Where-Object { $_ -ne $rel -and $_ -notmatch $coreRx }) } else { @() }
+                $own = @($sibs | ForEach-Object { Get-FileOwners $_ } | Sort-Object -Unique)
+                if (-not $own.Count) { $fallback = if ($folder) { "no suite is mapped to $rel or to another file in $folder/" } else { "no suite is mapped to $rel" }; break }
+                Write-Output "tests: impacted map: no suite names $rel; running the suites that own other files in $folder/ ($($own -join ', '))"
+            }
+            foreach ($nm in $own) { $null = $pick.Add($nm) }
         }
+    }
+    if (-not $fallback) {
         $prevTxt = Join-Path $Dir '.kitchen\TESTS.txt'
         if (Test-Path -LiteralPath $prevTxt) { foreach ($pl in Get-Content -LiteralPath $prevTxt) { if ($pl -match '^FAIL\s+(\S+)') { $null = $pick.Add($Matches[1]) } } }
         $lost = @($must | Sort-Object -Unique | Where-Object { $_ -notin $suiteNames })
