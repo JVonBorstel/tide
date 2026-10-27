@@ -85,5 +85,15 @@
   "standingPaused": [
       { "name": "research team agents", "recipe": "upgrades", "everyHours": 48, "vars": { "cook": "gemini", "focus": "self-improving coding agents: techniques that make a plan-build-test-review pipeline produce better changes with fewer failures" } },
       { "name": "research team chef", "recipe": "upgrades", "everyHours": 48, "vars": { "cook": "gemini", "focus": "making a private phone app for running an AI kitchen and a job search more useful every day" } }
-  ]
+  ],
+  "upgrade": {
+    "_about": "Tide full upgrade switches, one per new piece (core/contracts/upgrade.schema.json). old = today's path serves; shadow = the new piece runs beside it and writes only its own files and a parity report; new = the new piece serves. Back to old is the fallback; nothing is deleted. Each move on the live PC is one card for the Owner. A missing switch reads as old.",
+    "v": "1.0",
+    "ledger": "old",
+    "engine": { "adopted": "old", "improve": "old" },
+    "crews": "old",
+    "ship": { "gates": "old", "queue": "old" },
+    "board": { "work": "old" },
+    "continuity": { "boot": "old" }
+  }
 }

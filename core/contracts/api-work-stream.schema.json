@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tide.example/contracts/v1/api-work-stream.schema.json",
+  "title": "GET /api/work/stream: one server-sent message",
+  "description": "Server-sent events (SSE). Each message is 'id: <seq>' (the last event folded in, so a reconnect sends Last-Event-ID and gets only what it missed), 'event: <type>' and 'data: <this object as JSON>'. hello comes first on every connect; ping every 25 s keeps the line open.",
+  "type": "object",
+  "properties": {
+    "type": { "enum": ["hello", "top", "card", "card-gone", "row", "event", "ping"] },
+    "at": { "$ref": "common.schema.json#/$defs/time" },
+    "seq": { "type": "integer", "minimum": 0 },
+    "data": { "type": "object" }
+  },
+  "required": ["type", "at", "seq", "data"],
+  "additionalProperties": false,
+  "allOf": [
+    { "if": { "properties": { "type": { "const": "hello" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/hello" } } } },
+    { "if": { "properties": { "type": { "const": "top" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/top" } } } },
+    { "if": { "properties": { "type": { "const": "card" } } }, "then": { "properties": { "data": { "$ref": "api-work.schema.json#/$defs/card" } } } },
+    { "if": { "properties": { "type": { "const": "card-gone" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/cardGone" } } } },
+    { "if": { "properties": { "type": { "const": "row" } } }, "then": { "properties": { "data": { "$ref": "row.schema.json" } } } },
+    { "if": { "properties": { "type": { "const": "event" } } }, "then": { "properties": { "data": { "$ref": "event.schema.json" } } } },
+    { "if": { "properties": { "type": { "const": "ping" } } }, "then": { "properties": { "data": { "type": "object", "maxProperties": 0 } } } }
+  ],
+  "$defs": {
+    "hello": {
+      "type": "object",
+      "properties": { "queueTotal": { "type": "integer", "minimum": 0 }, "resumed": { "description": "true when Last-Event-ID was honoured.", "type": "boolean" } },
+      "required": ["queueTotal", "resumed"],
+      "additionalProperties": false
+    },
+    "top": {
+      "type": "object",
+      "properties": { "top": { "$ref": "common.schema.json#/$defs/text" } },
+      "required": ["top"],
+      "additionalProperties": false
+    },
+    "cardGone": {
+      "type": "object",
+      "properties": { "decision": { "$ref": "common.schema.json#/$defs/decisionId" }, "answer": { "type": "string", "minLength": 1, "maxLength": 40 } },
+      "required": ["decision"],
+      "additionalProperties": false
+    }
+  }
+}

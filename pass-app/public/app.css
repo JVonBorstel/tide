@@ -1143,6 +1143,7 @@ html:not(.lv-px) .lv-cv{display:none}html:not(.lv-px) .lv-av{display:grid}
 .px-hit{position:absolute;top:0;left:0}
 .px-a{position:absolute;display:block;min-width:44px;min-height:44px;transform:translateX(-50%);-webkit-tap-highlight-color:transparent;outline-offset:-2px}
 .px-a:focus-visible{outline:2px solid var(--px-gold)}
+button.px-a{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;appearance:none}
 .px-say{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:2px;padding:1px 5px;white-space:nowrap;font:600 9px/12px var(--mono);color:#2b1d1a;background:#fffaf0;box-shadow:inset 0 0 0 2px #2b1d1a;clip-path:var(--px-notch-s)}
 .px-a.r1 .px-say{margin-bottom:15px}.px-a.r2 .px-say{margin-bottom:28px}
 .px-stage.compact .px-say{display:none}
@@ -1180,7 +1181,7 @@ html.px .status-pill.need{animation:none}
 html.px .lg-row .st{display:inline-block;padding:1px 6px;clip-path:var(--px-notch-s);box-shadow:inset 0 0 0 2px color-mix(in srgb,currentColor 45%,transparent);font-family:var(--mono)}
 html.px :is(.btn,.seg){border-radius:0;clip-path:var(--px-notch-s)}
 
-/* loading, offline and empty: a chef stirring, the sleepy chef with his lantern, a chef by an empty cloche */
+/* loading, offline and empty: a crew member hammering at the vice, one asleep on a crate by the site lantern, one with a shovel by an empty pallet */
 html.px .skeleton::before,html.px .quiet::before{content:"";display:block;justify-self:center;width:64px;height:64px;margin:4px auto;image-rendering:pixelated;background-repeat:no-repeat}
 html.px .skeleton::before{background-image:var(--px-load);background-size:400% 100%;animation:px-strip4 .48s steps(4) infinite}
 html.px .skeleton i{border-radius:0;clip-path:var(--px-notch)}
@@ -1236,6 +1237,7 @@ html.px .order-btn:focus-visible{outline:3px solid var(--px-focus);outline-offse
 .px-info:active::after{background:#ffd36b}
 .wl-list{list-style:none;margin:0;padding:8px var(--gutter) 24px;display:flex;flex-direction:column;gap:12px}
 .wl-list li{display:grid;grid-template-columns:32px 1fr;gap:12px;align-items:center;font-size:15px;line-height:1.4;color:var(--ink)}
+.wl-list li.wl-on{box-shadow:inset 3px 0 0 var(--px-gold);padding-left:6px}
 .wl-ico{width:32px;height:32px;padding:4px;box-sizing:border-box;background-color:var(--px-wall);background-repeat:no-repeat;background-position:center;background-size:contain;background-origin:content-box;image-rendering:pixelated;box-shadow:inset 0 0 0 2px var(--px-ol);clip-path:var(--px-notch-s)}
 
 /* keyed board (W4): a section's buttons sit in a wrapper that adds no box of its own; the "showing N of M" line is a quiet show-all row */

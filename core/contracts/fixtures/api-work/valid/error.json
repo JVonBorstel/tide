@@ -1,0 +1,5 @@
+{
+  "ok": false,
+  "code": "unavailable",
+  "error": "The ledger could not be read; showing nothing rather than old data."
+}

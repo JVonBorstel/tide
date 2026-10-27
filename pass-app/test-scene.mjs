@@ -3,9 +3,11 @@
 import fs from 'node:fs';
 import { layoutScene, sceneHtml, stationFor, cookOf, lookOf, skyAt, hashId, activityWord, STATIONS, COOK_COLORS,
   STAGE, pixelScale, stageNew, stageSync, stageTick, drawStage, makeKit, makeLoop, hitItems, hitHtml,
-  stageCalm, frameStats } from './public/scene.js';
+  stageCalm, frameStats, stepWord, writeHits, dropStage } from './public/scene.js';
 import { stageOk, stageFps, stageWalking, frameKey } from './public/frame.js';
-import { WORLD, worldOf, worldWords, worldKey, legendRows, legendHtml, PLACE } from './public/world.js';
+import { WORLD, worldOf, worldWords, worldKey, legendRows, legendHtml, PLACE, HANG, bakeWorld } from './public/world.js';
+import { PURPOSE } from './public/purpose.js';
+import { kitchenHits } from './site-words.mjs';
 import zlib from 'node:zlib';
 import * as P from './public/sprites.js';
 import { MOMENTS, FX, momentsFrom, fxNew, spawn, easeOutBack, easeInOutCubic, chefPose, passFx, approveFx, tapChef, fxBusy, spread, propRects } from './public/moments.js';
@@ -16,12 +18,12 @@ const job = (id, o = {}) => ({ id, name: `improve: secret plan ${id}`, status: '
 const at = (L, id) => L.chefs.find((c) => c.id === id);
 
 // stations follow the step
-check('station: plan at the cutting board', stationFor(job('J1', { role: 'plan' })) === 'board');
-check('station: code at the stove', stationFor(job('J1', { role: 'do' })) === 'stove' && stationFor(job('J1', { station: 'repair', role: '' })) === 'stove');
-check('station: review at the tasting counter', stationFor(job('J1', { role: 'check' })) === 'taste');
-check('station: tests, lint and mutation at the sink', ['tests', 'lint', 'mutate'].every((s) => stationFor(job('J1', { station: s, role: '' })) === 'sink'));
-check('station: commit, freshen and merge at the plating counter', ['commit', 'freshen', 'merge'].every((s) => stationFor(job('J1', { station: s, role: '' })) === 'plate'));
-check('station: anything unknown cooks at the stove', stationFor(job('J1', { station: 'something-new', role: '' })) === 'stove');
+check('station: plan at the Survey table', stationFor(job('J1', { role: 'plan' })) === 'board');
+check('station: code at the Workbench', stationFor(job('J1', { role: 'do' })) === 'stove' && stationFor(job('J1', { station: 'repair', role: '' })) === 'stove');
+check('station: review at the Inspection desk', stationFor(job('J1', { role: 'check' })) === 'taste');
+check('station: tests, lint and mutation at the Test rig', ['tests', 'lint', 'mutate'].every((s) => stationFor(job('J1', { station: s, role: '' })) === 'sink'));
+check('station: commit, freshen and merge at the Handover bay', ['commit', 'freshen', 'merge'].every((s) => stationFor(job('J1', { station: s, role: '' })) === 'plate'));
+check('station: anything unknown is built at the Workbench', stationFor(job('J1', { station: 'something-new', role: '' })) === 'stove');
 check('cook: colour by the cook that took it; non-AI steps are the kitchen hand', cookOf(job('J1')) === 'claude' && cookOf(job('J1', { station: 'tests', cook: '' })) === 'hand' && cookOf(job('J1', { cook: '' })) === 'sous');
 
 // placement
@@ -117,7 +119,17 @@ const declared = { 'chef-down': 4, 'chef-up': 4, 'chef-side': 4, 'chef-idle': 2,
 check('frames: walk 4 in each direction, idle 2, work loops 4, particles as declared', Object.entries(declared).every(([n, k]) => P.framesOf(n).length === k && P.FRAMES[P.SPRITES[n].anim] === k));
 check('frames: walking frames differ (the legs move) and idle frames differ (the bob)', ['chef-down', 'chef-side', 'waiter-side', 'chef-idle'].every((n) => new Set(P.framesOf(n).map((f) => f.join())).size >= 2));
 const apron = (cook) => P.paletteFor({ cook })[5];
-check('palette: each cook wears its own apron colour', new Set(['claude', 'gemini', 'antigravity', 'local', 'sous', 'hand'].map((c) => apron(COOK_COLORS[c]))).size === 6);
+check('palette: each crew wears its own hard-hat colour', new Set(['claude', 'gemini', 'antigravity', 'local', 'sous', 'hand'].map((c) => apron(COOK_COLORS[c]))).size === 6);
+// the crew (rename S7b): hard hats in the crew's colour, hi-vis vests, no chef whites left
+const CREW_SLOT = /[456]/g, WHITES = /[pWon]/;
+const hatRows = (n, top) => P.framesOf(n).every((f) => { const r = f.slice(0, top).join(''); return (r.match(CREW_SLOT) || []).length >= 12 && !WHITES.test(r); });
+check('CrewHardHat: every crew head (walk down, up, side, idle, seated, asleep, crouch, squash) carries the crew colour in its top rows and no white toque',
+  ['chef-down', 'chef-up', 'chef-side', 'chef-idle', 'chef-sit', 'chef-crouch', 'chef-squash'].every((n) => hatRows(n, 10)) && hatRows('chef-sleep', 11));
+check('CrewHardHat: the hat on the hook is a hard hat in the crew colour (no white cloth)', (P.framesOf('hat')[0].join('').match(CREW_SLOT) || []).length >= 12 && !WHITES.test(P.framesOf('hat')[0].join('')));
+const vest = (n) => P.framesOf(n).every((f) => { const t = f.slice(12, 18).join(''); return /[GHJ]/.test(t) && /i/.test(t) && !/[pWo]/.test(t); });
+check('CrewHiVis: crew members and runners wear a hi-vis vest with a reflective stripe (no chef coat, no waiter bow tie)', ['chef-down', 'chef-up', 'chef-side', 'chef-idle', 'waiter-side', 'waiter-idle'].every(vest) && !/B/.test(P.framesOf('waiter-idle')[0].join('')));
+check('CrewHiVis: the vest yellow is not a light source, so it dims at night and when the Yard is paused', ['G', 'H', 'J'].every((k) => !P.EMISSIVE.includes(k) && P.paletteFor({ dim: true })[k] !== P.PALETTE[k] && P.paletteFor({ sky: 'night' })[k] !== P.PALETTE[k]));
+check('CrewHiVis: runners wear a hi-vis hard hat, not a crew colour (they carry sign-offs for every crew)', P.framesOf('waiter-idle').every((f) => /[GHJ]/.test(f.slice(0, 9).join('')) && !/[456]/.test(f.slice(0, 9).join(''))));
 check('palette: night is a palette shift (darker wall), flames stay bright', P.paletteFor({ sky: 'night' }).E !== P.PALETTE.E && P.paletteFor({ sky: 'night' }).s === P.PALETTE.s);
 
 // the stage
@@ -137,6 +149,15 @@ check(`budget: a busy floor is at most ${STAGE.maxDraws} sprite draws a frame ($
 const srcBytes = fs.statSync(new URL('./public/sprites.js', import.meta.url)).size;
 check(`budget: the atlas source is under 200 KB (${Math.round(srcBytes / 1024)} KB)`, srcBytes < 200 * 1024);
 check('budget: 60 fps cap in the stage settings', STAGE.fps === 60);
+// the stations (rename S7c): site art, and a busy station costs exactly the draws it did as a kitchen
+// leaf, water, soup glow, blush, carrot: none of it on a station any more; green (u, w) only on the Test rig, its scope trace and LEDs (S7h)
+const KITCHEN_FOOD = /[wuxKCs]/, onlyRigGreen = (n) => (n === 'sink' ? /[xKCs]/ : KITCHEN_FOOD);
+check('SiteStations: the station art and props carry no kitchen food or water (Survey table, Workbench, Inspection desk, Test rig, Handover bay); green only on the Test rig',
+  ['counter', 'stove', 'sink', 'pallet', 'board', 'pot', 'bowl', 'plates'].every((n) => P.framesOf(n).every((f) => !onlyRigGreen(n).test(f.join('')))) && STATIONS.board.label === 'Survey table' && STATIONS.plate.label === 'Handover bay');
+const stationDraws = (role, busyOn) => { const st = stageNew(); st.W = 224; stageSync(st, layoutScene({ jobs: [job('J1', { ...role, ...(busyOn ? {} : { status: 'pending', step: 4 }) })] }, [], {}, Date.parse('2026-10-22T12:00:00'))); return drawStage(mk(224, STAGE.h).getContext(), st, kit); };
+const extra = Object.fromEntries([['board', { role: 'plan' }], ['stove', { role: 'do' }], ['taste', { role: 'check' }], ['sink', { station: 'tests', role: '' }], ['plate', { station: 'merge', role: '' }]].map(([k, r]) => [k, stationDraws(r, true) - stationDraws(r, false)]));
+check(`SiteStations: a busy station costs what it did (work loop + effects: Workbench 6, Inspection desk 2, Test rig 4, Survey table 1, Handover bay 1; ${JSON.stringify(extra)})`,
+  extra.stove === 6 && extra.taste === 2 && extra.sink === 4 && extra.board === 1 && extra.plate === 1);
 
 // motion: chefs walk in from the door, between stations and out to the pass
 const s1 = stageNew(); stageSync(s1, layoutScene({ jobs: [] }));
@@ -226,7 +247,7 @@ check(`jar: level = floor(8 x spent / budget), clamped (${JAR.length} cases)`, J
 check('jar: padlock iff a budget.stop today (yesterday, another event or none: no lid)', worldOf({ spent: 20, budget: 20 }, [{ type: 'budget.stop', ts: ago(1) }], T0).jar.locked === true
   && worldOf({ spent: 20, budget: 20 }, [{ type: 'budget.stop', ts: iso(T0 - 26 * 3600000) }], T0).jar.locked === false && worldOf({ spent: 20, budget: 20 }, [{ type: 'job.done', ts: ago(1) }], T0).jar.locked === false && worldOf({ spent: 20, budget: 20 }, [], T0).jar.locked === false);
 // door sign, clock
-check('sign: CLOSED iff paused; OPEN lit iff live; OPEN unlit when running with AI cooks off', worldOf({ paused: true, live: true }).sign.state === 'closed' && worldOf({ paused: true }).sign.state === 'closed'
+check('sign: PAUSED iff paused (stored state: closed); OPEN lit iff live; OPEN unlit when running with AI crews off', worldOf({ paused: true, live: true }).sign.state === 'closed' && worldOf({ paused: true }).sign.state === 'closed'
   && worldOf({ paused: false, live: true }).sign.state === 'lit' && worldOf({ paused: false, live: false }).sign.state === 'open');
 const tickAt = T0 - 14 * 60000, cl = (stalled) => worldOf({ lastTick: iso(tickAt), stalled }, [], T0).clock, at5 = (ms) => Math.floor(new Date(ms).getMinutes() / 5);
 check('clock: frozen iff stalled: stalled shows the last tick time, running shows now', cl(true).frozen && cl(true).at === tickAt && cl(true).min === at5(tickAt) && !cl(false).frozen && cl(false).at === T0 && cl(false).min === at5(T0) && cl(false).hour === new Date(T0).getHours() % 12);
@@ -240,17 +261,17 @@ check('truth: with only jobs the stage draws no world sprite but the (empty) set
 const dFull = drawnW(fullState(), fullEvents());
 check('draw: the full world draws its props (sign, clock, jar + lock, shelf plates, tag, heat lamps, board, hats, chalkboard, recipes, fuse, stool)',
   ['sign:1', 'clock:0', 'coin-jar:3', 'jar-lock:0', 'plate-aside:0', 'tag:0', 'heat:1', 'heat:2', 'cork:0', 'letter:0', 'hat:0', 'chalk:0', 'tally:3', 'recipes:4', 'fuse:0', 'stool:0'].every((k) => dFull.includes(k)));
-check('draw: door sign frames follow the state (CLOSED 2, OPEN 0) and CLOSED puts the stools up', drawnW({ jobs: [], paused: true }).includes('sign:2') && drawnW({ jobs: [], paused: true }).includes('chair-up:0') && drawnW({ jobs: [], paused: false, live: false }).includes('sign:0') && !drawnW({ jobs: [], paused: false, live: false }).includes('chair-up:0'));
+check('draw: gate sign frames follow the state (PAUSED 2, OPEN 0) and PAUSED puts the barriers up', drawnW({ jobs: [], paused: true }).includes('sign:2') && drawnW({ jobs: [], paused: true }).includes('chair-up:0') && drawnW({ jobs: [], paused: false, live: false }).includes('sign:0') && !drawnW({ jobs: [], paused: false, live: false }).includes('chair-up:0'));
 check('draw: the clock hands show the frozen tick when stalled', drawnW({ jobs: [], lastTick: iso(tickAt), stalled: true }).includes(`clock-min:${at5(tickAt)}`) && drawnW({ jobs: [], lastTick: iso(tickAt), stalled: false }).includes(`clock-min:${at5(T0)}`));
-check('draw: a tripped breaker sparks the fuse box (frame 1) and puts the pass lamp out', drawnW({ jobs: [], breaker: true }).includes('fuse:1') && drawnW({ jobs: [], breaker: true }).includes('lamp-off:0') && drawnW({ jobs: [], breaker: false }).includes('lamp:0'));
-check('draw: the closed kitchen is dimmed (a palette shift, light sources keep their colour)', P.paletteFor({ dim: true }).E !== P.PALETTE.E && P.paletteFor({ dim: true }).t === P.PALETTE.t && P.paletteFor({ dim: true, sky: 'night' }).E !== P.paletteFor({ sky: 'night' }).E);
+check('draw: a stop-work order sparks the power board (frame 1) and puts the work light out', drawnW({ jobs: [], breaker: true }).includes('fuse:1') && drawnW({ jobs: [], breaker: true }).includes('lamp-off:0') && drawnW({ jobs: [], breaker: false }).includes('lamp:0'));
+check('draw: the paused site is dimmed (a palette shift, light sources keep their colour)', P.paletteFor({ dim: true }).E !== P.PALETTE.E && P.paletteFor({ dim: true }).t === P.PALETTE.t && P.paletteFor({ dim: true, sky: 'night' }).E !== P.paletteFor({ sky: 'night' }).E);
 // set aside, the rail tag, heat lamps
 const sh = (n, extra = []) => worldOf({ jobs: [...Array.from({ length: n }, (_, i) => job('J' + (100 + i), { status: ['quarantined', 'killed', 'failed'][i % 3] })), ...extra] }, [{ type: 'job.quarantined', job: 'J100', ts: ago(1) }, { type: 'job.quarantined', job: 'J101', ts: ago(3) }], T0).aside;
 check('aside: one plate per set-aside order, 5 on the shelf then +N; smoke only for one set aside under 2 min ago', sh(3).shelf.length === 3 && sh(3).more === 0 && sh(7).shelf.length === 5 && sh(7).more === 2 && sh(0).ids.length === 0
   && sh(3).smoke.length === 1 && sh(3).smoke[0].id === 'J100' && sh(3, [job('J1')]).ids.length === 3);
 check('spike: +N only beyond the 8 tickets the rail shows', worldOf({ jobs: Array.from({ length: 11 }, (_, i) => job('J' + i, { status: 'pending' })) }).spike.n === 3 && !worldOf({ jobs: Array.from({ length: 8 }, (_, i) => job('J' + i)) }).spike);
 const hw = (min) => worldOf({ jobs: [job('J71', { status: 'waiting-approval', approval: { id: 'A7' } })] }, [{ type: 'approval.requested', job: 'J71', approval: 'A7', ts: ago(min) }], T0).heat[0].level;
-check('heat: warm under 1 h, ember from 1 h, red from 4 h of real waiting', hw(5) === 0 && hw(59) === 0 && hw(60) === 1 && hw(239) === 1 && hw(240) === 2 && hw(600) === 2);
+check('heat: the sign-off light is warm under 1 h, amber from 1 h, red from 4 h of real waiting', hw(5) === 0 && hw(59) === 0 && hw(60) === 1 && hw(239) === 1 && hw(240) === 2 && hw(600) === 2);
 check('hats: one hat per cook resting, at its cap, off or signed out (ready and busy cooks are on the line)', Wf.hats.map((h) => h.name).join() === 'gemini,local' && Wf.hats[0].color === COOK_COLORS.gemini);
 check('counts: letters, specials and recipes carry the real counts (0 is an empty board, not a missing one)', Wf.letters.n === 2 && Wf.specials.n === 3 && Wf.recipes.n === 5 && worldOf({ due: 0 }).letters.n === 0);
 // the sous chef walks one round per real tick, never more
@@ -266,14 +287,31 @@ check(`sous: ticks arriving mid-round never add more rounds than ticks (${burst.
 const stillSous = stageNew(); stageSync(stillSous, tickState(T0 - 9 * 60000)); stageSync(stillSous, tickState(T0 - 1000), { still: true });
 check('sous: reduced motion: no round, he stays seated', stillSous.rounds === 0 && !stillSous.actors.get('sous').path.length);
 const stl = drawnW({ jobs: [], lastTick: iso(tickAt), stalled: true });
-check('sous: stalled = an empty stool (the stool is drawn, the sous chef is not)', stl.includes('stool:0') && !stl.some((r) => r.startsWith('chef-sit')) && !worldOf({ lastTick: iso(tickAt), stalled: true }).sous.here);
-check('sous: seated on his stool while the kitchen ticks', drawnW({ jobs: [], lastTick: iso(T0 - 9 * 60000), stalled: false }).some((r) => r.startsWith('chef-sit')));
+check('sous: stalled = an empty stool (the stool is drawn, the Dispatcher is not)', stl.includes('stool:0') && !stl.some((r) => r.startsWith('chef-sit')) && !worldOf({ lastTick: iso(tickAt), stalled: true }).sous.here);
+check('sous: the Dispatcher sits on the stool while the walkrounds run', drawnW({ jobs: [], lastTick: iso(T0 - 9 * 60000), stalled: false }).some((r) => r.startsWith('chef-sit')));
+// the world props as a site (rename S7e)
+const signRows = P.framesOf('sign')[2], spelled = (word, x0, y0) => [...word].every((ch, i) => P.GLYPHS[ch].every((r, gy) => [...r].every((px, gx) => (px === 'a') === (signRows[y0 + gy][x0 + i * 4 + gx] === 'a'))));
+check('GateSign: paused, the gate sign spells PAUSED, never CLOSED ("Site closed" is the merge freeze), and the legend says the same',
+  spelled('PAUSED', 1, 5) && !spelled('CLOSED', 1, 5) && P.SIGN_WORDS.join() === 'OPEN,OPEN,PAUSED' && WORLD[0].meaning({ state: 'closed' }) === 'Gate sign PAUSED: you paused the Yard.'
+  && WORLD.every((r) => ['closed', 'lit', 'open'].every((state) => !/CLOSED/.test(String(r.prop === 'sign' ? r.meaning({ state }) : '')))));
+const seen = [], g0 = rkit.get; rkit.get = (n, o, f) => { if (/^chef-(sit|side)$/.test(n)) seen.push(n + '|' + o?.cook); return g0.call(rkit, n, o, f); };
+drawnW({ jobs: [], lastTick: iso(T0 - 9 * 60000), stalled: false });
+const lap = stageNew(); stageSync(lap, tickState(T0 - 5000)); for (let i = 0; i < 10; i++) stageTick(lap, 50); rec.length = 0; drawStage(rkit.mk(STAGE.w, STAGE.h).getContext(), lap, rkit); const lapDraws = [...rec];
+rkit.get = g0;
+const knee = P.framesOf('chef-sit').every((f) => /p/.test(f.slice(14, 19).map((r) => r.slice(10, 14)).join('')));
+check('Dispatcher: a white hard hat (seated and on the lap) and a clipboard (on the knee, in hand while walking), its legend icon too',
+  seen.includes('chef-sit|' + P.DISPATCHER) && seen.includes('chef-side|' + P.DISPATCHER) && !seen.some((s) => !s.endsWith('|' + P.DISPATCHER)) && lapDraws.includes('cloche:0') && knee && P.LEGEND_ICONS.sous[2] === P.DISPATCHER);
+const siteRows = legendRows(layoutScene(fullState(), fullEvents(), {}, T0));
+check('SiteProps: the legend speaks site words (gate sign, site clock, power board, budget meter, the bench, job board, sign-off lights, notice board, whiteboard, idea box, hard hats) and no kitchen words',
+  ['Gate sign', 'Site clock', 'Dispatcher', 'Power board', 'Budget meter', 'The bench', 'Sign-off lights', 'Notice board', 'Whiteboard', 'Idea box', 'Hard hats on hooks'].every((w) => siteRows.some((r) => r.text.startsWith(w)))
+  && !/kitchen|chef|cook|coin|jar|plate|rail|heat lamp|ember|cork|chalk|recipe|fuse|hatch|window sign/i.test(siteRows.map((r) => r.text).join(' ')) && WORLD.find((r) => r.prop === 'spike').meaning({ n: 3 }) === 'Job board tag: 3 more queued.');
+check('SiteProps: the budget meter fills green, then amber, then red, one segment per level; a chain and padlock when the cap stopped work', P.framesOf('coin-jar')[8].join('').includes('B') && P.framesOf('coin-jar')[4].join('').includes('v') && !/[sB]/.test(P.framesOf('coin-jar')[4].join('')) && /h/.test(P.framesOf('jar-lock')[0][1]));
 // the legend sheet, the words and privacy
-const Lf = layoutScene(fullState(), fullEvents(), {}, T0), rows = legendRows(Lf);
+const Lf =layoutScene(fullState(), fullEvents(), {}, T0), rows = legendRows(Lf);
 check(`legend: one row per prop in the room (${rows.length} rows), each a plain sentence`, Object.keys(Lf.world).every((k) => rows.some((r) => r.key === k)) && rows.every((r) => /^[A-Z].*\.$/.test(r.text)) && rows.every((r) => P.LEGEND_ICONS[r.key]));
 const txt = (k) => rows.find((r) => r.key === k).text;
 check('legend: numbers in words ($7.50 of $20, 3 of 8, waiting 1 h 10 min, 2 follow-ups, 2 set aside)', txt('jar').includes("$7.50 of today's $20 cap") && txt('jar').includes('3 of 8.')
-  && txt('heat').includes('WO-0071 1 h 10 min (ember') && txt('heat').includes('WO-0072 4 h 10 min (red') && txt('letters').includes('2 job-hunt follow-ups due') && txt('aside').includes('The bench: 2 work orders failed or stopped (WO-0073, WO-0074)'));
+  && txt('heat').includes('WO-0071 1 h 10 min (amber') && txt('heat').includes('WO-0072 4 h 10 min (red') && txt('letters').includes('2 job-hunt follow-ups due') && txt('aside').includes('The bench: 2 work orders failed or stopped (WO-0073, WO-0074)'));
 const lh = legendHtml(rows), hp = hitItems(Lf).map((it) => hitHtml(it)).join('');
 check('private: legend, hit labels and aria words carry no order words (numbers and ticket numbers only)', !/secret|improve/.test(lh + hp + Lf.summary) && /WO-0073/.test(lh) && !/<script/.test(legendHtml([{ key: 'x"><script>', text: '<script>' }])));
 check('legend: no state yet is an empty line, never a blank sheet', /has not sent its state/.test(legendHtml(legendRows(null))));
@@ -406,10 +444,171 @@ check(`BubblesOffProps: on the Live tab no speech bubble covers a WORLD prop (co
 check('BubblesOffProps: the bubble is its own aria-hidden span (the chef link keeps its label), placed by left/top on the stage',
   /<span class="px-say" aria-hidden="true"[^>]*data-css="left:[\d.]+%;top:[\d.]+%;bottom:auto;margin:0;pointer-events:none">Editing so…<\/span>/.test(hitItems(layoutScene({ jobs: busyLive }, [], {}, T0)).map((it) => hitHtml(it)).join('')));
 // sprites for the moments: declared frames
+// the moments as a site (rename S7f): a brick laid, a work glove, the HANDED OVER banner
+const spellsIn = (rows, word, x0, y0) => [...word].every((ch, i) => P.GLYPHS[ch].every((r, gy) => [...r].every((px, gx) => (px === 'a') === (rows[y0 + gy][x0 + i * 4 + gx] === 'p'))));
+const bricks = P.framesOf('pan-flip');
+check('SiteMoments: a finished step lays a brick: it rises and lands on a small stack (4 frames: up, up, top, landed), no pan and no food',
+  bricks.every((f) => f.slice(10).join('') === bricks[0].slice(10).join('') && /B/.test(f.slice(0, 8).join(''))) && bricks[3].slice(6, 8).join('').includes('B') && !bricks[0].slice(6, 8).join('').includes('B') && !/[ghiI]/.test(bricks.flat().join('')));
+check(`SiteMoments: a handed-over work order raises a HANDED OVER banner (the status word, spelled pixel by pixel), inside the stage (${P.SPRITES.banner.w} px at x 125)`,
+  P.BANNER_WORDS === 'HANDED OVER' && spellsIn(P.framesOf('banner')[0], 'HANDED OVER', 4, 3) && 125 + P.SPRITES.banner.w <= STAGE.w && !/ORDER/.test(fs.readFileSync(new URL('./public/sprites.js', import.meta.url), 'utf8')));
+check('SiteMoments: the head scratch and the wave wear a work glove (no bare skin, no oven mitt)', !/[123]/.test(P.framesOf('mitt')[0].join('')) && /e/.test(P.framesOf('mitt')[0].join('')));
 const mdecl = { 'pan-flip': 4, 'chef-crouch': 1, 'chef-squash': 1, puff: 4, 'smoke-dark': 6, check: 1, confetti: 3, banner: 1, mitt: 1 };
 check('frames: moment sprites have their declared frames (flip 4, crouch 1, squash 1, puff 4, smoke 6, check 1, confetti 3 colours, banner 1)',
   Object.entries(mdecl).every(([n, k]) => P.framesOf(n).length === k) && new Set(P.framesOf('confetti').map((f) => f.join())).size === 3 && P.framesOf('banner')[0].join('').includes('p'));
 // bytes after brotli (node's own brotli, as the server sends them) of the stage files, against the plan's budgets
+// the site around the crew (rename S7d): the room, the job board and the sign-off window
+const one1 = (n) => P.framesOf(n)[0], most = (rows) => { const c = {}; for (const ch of rows.join('')) c[ch] = (c[ch] || 0) + 1; return Object.entries(c).sort((a, b) => b[1] - a[1])[0][0]; };
+check('SiteRoom: a concrete slab, not a checker floor (both floor tiles share one base colour); no white tile and no brick anywhere in the room',
+  most(one1('floor-a')) === most(one1('floor-b')) && !/[oDEF]/.test(one1('subway').join('') + one1('wall').join('')));
+check('SiteRoom: the runners carry clipboards (paper on a board, no steel dome), a caged work light burns over the sign-off window',
+  /p/.test(one1('cloche').join('')) && /[bd]/.test(one1('cloche').join('')) && !/i/.test(one1('cloche').join('')) && one1('lamp')[5].startsWith('.a') && /I/.test(one1('lamp').join('')) && !/[IW]/.test(one1('lamp-off').join('')));
+const card = one1('ticket'), onPaper = (x0, x1, rows) => rows.every((y) => card[y].slice(x0, x1 + 1).split('').every((c) => c === 'p'));
+check(`SiteRoom: the work-order card's digits and step bar land on paper and read (digits ${ratio(P.PALETTE.a, P.PALETTE.p).toFixed(1)}:1, bar ${ratio(P.PALETTE.r, P.PALETTE.p).toFixed(1)}:1)`,
+  onPaper(2, 8, [3, 4, 5, 6, 7, 10]) && ratio(P.PALETTE.a, P.PALETTE.p) >= 4.5 && ratio(P.PALETTE.r, P.PALETTE.p) >= 3 && P.SPRITES.ticket.w === 11 && P.SPRITES.ticket.h === 13);
+check('SiteRoom: the job board and the sign-off window wear hazard tape (yellow and black)', /H/.test(one1('rail').join('')) && /H/.test(one1('pass').slice(0, 3).join('')));
+// the polish (S7h, board concept 2026-10-26 section 5 items 1-4): open stations, a poured slab; nothing reads as a cabinet, an oven or a tiled floor
+const fill = (rows) => rows.join('').replace(/\./g, '').length / rows.join('').length;
+check(`SiteOpenStations: the Survey table and Inspection desk are trestle tables and the Workbench stands on legs: open under the top (filled ${Math.round(fill(one1('counter').slice(5)) * 100)} % and ${Math.round(fill(one1('stove').slice(5)) * 100)} %; the old cabinets 100 %), the Test rig is open between its panel and its shelf`,
+  fill(one1('counter').slice(5)) <= 0.25 && fill(one1('stove').slice(5)) <= 0.5 && fill(one1('sink').slice(14, 17)) <= 0.5 && one1('counter').slice(5).every((r) => /^\.{3}/.test(r)));
+const bench = one1('stove');
+check('SiteWorkbench: no dark recess with a red block (no red in the Workbench); a yellow toolbox with a handle above it and a latch on it sits on the lower shelf',
+  !/[qAB]/.test(bench.join('')) && /H/.test(bench.slice(10, 15).join('')) && /a{6}/.test(bench[8]) && /f/.test(bench[12].slice(8, 20)) && /^\.\.g+\.\.$/.test(bench[15]));
+check('SiteWorkbench: the weld sparks are white and yellow only (no orange: orange over a bench read as a hob); the weld flash stays blue-white',
+  P.framesOf('flame').every((f) => /^[.Wt]+$/.test(f.join(''))) && P.framesOf('oven-glow').every((f) => /^[.WIz]+$/.test(f.join(''))));
+const rig = one1('sink'), led = one1('bubble');
+check('SiteTestRig: a scope screen with a green trace, and the busy LEDs are green (not the orange of an oven display); each chasing LED lands on the dark LED strip',
+  /^[.vw]+$/.test(led.join('')) && /w/.test(rig.slice(2, 9).join('')) && [0, 1, 2, 3].every((k) => led.every((r, y) => [...r].every((c, x) => c === '.' || /[Nu]/.test(rig[10 + y][4 + k * 3 + x])))));
+check('SiteHandoverBay: the Handover bay is a crate on a pallet on the slab, not a table (the floor bakes 2 trestle tables, 1 pallet)',
+  bare.filter((r) => r === 'counter:0').length === 2 && bare.filter((r) => r === 'pallet:0').length === 1 && /^[.a]+$/.test(one1('pallet')[19]) && /\.{3}/.test(one1('pallet')[19]));
+const seamless = (rows) => rows.every((r) => /n/.test(r)) && rows[0].split('').every((_, x) => rows.some((r) => r[x] === 'n'));
+check('SiteSlab: a poured slab: both floor tiles are one colour with a few specks (a crack on one), and no tile seam (no row or column of another colour)',
+  most(one1('floor-a')) === 'n' && most(one1('floor-b')) === 'n' && seamless(one1('floor-a')) && seamless(one1('floor-b')) && ['floor-a', 'floor-b'].every((n) => one1(n).join('').replace(/n/g, '').length <= 8));
+// the polish (S7i, section 5 items 5-9 and 11): the live floor is the tower's top floor, open to the real sky
+const sky = one1('wall'), edgeBand = one1('subway');
+check('SiteOpenSky: the back is the real sky (only the hour\'s sky slots X/Y/Z and steel shores, 40 rows), which changes with the hour and stays lit at night',
+  P.SPRITES.wall.h === 40 && /^[XYZfgh]+$/.test(sky.join('')) && sky.filter((r) => /^[XYZ]+$/.test(r.replace(/[fgh]/g, ''))).length === 40 && sky.every((r) => /[fg]/.test(r))
+  && P.paletteFor({ sky: 'night' }).X !== P.paletteFor({ sky: 'day' }).X && /X/.test(P.EMISSIVE) && /Z/.test(P.EMISSIVE));
+check(`SiteGuardRail: at the open edge a yellow top rail and mid rail on posts, debris netting, the sky behind, and a toe board a shade lighter than the slab (luminance ${lum(P.PALETTE.m).toFixed(2)} vs ${lum(P.PALETTE.n).toFixed(2)})`,
+  edgeBand.filter((r) => /^H+$/.test(r)).length === 2 && /z/.test(edgeBand.slice(4, 7).join('')) && /Z/.test(edgeBand[0]) && /^m+$/.test(edgeBand[13]) && lum(P.PALETTE.m) > lum(P.PALETTE.n) && /[fg]/.test(edgeBand[5]));
+const hoistOf = (key) => { const st = stageNew(); stageSync(st, layoutScene({ jobs: [] }, [], {}, T0)); if (key) stageSync(st, layoutScene({ jobs: [job(key, { role: 'plan' })] }, [], {}, T0)); rec.length = 0; drawStage(rkit.mk(STAGE.w, STAGE.h).getContext(), st, rkit); return [...rec]; };
+const cageArt = one1('door'), cageOpen = one1('hoist-open');
+check('SiteHoist: the crews arrive by the hoist: a steel mesh cage between hazard bands (no wooden door); its gate stands open with the call lamp lit only while a crew is arriving',
+  !/[bcde]/.test(cageArt.join('')) && /H/.test(cageArt[1]) && /H/.test(cageArt[27]) && /t/.test(cageOpen[0]) && !/t/.test(cageArt.join(''))
+  && hoistOf('J61').includes('hoist-open:0') && !hoistOf(null).includes('hoist-open:0'));
+check('SiteCut: the paint tins, the pegboards, their shelf and the window frame are gone (no data: decoration, P8); the bake draws none of them',
+  ['jar', 'pan', 'shelf', 'window'].every((k) => !P.SPRITES[k] && !bare.some((r) => r.startsWith(k + ':'))) && !('jars' in P.FRAMES));
+const cabin = one1('pass'), glow = one1('pass-glow').join(''), needsOne = { jobs: [job('J80', { status: 'waiting-approval', approval: { id: 'A80' } })] };
+check('SiteCabin: the sign-off window is the site cabin: corrugated steel, a framed window of dark glass that glows amber only while a sign-off waits',
+  cabin.slice(4, 26).every((r) => /^a[gh]{2}/.test(r)) && !/[DEFIt]/.test(cabin.join('')) && /N/.test(cabin.slice(5, 24).join(''))
+  && (glow.match(/[ts]/g) || []).length > glow.length * 0.8 && !drawnW({ jobs: [] }).includes('pass-glow:0') && drawnW(needsOne).includes('pass-glow:0'));
+const NIGHT = new Date(2026, 9, 22, 23, 0).getTime(), drawnAt = (s, now) => { rec.length = 0; rkit.layers.clear(); const st = stageNew(); stageSync(st, layoutScene(s, [], {}, now), {}); drawStage(rkit.mk(STAGE.w, STAGE.h).getContext(), st, rkit); return [...rec]; };
+check('SiteDepth: a contact shadow under each station (2 each), a darker strip along the slab\'s front edge, and a warm pool under the work light only on a night shift (crews at work after dark with the light on: none idle, by day, with the light out or without its field)',
+  bare.filter((r) => r === 'shadow:0').length >= 10 && bare.filter((r) => r === 'edge:0').length >= 12 && /I/.test(one1('pool').join('')) && /I/.test(P.EMISSIVE)
+  && drawnAt({ jobs: [job('J1')], breaker: false }, NIGHT).includes('pool:0') && !drawnAt({ jobs: [], breaker: false }, NIGHT).includes('pool:0') && !drawnAt({ jobs: [job('J1')], breaker: false }, T0).includes('pool:0')
+  && !drawnAt({ jobs: [job('J1')], breaker: true }, NIGHT).includes('pool:0') && !drawnAt({ jobs: [job('J1')] }, NIGHT).includes('pool:0'));
+// the words around the scene (rename S7g): nothing a person reads or hears from the scene is a kitchen word any more
+const KITCHEN_WORDS = /\b(toques?|cloches?|chefs?|order up|kitchen|cooks?|cooking|stove|sink|plates?|tickets?|rail|waiters?|sous|pass|coin jar|chalkboard|cork board|recipes?|fuse box|heat lamps?|hatch|window sign|closed)\b/i;
+const busyL = layoutScene(busy, [{ type: 'job.done', job: 'J39', ts: new Date(T0 - 60000).toISOString() }], {}, T0), cardHtml = sceneHtml(busy, [{ type: 'job.done', job: 'J39', ts: new Date(T0 - 60000).toISOString() }], {}, T0);
+const heard = [...legendRows(layoutScene(fullState(), fullEvents(), {}, T0)).map((r) => r.text), busyL.summary, layoutScene(fullState(), fullEvents(), {}, T0).summary,
+  ...hitItems(busyL).map((it) => it.label || it.word || ''), ...[...cardHtml.matchAll(/aria-label="([^"]*)"|>([^<>]+)</g)].map((m) => m[1] || m[2]), ...P.SIGN_WORDS, P.BANNER_WORDS,
+  ...Object.values(STATIONS).map((s) => s.label)];
+const appSrc = fs.readFileSync(new URL('./public/app.js', import.meta.url), 'utf8'), pageSrc = fs.readFileSync(new URL('./public/index.html', import.meta.url), 'utf8');
+const said = heard.filter((w) => KITCHEN_WORDS.test(w));
+check(`SiteWords: no toque, cloche, chef, ORDER UP or other kitchen word in what the scene shows or says (${heard.length} strings${said.length ? '; found: ' + said.slice(0, 3).join(' | ') : ''}); the empty Board says "Nothing building."; the listen button says "work order"; the hand-over toast says "Handed over: WO-…" (no "Order up!"); Clear old asks about "work orders"`,
+  said.length === 0 && heard.length > 40 && /<p>Nothing building\.<\/p>/.test(appSrc) && !/Nothing on the stove/.test(appSrc) && /aria-label="Listen to this work order"/.test(pageSrc) && !/Listen to this ticket/.test(pageSrc)
+  && appSrc.includes('toast(`${STATUS_LABEL.done}: ${ticket(e.job)}.`)') && !/Order up/i.test(appSrc)
+  && appSrc.includes("old ${list.length === 1 ? 'work order' : 'work orders'}?") && !/old tickets/.test(appSrc));
+// the critic's MUST items (audits/art-critique-S7-2026-10-26.md, 2026-10-26): words that match the stations, bubbles that stay with their crew
+const sw = (k) => stepWord({ station: 'agent', role: k }), swS = (k) => stepWord({ station: k });
+check('StationWords: the Inspection desk says "inspecting" (check, review) and the Test rig says "testing" (tests); every step word is lower case',
+  sw('check') === 'inspecting' && sw('review') === 'inspecting' && swS('tests') === 'testing' && stationFor('review') === 'taste' && stationFor('tests') === 'sink'
+  && ['plan', 'do', 'check', 'review', 'tests', 'lint', 'mutate', 'verify', 'commit', 'merge', 'freshen', 'map', 'diagnose'].every((k) => { const w = sw(k); return w === w.toLowerCase(); }));
+const bubK = 1.5, bubH = 14 / bubK, bubCases = [busy, fullState()].map((s) => hitItems(layoutScene(s, [], {}, T0), 0, { P, k: bubK, W: STAGE.w }).filter((i) => i.kind === 'say'));
+check(`BubbleNear: a speech bubble stands at most one bubble height over its crew member's head, or on the floor in front of its station (never up by the job board; ${bubCases.map((c) => c.length).join(' and ')} bubbles)`,
+  bubCases.every((c) => c.length > 0 && c.every((b) => b.y >= STAGE.aisle - 24 - bubH - 0.01)));
+check('SceneFrameWord: Settings > About says "Scene frame", never "Kitchen frame"', appSrc.includes('<dt>Scene frame</dt>') && !/Kitchen frame/i.test(appSrc));
+// nothing floats: the gate sign and the budget meter hang by two chains from a gantry beam across the top; the power board hangs under it
+const fullBake = drawnW(fullState(), fullEvents()), chainsAt = []; bakeWorld(worldOf(fullState(), fullEvents(), T0), (n, x, y) => n === 'chain' && chainsAt.push([x, y]));
+check(`GantryHang: a gantry beam spans the sky (${fullBake.filter((r) => r === 'rail:0').length} beam tiles with the job board) and the gate sign and budget meter hang by 2 chains each that reach their tops; the power board touches the beam`,
+  fullBake.filter((r) => r === 'rail:0').length >= 3 && fullBake.filter((r) => r === 'chain:0').length === 4 && chainsAt.every(([x, y]) => y === 3 || y === 4)
+  && HANG.sign.every((dx) => chainsAt.some(([x, y]) => x === PLACE.sign[0] + dx && y + 12 === PLACE.sign[1])) && HANG.jar.every((dx) => chainsAt.some(([x, y]) => x === PLACE.jar[0] + dx && y + 12 === PLACE.jar[1]))
+  && PLACE.fuse[1] <= 3 && !drawnW({ jobs: [] }).includes('chain:0'));
+check('WorkLightTruth: the work light is drawn only with its field (breaker): none without it, lit when false, out when true',
+  !drawnW({ jobs: [] }).some((r) => /^lamp/.test(r)) && drawnW({ jobs: [], breaker: false }).includes('lamp:0') && drawnW({ jobs: [], breaker: true }).includes('lamp-off:0') && !drawnW({ jobs: [], breaker: true }).includes('lamp:0'));
+// no lost taps: the link layer is written only when its markup changes; a replaced stage lets go of its observers
+let hitWrites = 0; const fakeSc = { hit: { set innerHTML(v) { hitWrites++; } } }, sameHtml = hitItems(layoutScene(busy, [], {}, T0), 0, { P }).map((it) => hitHtml(it)).join('');
+const w1 = writeHits(fakeSc, sameHtml), w2 = writeHits(fakeSc, sameHtml), w3 = writeHits(fakeSc, sameHtml + ' ');
+let disc = 0; const obs = () => ({ disconnect: () => disc++ }), oldSc = { io: obs(), ro: obs() }; dropStage(oldSc); dropStage(oldSc); dropStage(null);
+check(`HitsStable: the same links twice write the layer once (${hitWrites} writes for 3 renders, 2 different); a dropped stage disconnects both observers once (${disc})`,
+  w1 && !w2 && w3 && hitWrites === 2 && disc === 2 && oldSc.io === null && /dropStage\(sc\);\s*el\.innerHTML/.test(fs.readFileSync(new URL('./public/scene.js', import.meta.url), 'utf8')));
+// ---- the Purpose Ledger (purpose.js): nothing drawn without a row, every row bound to a real field and event, every data mark a door ----
+const rowsWith = (name) => PURPOSE.filter((r) => r.sprites.includes(name));
+const drawnNames = new Set(), noteDrawn = (list) => { for (const r of list) drawnNames.add(r.split(':')[0]); return list; };
+const NIGHTJ = new Date(2026, 9, 22, 23, 30).getTime(), DAWN = new Date(2026, 9, 22, 6, 30).getTime(), DUSK = new Date(2026, 9, 22, 19, 30).getTime();
+const ledgerStates = [{ jobs: [] }, busy, fullState(), { ...fullState(), paused: true }, { ...fullState(), stalled: true, lastTick: ago(14) }, { ...fullState(), breaker: true }, { ...busy, breaker: false }];
+for (const s of ledgerStates) for (const now of [T0, NIGHTJ, DAWN, DUSK]) noteDrawn(drawnAt(s, now));
+for (const s of ledgerStates) noteDrawn(drawnW(s, fullEvents()));
+noteDrawn(hoistOf('J61'));
+// every moment, played: a stage opened on a busy floor, then fresh events of every kind arrive, then frames over 2 s
+const mSt = stageNew(); stageSync(mSt, layoutScene({ ...busy, ...fullState(), jobs: busy.jobs }, [], {}, T0)); const fresh = (o) => ({ ...o, ts: iso(T0) });
+const mEv = [fresh({ type: 'step.done', job: 'J40', step: 3 }), fresh({ type: 'step.rework', job: 'J41', step: 3 }), fresh({ type: 'job.quarantined', job: 'J74' }), fresh({ type: 'approval.requested', job: 'J71', approval: 'A7' }), fresh({ type: 'job.done', job: 'J39' }), fresh({ type: 'step.crash', job: 'J42', step: 3 })];
+stageSync(mSt, layoutScene({ ...busy, jobs: [...busy.jobs, job('J71', { status: 'waiting-approval', approval: { id: 'A7' } }), job('J74', { status: 'quarantined' })] }, mEv, {}, T0));
+for (let i = 0; i < 40; i++) { stageTick(mSt, 60); rec.length = 0; drawStage(rkit.mk(STAGE.w, STAGE.h).getContext(), mSt, rkit); noteDrawn(rec); }
+const undeclared = [...drawnNames].filter((n) => !rowsWith(n).length), groundNames = PURPOSE.filter((r) => r.kind === 'ground').flatMap((r) => r.sprites);
+check(`PurposeNoUndeclared: every sprite the stage draws (${drawnNames.size} names over 7 states x 4 skies, the hoist and every moment) has a Purpose Ledger row${undeclared.length ? '; undeclared: ' + undeclared.join(', ') : ''}; ground (no field) is capped at 19 names (${groundNames.length})`,
+  undeclared.length === 0 && drawnNames.size > 60 && groundNames.length <= 19 && PURPOSE.every((r) => r.sprites.every((n) => P.SPRITES[n])));
+const serverSrc = fs.readFileSync(new URL('./server.mjs', import.meta.url), 'utf8'), kitchenDir = new URL('../kitchen/', import.meta.url);
+const kitchenSrc = fs.readdirSync(kitchenDir).filter((f) => f.endsWith('.ps1')).map((f) => fs.readFileSync(new URL(f, kitchenDir), 'utf8')).join('\n');
+const stepKinds = (kitchenSrc.match(/'\^step\\\.\(([a-z|]+)\)\$'/) || [, ''])[1].split('|').filter(Boolean);
+const emitted = (ev) => kitchenSrc.includes(`Emit '${ev}'`) || (ev.startsWith('step.') && stepKinds.includes(ev.slice(5)) && kitchenSrc.includes('Emit "step.$kind"'));
+const unbound = PURPOSE.filter((r) => r.kind === 'data').flatMap((r) => [...r.fields.filter((f) => !new RegExp(`\\b${f}\\b`).test(serverSrc)).map((f) => r.id + '.' + f),
+  ...(r.events || []).filter((e) => !emitted(e)).map((e) => r.id + ':' + e), ...(serverSrc.includes(`'${r.endpoint}'`) ? [] : [r.id + ' ' + r.endpoint])]);
+check(`PurposeBound: every data row names state fields the server sends (server.mjs), an endpoint it serves, and events the Yard emits (kitchen/*.ps1; step kinds ${stepKinds.join('/')})${unbound.length ? '; unbound: ' + unbound.join(', ') : ''}`,
+  unbound.length === 0 && stepKinds.length >= 7 && PURPOSE.filter((r) => r.kind === 'data').every((r) => r.changes && r.absent && r.tap && (r.fields.length || r.events?.length)));
+check(`MomentsBound: every moment plays for an event the Yard really emits (${Object.keys(MOMENTS).length} event types)`, Object.keys(MOMENTS).every(emitted));
+// doors: every data row on the stage has one (its work order's link, or a button to its legend line), and every door leads somewhere real
+const doorCases = [layoutScene(fullState(), fullEvents(), {}, T0), layoutScene({ ...busy, breaker: false }, [{ type: 'job.done', job: 'J39', ts: ago(1) }], {}, NIGHTJ), layoutScene({ jobs: [], due: 1 }, [], {}, T0)];
+const dead = [];
+for (const L of doorCases) {
+  const items = hitItems(L, 0, { P }), lines = legendRows(L).map((r) => r.key), ids = new Set([...L.src.jobs.map((j) => j.id), ...L.runners.map((r) => r.id)]);
+  for (const key of lines) {
+    const r = PURPOSE.find((x) => x.id === key), byLink = { crew: 'chef', cards: 'ticket', aside: 'aside', handed: 'waiter', signoff: 'waiter' }[key];
+    if (!items.some((it) => it.row === key || (byLink && it.kind === byLink))) dead.push(key);
+    if (!r) dead.push('no ledger row ' + key);
+  }
+  for (const it of items.filter((i) => i.kind !== 'say')) if (it.id ? !ids.has(it.id) : !lines.includes(it.row)) dead.push('door to nothing ' + it.key);
+}
+const markHtml = hitItems(doorCases[0], 0, { P }).filter((i) => i.kind === 'mark').map((i) => hitHtml(i)).join('');
+check(`PurposeDoors: every data mark on the stage is a door (${hitItems(doorCases[0], 0, { P }).filter((i) => i.kind === 'mark').length} marks on a full floor: legend buttons, the cabin and each sign-off light open their work order), and every door leads to a real work order or legend line${dead.length ? '; dead: ' + dead.join(', ') : ''}`,
+  dead.length === 0 && /<button class="px-a px-mark" type="button" data-legend="sign"/.test(markHtml) && /px-mark" href="#\/job\/J72"/.test(markHtml) && /id="wl-sign"/.test(legendHtml(legendRows(doorCases[0]))));
+// flips: the picture changes when (and because) the field does
+const has = (list, n) => list.includes(n), FLIPS = [
+  ['a crew arrives: the hoist gate opens', hoistOf(null), hoistOf('J61'), ['hoist-open:0']],
+  ['a sign-off waits: the cabin window glows, a runner brings the clipboard', drawnW({ jobs: [job('J1')] }), drawnW({ jobs: [job('J1'), job('J9', { status: 'waiting-approval', approval: { id: 'A9' } })] }, [{ type: 'approval.requested', job: 'J9', approval: 'A9', ts: ago(5) }]), ['pass-glow:0', 'cloche:0', 'heat:0']],
+  ['the wait passes 1 h: the sign-off light turns amber', drawnW(needsOne, [{ type: 'approval.requested', job: 'J80', approval: 'A80', ts: ago(5) }]), drawnW(needsOne, [{ type: 'approval.requested', job: 'J80', approval: 'A80', ts: ago(70) }]), ['heat:1']],
+  ['the wait passes 4 h: the sign-off light turns red', drawnW(needsOne, [{ type: 'approval.requested', job: 'J80', approval: 'A80', ts: ago(70) }]), drawnW(needsOne, [{ type: 'approval.requested', job: 'J80', approval: 'A80', ts: ago(250) }]), ['heat:2']],
+  ['paused: the gate sign says PAUSED and tape runs across the stations', drawnW(fullState()), drawnW({ ...fullState(), paused: true }), ['sign:2', 'tape:0', 'chair-up:0']],
+  ['a stop-work order: the power board sparks and the work light goes out', drawnW(fullState()), drawnW({ ...fullState(), breaker: true }), ['fuse:1', 'lamp-off:0']],
+  ['the spend rises: the budget meter fills', drawnW(fullState()), drawnW({ ...fullState(), spent: 15 }), ['coin-jar:6']],
+  ['the walkrounds stop: the clock freezes and the Dispatcher is gone', drawnW(fullState()), drawnW({ ...fullState(), stalled: true, lastTick: ago(14) }), []],
+  ['a work order fails: a crate on the bench, dust for 2 minutes', drawnW({ jobs: [job('J1')] }), drawnW({ jobs: [job('J1'), job('J5', { status: 'quarantined' })] }, [{ type: 'job.quarantined', job: 'J5', ts: ago(1) }]), ['plate-aside:0', 'smoke:0']],
+];
+const flat = FLIPS.filter(([, a, b, want]) => a.join() === b.join() || !want.every((n) => has(b, n) && !has(a, n)));
+check(`PurposeFlips: each field change changes the picture with the sprites it should (${FLIPS.length} flips: ${FLIPS.map((f) => f[0].split(':')[0]).join('; ')})${flat.length ? '; flat: ' + flat.map((f) => f[0]).join(' | ') : ''}`,
+  flat.length === 0 && drawnW(fullState()).some((r) => /^chef-s(it|ide):/.test(r)) && !drawnW({ ...fullState(), stalled: true, lastTick: ago(14) }).some((r) => /^chef-s(it|ide):/.test(r)));
+check('PurposeLegend: the legend sheet is the ledger (every line is a data row; every data row with a line has its icon; no kitchen words)',
+  doorCases.every((L) => legendRows(L).every((r) => PURPOSE.some((x) => x.id === r.key && x.kind === 'data') && P.LEGEND_ICONS[r.key] && /^[A-Z].*\.$/.test(r.text) && !KITCHEN_WORDS.test(r.text))));
+// no kitchen word anywhere on screen (chain review 2026-10-26): every string a person can read in the Board's scripts and index.html
+// (site-words.mjs: string literals and template text with markup plumbing and file names taken out; comments never count). sw.js is
+// left out: the service worker shows nothing (its one hit is the cache name 'chef-shell-...', a code name the old stored caches use)
+const pubDir = new URL('./public/', import.meta.url), screenFiles = fs.readdirSync(pubDir).filter((f) => /\.(js|html)$/.test(f) && f !== 'sw.js');
+const onScreen = screenFiles.flatMap((f) => kitchenHits(fs.readFileSync(new URL(f, pubDir), 'utf8'), f));
+const catches = kitchenHits("x = ['open', 'Open ticket']; toast(`Order up! ${t}`); h = `<h3 id=\"dish-h\">The dish</h3>`; // a ticket in a comment\nconst ticket = (id) => id; c = 'chef.' + k; d = `<div class=\"dish-head ${a}\">Recap</div>`;", 'probe.js');
+check(`SiteWordsEverywhere: no chef, toque, kitchen, ticket, dish or ORDER UP in any string a person can read (${screenFiles.length} files: app.js, index.html, live.js, scene.js ...)${onScreen.length ? '; found: ' + onScreen.join(', ') : ''}; the probe catches the old words (${catches.length}) and skips comments, code names and classes`,
+  onScreen.length === 0 && screenFiles.includes('app.js') && screenFiles.includes('index.html') && catches.length === 3 && catches.every((h) => /"(ticket|Order up|dish)"/i.test(h)));
+const siteChrome = P.chromeSprites(mk);
+check('SiteChrome: loading, offline and empty are drawn as site art (32x32: 4, 2 and 2 frames) and the empty one holds no clipboard or cloche (a shovel and an empty pallet)',
+  siteChrome.load.width === 128 && siteChrome.off.width === 64 && siteChrome.empty.width === 64 && !/cloche/.test(fs.readFileSync(new URL('./public/sprites.js', import.meta.url), 'utf8').match(/one\('empty'[^\n]*/)[0]));
 const br = (f) => zlib.brotliCompressSync(fs.readFileSync(new URL('./public/' + f, import.meta.url))).length;
 const stageBr = ['scene.js', 'sprites.js', 'world.js', 'frame.js', 'moments.js'].reduce((n, f) => n + br(f), 0);
 // main before wave 1 (with the Live call art): 21,615 bytes. Plan: wave 1 +6 KB, wave 2 +5 KB. Measured 10-22: wave 1 + W4 (frame key,

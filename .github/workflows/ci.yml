@@ -68,6 +68,17 @@ jobs:
           $keep = @($out -split "`n" | Where-Object { $_ -match '^(Quick checks:|FAIL:)' } | ForEach-Object { "- $($_.Trim())" })
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value (@('## Quick checks', '') + $keep)
           exit $code
+      # Shared contracts of the Tide upgrade (core/contracts, WO-UPG-L0-1): every fixture against its JSON Schema, then the contracts suite.
+      # The runner's own node; no install, no network. Lane L4 owns this file from here on and keeps this step.
+      - name: Contracts (core/contracts schemas, fixtures, validator)
+        shell: pwsh
+        run: |
+          $fix = node core/contracts/validate.mjs 2>&1 | Out-String; $c1 = $LASTEXITCODE
+          $out = pwsh -NoProfile -File tests/Test-Contracts.ps1 2>&1 | Out-String; $c2 = $LASTEXITCODE
+          Write-Output $fix; Write-Output $out
+          $keep = @(($fix + $out) -split "`n" | Where-Object { $_ -match '^(Contracts fixtures:|Contracts tests:|FAIL:)' } | ForEach-Object { "- $($_.Trim())" })
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value (@('', '## Contracts', '') + $keep)
+          if ($c1 -ne 0 -or $c2 -ne 0) { exit 1 }
       - name: Rust check (kitchen-sandbox targets Windows; checked from Linux, no linking)
         working-directory: rust/kitchen-sandbox
         run: |

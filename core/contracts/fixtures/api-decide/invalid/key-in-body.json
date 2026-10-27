@@ -1,0 +1,12 @@
+{
+  "why": "the Board key goes in a header, never the body",
+  "expect": "/key: additionalProperties",
+  "doc": {
+    "decision": "D-1",
+    "answer": "Yes",
+    "note": null,
+    "via": "board",
+    "requestId": "req-0002-example",
+    "key": "example-only"
+  }
+}

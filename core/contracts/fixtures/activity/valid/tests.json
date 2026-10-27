@@ -1,0 +1,16 @@
+{
+  "v": "1.0",
+  "wo": "WO-2001",
+  "name": "tests",
+  "args": {
+    "suites": [
+      "Test-Demo",
+      "Test-DemoScene"
+    ],
+    "parallel": 2,
+    "note": null
+  },
+  "idempotencyKey": "WO-2001:tests:0f1e2d3",
+  "timeoutSec": 1200,
+  "maxMB": 3000
+}
