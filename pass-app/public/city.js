@@ -3,7 +3,7 @@
 import { cookOf, stationFor, skyAt, COOK_COLORS, makeLoop } from './scene.js';
 import { paletteFor, PALETTE } from './sprites.js';
 import { GL, PAINT, WORKER, TOOLS, PALLET, LOCK, FLAG, SKIP, RAMPS, BEACON, CI } from './city-art.js';
-import { routeOf, hashOf, upOf, crumbsHtml, gestureTo, attachGestures, cameraMove } from './city-nav.js';
+import { routeOf, hashOf, upOf, crumbsHtml, gestureTo, attachGestures, cameraMove, cutawayHtml, floorHtml } from './city-nav.js';
 
 const MS = { min: 6e4, hour: 36e5, day: 864e5 };
 const t = (v) => { const n = Date.parse(v); return Number.isFinite(n) ? n : null; };
@@ -11,8 +11,8 @@ const NEEDS = (j) => j.status === 'waiting-approval' || j.status === 'needs-huma
 // the station a crew stands at, in site words (scene.js stations: board, stove, taste, sink, plate)
 export const TOOL = { board: 'survey', stove: 'build', taste: 'inspect', sink: 'test', plate: 'handover' };
 export const CAP = { cranes: 3, crews: 3, pallets: 5, cityPx: 80, full: 22, bands: 20 };
-// one shared height scale for every tower on a level, so heights compare: the City packs k floors in each 2 px row, the smallest k
-// of 1, 2, 5, 10, 20, 50, 100 that keeps the tallest within 80 art px (the Board's City is 136 art px tall); a Tower draws its newest 22 floors whole and older ones in bands of k
+// one height scale for every tower on a level: k floors a 2 px row, the smallest k that keeps the tallest within 80 art px; a Tower's
+// own level bands its older floors
 const live = (T) => (T?.floors || []).filter((f) => !f.undone);
 export function scaleOf(towers) {
   const max = Math.max(0, ...(towers || []).filter((x) => x.kind === 'tower').map((x) => live(x).length));
@@ -83,7 +83,7 @@ function gateOf(s, towers, ev, now) {
   else if (age !== null && age > 10 * MS.min) g.github = { err: false, text: `GitHub read ${age < MS.hour * 2 ? Math.round(age / MS.min) + ' min' : Math.round(age / MS.hour) + ' h'} ago` };
   return g;
 }
-// cityOf: the whole City at one moment. towers = GET /api/towers; s = the live state; ev = recent events; opts.lastSeen = the phone's last look
+// cityOf: the whole City at one moment (GET /api/towers, the live state, recent events; opts.lastSeen: the phone's last look)
 export function cityOf(towers, s, ev = [], now = Date.now(), opts = {}) {
   const list = Array.isArray(towers?.towers) ? towers.towers : []; const k = scaleOf(list);
   const keys = new Set(list.map((x) => x.key)); const yard = (s?.jobs || []).filter((j) => !j.tower || !keys.has(j.tower));
@@ -96,7 +96,7 @@ export function cityOf(towers, s, ev = [], now = Date.now(), opts = {}) {
     loading: !towers, error: towers && towers.ok === false ? String(towers.error || 'the City could not be read') : null,
   };
 }
-// ---- moments due: only from real changes and events under 2 minutes old; at most 2 at once, one announce line each ----
+// ---- moments due: only from real changes and events under 2 minutes old ----
 export const FRESH_MS = 2 * MS.min;
 const EVENT_MOMENT = { 'approval.requested': 'beacon-on', 'approval.granted': 'beacon-off', 'merge.undone': 'take-down', 'step.started': 'hoist', 'job.quarantined': 'crate' };
 export function momentsDue(prev, next, ev = [], now = Date.now(), jobs = []) {
@@ -117,7 +117,7 @@ export function momentsDue(prev, next, ev = [], now = Date.now(), jobs = []) {
 }
 // the horizon strip on the other tabs: quiet unless something needs Jordan (a beacon, a red main, PAUSED)
 export const needsYou = (c) => !!(c && (c.gate.paused || c.yard.waiting || c.lots.some((l) => l.waiting || l.scaffold === 'red')));
-// the text twin of the canvas: one sentence per building, numbers only (a screen reader reads these; the canvas is aria-hidden)
+// the canvas's text twin: one sentence per building, numbers only
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 export function sentence(l) {
   const name = l.name + (l.private ? ' (private)' : '');
@@ -132,11 +132,12 @@ export function sentence(l) {
   return `${name}: ${bits.join(', ')}`;
 }
 
-// ---- drawing: one pixel buffer per frame, put on the canvas with one drawImage (far under the stage's 120 draws) ----
-export const ART = { H: 136, GROUND: 122, tw: 26, lobby: 3, level: 4, plinthDiv: 20, mast: 9, jib: 13 };
+// ---- drawing: one pixel buffer per frame, one drawImage ----
+// the City is 136 art px tall (ground 14 px up); a building's own level 200, its tower 46 wide
+export const ART = { H: 136, bigH: 200, tw: 26, bigTw: 46, lobby: 3, level: 4, plinthDiv: 20, mast: 9, jib: 13 };
 const SLOT = { gate: 30, yard: 24, tower: 36, lot: 22, office: 28 };
 export const minWidth = (c) => 2 + SLOT.gate + SLOT.yard + (c?.lots || []).reduce((n, l) => n + (SLOT[l.kind] || 24), 0);
-// left to right: the gate and cabin, the Yard lot, then every building in its fixed order; the spare width is shared out
+// left to right: the gate, the Yard lot, then every building in its fixed order; spare width shared out
 export function layoutCity(c, W) {
   const items = [{ kind: 'gate', key: 'gate' }, { kind: 'yard', key: 'yard' }, ...(c?.lots || []).map((l) => ({ kind: l.kind, key: l.key, l }))];
   const min = items.reduce((n, it) => n + (SLOT[it.kind] || 24), 0); const gap = Math.max(0, Math.floor((W - min) / items.length)); let x = Math.max(0, Math.floor((W - min - gap * items.length) / 2));
@@ -144,7 +145,7 @@ export function layoutCity(c, W) {
   return items;
 }
 const pack = (h) => { const n = parseInt(String(h).slice(1), 16); return ((255 << 24) | ((n & 255) << 16) | (n & 0xff00) | (n >> 16)) >>> 0; };
-// the palette for the hour (sprites.js paletteFor: the sky in X Y Z, the dusk and night tint) and one per crew colour
+// the hour's palette (sprites.js paletteFor) and one per crew colour
 export function palettes(sky) {
   const p = { ...paletteFor({ sky }), ...PAINT }; const out = {}; for (const k of Object.keys(p)) out[k] = pack(p[k]);
   out.crew = {}; for (const [n, c] of Object.entries(COOK_COLORS)) { const q = paletteFor({ sky, cook: c }); out.crew[n] = { 4: pack(q[4]), 5: pack(q[5]), 6: pack(q[6]), 2: pack(q[2]) }; }
@@ -157,11 +158,11 @@ export function painter(W, H, pal) {
   const R = (x, y, w, h, k) => { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) P(x + i, y + j, k); };
   const S = (rows, x, y, map) => rows.forEach((r, j) => [...r].forEach((c, i) => P(x + i, y + j, map && map[c] != null ? map[c] : c)));
   const T = (str, x, y, k) => [...String(str)].forEach((ch, i) => { const g = GL[ch]; if (g) S(g, x + i * 4, y, { a: k }); });
-  return { buf, W, H, pal, P, R, S, T, tw: (str) => String(str).length * 4 - 1 };
+  return { buf, W, H, G: H - 14, pal, P, R, S, T, tw: (str) => String(str).length * 4 - 1 };
 }
 const hash = (s) => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 function sky(g, hour) {
-  const { W, R, P, pal } = g; const G = ART.GROUND; const [X, Y, Z] = pal.sky;
+  const { W, R, P, pal } = g; const G = g.G; const [X, Y, Z] = pal.sky;
   for (let b = 0; b < 12; b++) { const y0 = Math.floor(G * b / 12), y1 = Math.floor(G * (b + 1) / 12); R(0, y0, W, y1 - y0, pack(b < 6 ? mixHex(X, Y, b / 6) : mixHex(Y, Z, (b - 6) / 6))); }
   if (pal.night) for (let i = 0; i < W / 6; i++) { const r = hash('star' + i); P(r % W, (r >>> 9) % 70, (r >>> 20) & 1 ? 'p' : 'n'); }
   const q = hour >= 7 && hour < 19 ? (hour - 7) / 12 : ((hour + 24 - 19) % 24) / 12; const x = Math.round(8 + (W - 16) * q), y = Math.round(44 - 34 * Math.sin(Math.PI * q));
@@ -169,7 +170,7 @@ function sky(g, hour) {
 }
 const mixHex = (a, b, t) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t).toString(16).padStart(2, '0')).join('');
 function street(g) {
-  const { W, R, H } = g; const G = ART.GROUND;
+  const { W, R, H } = g; const G = g.G;
   R(0, G, W, 2, 'm'); R(0, G + 2, W, 1, 'l'); R(0, G + 3, W, H - G - 3, 'j'); for (let x = 2; x < W; x += 10) R(x, G + 8, 5, 1, 'n');
 }
 function crew(g, c, x, feet, step) {
@@ -178,18 +179,24 @@ function crew(g, c, x, feet, step) {
 }
 function beacon(g, x, y, kind, on) { const k = on ? BEACON[kind] : 'q'; g.R(x, y, 3, 3, k); g.R(x, y + 3, 3, 1, 'a'); if (on) { g.P(x - 1, y + 1, k); g.P(x + 3, y + 1, k); } }
 function plus(g, n, x, y) { if (n > 0) { const s = '+' + n; g.R(x - 1, y - 1, g.tw(s) + 2, 7, 'p'); g.T(s, x, y, 'r'); } }
-// a tower at the City level: stone base, lobby, rows of k floors (lit windows: merged in the last 24 h), roof, the "public from" line,
-// the planned outline, then cranes (one scaffold level each), crews, the beacon, pallets, scaffolding, tape, the skip
-function tower(g, it, l, i, c, ph) {
-  const { R, P, S } = g; const G = ART.GROUND; const w = ART.tw; const x = it.x + ((it.w - w) >> 1); const [d0, d1, d2] = RAMPS[i % RAMPS.length];
+// a tower's rows, bottom up ({ h, lit, pub }): k floors a 2 px row; big: the newest 22 floors 4 px each, older ones in bands of c.band
+export function rowsOf(l, c, big) {
+  const n = l.floors; const full = big ? Math.min(n, CAP.full) : 0; const k = big ? c.band : c.k; const out = [];
+  const add = (from, to, h) => out.push({ h, lit: to >= n - l.lit, pub: l.publicAt !== null && l.publicAt > from && l.publicAt <= to + 1 && l.publicAt < n });
+  for (let f = 0; f < n - full; f += k) add(f, Math.min(n - full, f + k) - 1, 2);
+  for (let f = n - full; f < n; f++) add(f, f, 4);
+  return out;
+}
+// a tower: stone base, lobby, rows, roof, the public line, the outline, cranes, crews, beacon, pallets, scaffolding, tape, skip
+function tower(g, it, l, i, c, ph, big) {
+  const { R, P, S } = g; const G = g.G; const w = big ? ART.bigTw : ART.tw; const x = it.x + ((it.w - w) >> 1); const [d0, d1, d2] = RAMPS[i % RAMPS.length];
   const pl = l.plinth ? Math.max(1, Math.ceil(l.plinth / ART.plinthDiv)) : 0;
   if (pl) { R(x - 2, G - pl, w + 4, pl, 'k'); R(x - 2, G - pl, w + 4, 1, 'a'); for (let y = G - pl + 1; y < G; y++) for (let xx = x - 1 + (y & 1) * 2; xx < x + w + 2; xx += 4) P(xx, y, 'j'); }
   let y = G - pl - ART.lobby; R(x, y, w, ART.lobby, d1); R(x, y, w, 1, d0); R(x + (w >> 1) - 2, y + 1, 4, 2, 'a');
-  const litRows = Math.ceil(l.lit / c.k); const pubRow = l.publicAt === null ? -1 : Math.floor(l.publicAt / c.k);
-  for (let r = 0; r < l.rows; r++) {
-    y -= 2; R(x, y, w, 2, d1); R(x, y, 1, 2, 'a'); R(x + w - 1, y, 1, 2, 'a'); R(x + 1, y, w - 2, 1, d0);
-    const lit = r >= l.rows - litRows; for (let xx = x + 3; xx < x + w - 3; xx += 2) P(xx, y + 1, lit ? 't' : g.pal.night ? 'E' : 'Y');
-    if (r === pubRow) for (let xx = x - 2; xx < x + w + 2; xx += 2) P(xx, y + 2, 't');
+  for (const row of rowsOf(l, c, big)) {
+    y -= row.h; R(x, y, w, row.h, d1); R(x, y, 1, row.h, 'a'); R(x + w - 1, y, 1, row.h, 'a'); R(x + 1, y, w - 2, 1, d0);
+    const win = row.lit ? 't' : g.pal.night ? 'E' : 'Y'; for (let xx = x + 3; xx < x + w - 3; xx += 2) for (let yy = 1; yy < row.h; yy += 2) P(xx, y + yy, win);
+    if (row.pub) for (let xx = x - 2; xx < x + w + 2; xx += 2) P(xx, y + row.h, 't');
   }
   R(x, y - 1, w, 1, 'a'); const roof = y - 1;
   if (l.blueprint) { const left = Math.min(10, Math.ceil((l.blueprint.total - l.blueprint.shipped) / c.k)) * 2; for (let yy = roof - left; yy < roof; yy += 2) { P(x, yy, 'h'); P(x + w - 1, yy, 'h'); } for (let xx = x; xx < x + w; xx += 2) P(xx, roof - left, 'h'); }
@@ -216,19 +223,19 @@ function tower(g, it, l, i, c, ph) {
   return { x, w, top };
 }
 function lot(g, it, l) {
-  const { R, P } = g; const G = ART.GROUND; const x = it.x + 2, w = it.w - 4; const pl = l.plinth ? Math.max(1, Math.ceil(l.plinth / ART.plinthDiv)) : 0;
+  const { R, P } = g; const G = g.G; const x = it.x + 2, w = it.w - 4; const pl = l.plinth ? Math.max(1, Math.ceil(l.plinth / ART.plinthDiv)) : 0;
   if (pl) { R(x, G - pl, w, pl, 'k'); R(x, G - pl, w, 1, 'a'); for (let y = G - pl + 1; y < G; y++) for (let xx = x + 1 + (y & 1) * 2; xx < x + w - 1; xx += 4) P(xx, y, 'j'); }
   for (let xx = x; xx < x + w; xx += 3) R(xx, G - pl - 5, 1, 5, 'h'); R(x, G - pl - 5, w, 1, 'h');
   R(x + 3, G - pl - 13, 1, 8, 'c'); R(x + 1, G - pl - 15, 11, 6, 'a'); R(x + 2, G - pl - 14, 9, 4, 'o');
 }
 function office(g, it, l) {
-  const { R } = g; const G = ART.GROUND; const x = it.x + 1, w = it.w - 2, top = G - 18;
+  const { R } = g; const G = g.G; const x = it.x + 1, w = it.w - 2, top = G - 18;
   R(x, top, w, 18, 'a'); R(x + 1, top + 1, w - 2, 17, 'e'); R(x - 1, top - 1, w + 2, 2, 'b');
   for (const yy of [top + 4, top + 10]) for (let xx = x + 3; xx < x + w - 4; xx += 5) { R(xx, yy, 3, 3, 'a'); R(xx + 1, yy + 1, 1, 1, l.lit ? 't' : 'Z'); }
   R(x + w - 6, G - 6, 4, 6, 'c');
 }
 function gate(g, it, c, ph) {
-  const { R, T, P } = g; const G = ART.GROUND; const x = it.x, cy = G - 12; const gt = c.gate;
+  const { R, T, P } = g; const G = g.G; const x = it.x, cy = G - 12; const gt = c.gate;
   R(x + 1, cy, 26, 12, 'a'); R(x + 2, cy + 1, 24, 10, 'o'); R(x + 1, cy - 1, 26, 1, 'g'); R(x + 21, cy + 5, 3, 6, 'c');
   if (gt.budget) { R(x + 10, cy + 2, 10, 7, 'a'); for (let s = 0; s < 8; s++) R(x + 11 + s, cy + 3, 1, 5, s >= gt.budget.level ? 'j' : s < 4 ? 'v' : s < 6 ? 's' : 'B'); if (gt.budget.stop) R(x + 13, cy + 5, 4, 4, 't'); }
   if (gt.paused !== null) { const word = gt.paused ? 'PAUSED' : 'OPEN'; R(x, cy - 13, 28, 9, 'a'); R(x + 1, cy - 12, 26, 7, 'D'); T(word, x + 1 + ((26 - g.tw(word)) >> 1), cy - 11, gt.paused ? 'B' : gt.live ? 't' : 'n'); }
@@ -237,29 +244,28 @@ function gate(g, it, c, ph) {
   if (gt.github) { const s = gt.github.err ? 'GH!' : 'GH'; const bw = g.tw(s) + 4, by = G - 34; R(x + 3, by + 8, 1, 4, 'f'); R(x + 1, by, bw, 8, 'a'); R(x + 2, by + 1, bw - 2, 6, gt.github.err ? 'B' : 't'); T(s, x + 3, by + 2, gt.github.err ? 'p' : 'a'); }
 }
 function yard(g, it, c, ph) {
-  const { R, S } = g; const G = ART.GROUND; const x = it.x + 1, w = 20, top = G - 13; const y = c.yard;
+  const { R, S } = g; const G = g.G; const x = it.x + 1, w = 20, top = G - 13; const y = c.yard;
   R(x, top, w, 13, 'a'); R(x + 1, top + 1, w - 2, 12, 'n'); R(x + 3, top + 4, 14, 9, 'a'); for (let yy = top + 5; yy < G; yy += 2) R(x + 4, yy, 12, 1, 'h');
   for (let i = 0; i < Math.min(3, y.running); i++) S(WORKER[0].slice(0, 3), x + 4 + i * 4, top + 7, g.pal.crew.hand);
   for (let i = 0; i < Math.min(5, y.queued); i++) S(PALLET, x + w + 1, G - 3 - i * 3);
   if (y.beacon) beacon(g, x + w - 5, top - 5, y.beacon, ph.blink); if (y.private) S(LOCK, x + 1, top - 6);
 }
-// the whole City into a fresh buffer; ph = { blink, step, focus } (blink and step still under reduced motion: the beacon steady and lit;
-// focus: the building the route is on, marked at once so a tap feels instant)
+// the whole City into a fresh buffer; ph = { blink, step, focus, big } (focus: the route's building, marked at once)
 export function paintCity(c, W, hour, ph = { blink: 1, step: 0 }, pal = palettes(c.sky)) {
-  const g = painter(W, ART.H, pal); sky(g, hour); const items = layoutCity(c, W); const boxes = {};
-  let i = 0;
+  const one = ph.big && c.lots.find((l) => l.key === ph.big && l.kind === 'tower');   // a building's own level: that tower alone, large
+  const g = painter(W, one ? ART.bigH : ART.H, pal); sky(g, hour); const items = one ? [{ kind: 'tower', key: one.key, l: one, x: (W >> 1) - 30, w: 60, slot: [0, W] }] : layoutCity(c, W); const boxes = {};
+  let i = one ? c.lots.filter((l) => l.kind === 'tower').indexOf(one) : 0;
   for (const it of items) {
     if (it.kind === 'gate') gate(g, it, c, ph); else if (it.kind === 'yard') yard(g, it, c, ph);
-    else if (it.kind === 'tower') boxes[it.key] = tower(g, it, it.l, i++, c, ph); else if (it.kind === 'lot') lot(g, it, it.l); else if (it.kind === 'office') office(g, it, it.l);
+    else if (it.kind === 'tower') boxes[it.key] = tower(g, it, it.l, i++, c, ph, !!one); else if (it.kind === 'lot') lot(g, it, it.l); else if (it.kind === 'office') office(g, it, it.l);
     if (it.l?.private) g.S(LOCK, it.x + (it.w >> 1) - 2, 2);   // a private repo: a padlock over it
   }
   street(g);
-  const f = items.find((it) => it.key === ph.focus);
-  if (f) { for (let y = 8; y < ART.GROUND; y += 2) { g.P(f.slot[0], y, 't'); g.P(f.slot[1] - 1, y, 't'); } g.R(f.x + (f.w >> 1) - 3, ART.GROUND + 1, 7, 1, 't'); }
+  const f = !one && items.find((it) => it.key === ph.focus);
+  if (f) { for (let y = 8; y < g.G; y += 2) { g.P(f.slot[0], y, 't'); g.P(f.slot[1] - 1, y, 't'); } g.R(f.x + (f.w >> 1) - 3, g.G + 1, 7, 1, 't'); }
   return { g, items, boxes };
 }
-// the horizon strip (40 CSS px on the other tabs): every building's height on one scale, a lit top for today's floors, a beacon, red
-// tape for a red main, PAUSED at the left; quiet (no beacon, no tape, no word) when nothing needs Jordan
+// the horizon strip (other tabs): heights on one scale, today's lit tops; a beacon, red tape or PAUSED only when they need Jordan
 export function paintStrip(c, W, ph = { blink: 1 }, pal = palettes(c.sky)) {
   const g = painter(W, 20, pal); const [X, Y] = pal.sky; g.R(0, 0, W, 10, pack(X)); g.R(0, 10, W, 9, pack(Y)); g.R(0, 19, W, 1, 'k');
   const max = Math.max(1, ...c.lots.map((l) => l.floors)); if (c.gate.paused) { g.R(1, 6, 27, 9, 'a'); g.T('PAUSED', 2, 8, 'B'); }
@@ -276,8 +282,7 @@ export function paintStrip(c, W, ph = { blink: 1 }, pal = palettes(c.sky)) {
 }
 
 // ---- in the page: the City at the top of the Board tab, the strip under the header on the other tabs ----
-// o: { home, strip, names, cap, api, get: () => ({ s, ev, view, lastSeen }), legend(html), go(hash) }. The canvas is aria-hidden; the
-// names row and the caption carry the words. Drawn only while seen; one still frame (redrawn each minute) under reduced motion.
+// o: { home, strip, names, cap, api, get, legend, go, buzz }; the canvas is aria-hidden (the names row and caption carry the words)
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 export function legendRows(c) {
@@ -295,7 +300,7 @@ export function legendRows(c) {
   return rows.filter((r) => r[1]).map((r) => r[0]);
 }
 export function mountCity(o) {
-  const M = { towers: null, v: null, busy: false, c: null, key: '', canvas: null, visible: true, failed: null, tries: 0, after: 0, r: routeOf(''), items: [], W: 1, depth: 0, moving: false };
+  const M = { towers: null, v: null, busy: false, c: null, key: '', canvas: null, visible: true, failed: null, tries: 0, after: 0, r: routeOf(''), items: [], W: 1, depth: 0, moving: false, n: 20 };
   const ctx2d = (cv) => { const x = cv.getContext('2d'); x.imageSmoothingEnabled = false; return x; };
   function blit(cv, g, scale, dpr) {
     if (cv.width !== g.W * scale || cv.height !== g.H * scale) { cv.width = g.W * scale; cv.height = g.H * scale; cv.style.width = g.W * scale / dpr + 'px'; cv.style.height = g.H * scale / dpr + 'px'; }
@@ -310,7 +315,7 @@ export function mountCity(o) {
       M.failed = r?.error || 'the City could not be read'; M.v = null; const ms = Math.min(3e5, 3e4 * 2 ** M.tries++); M.after = Date.now() + ms - 50; setTimeout(update, ms);
     }).finally(() => { M.busy = false; M.key = ''; update(); });
   }
-  // frame() returns the wait (frame.js): to the next blink or step while a beacon blinks or a crew works (PAUSED alone is still), else Infinity
+  // frame() returns the wait (frame.js): the next blink or step while a beacon blinks or a crew works, else Infinity
   const moving = (c) => !!c && !!(c.yard.beacon || c.lots.some((l) => l.beacon || l.crews.length || l.cranes.some((x) => x.crew || x.beacon)));
   function frame() {
     if (M.moving) return Infinity;   // the camera's done() draws and starts the loop again
@@ -318,20 +323,22 @@ export function mountCity(o) {
     const c = M.c = cityOf(M.towers, s, ev || [], now, { lastSeen }); const anim = !reducedMotion() && moving(c);
     const ph = anim ? { blink: Math.floor(now / 500) % 2, step: Math.floor(now / 260) % 2 } : { blink: 1, step: 0 }; const wait = anim ? Math.min(500 - now % 500, 260 - now % 260) : Infinity;
     const dpr = globalThis.devicePixelRatio || 1; const home = view === 'pass';
-    const key = [home, hashOf(rt), M.v, M.towers?.at && M.c.k, JSON.stringify(c.lots), JSON.stringify(c.gate), JSON.stringify(c.yard), ph.blink, ph.step, Math.floor(now / 6e4), o.home.clientWidth, o.strip.clientWidth].join('|');
+    const key = [home, hashOf(rt), M.n, M.v, M.towers?.at && M.c.k, JSON.stringify(c.lots), JSON.stringify(c.gate), JSON.stringify(c.yard), ph.blink, ph.step, Math.floor(now / 6e4), o.home.clientWidth, o.strip.clientWidth].join('|');
     if (key === M.key) return wait; M.key = key;
     o.strip.hidden = home || !s || c.loading; o.home.hidden = !home;
     if (home) {
       const box = o.home.clientWidth || 343; const dev = Math.max(200, Math.floor(box * dpr)); const scale = Math.max(1, Math.floor(dev / minWidth(c))); const W = Math.floor(dev / scale);
       const cv = o.home.querySelector('canvas') || o.home.insertBefore(Object.assign(document.createElement('canvas'), { className: 'city-canvas' }), o.home.firstChild); cv.setAttribute('aria-hidden', 'true');
-      const p = paintCity(c, W, new Date(now).getHours() + new Date(now).getMinutes() / 60, { ...ph, focus: rt.key }); M.items = p.items; M.W = W; blit(cv, p.g, scale, dpr);
+      const p = paintCity(c, W, new Date(now).getHours() + new Date(now).getMinutes() / 60, { ...ph, focus: rt.key, big: rt.level ? rt.key : null }); M.items = p.items; M.W = W; blit(cv, p.g, scale, dpr);
       const cap = c.loading ? (M.failed ? 'The City could not be read: ' + M.failed : 'Reading the City…') : M.failed ? `Showing the last read: ${M.failed}` : c.gate.github ? c.gate.github.text : '';
       const nameOf = (k) => c.lots.find((l) => l.key === k)?.name || (k === 'yard' ? 'Yard lot' : k); const on = c.lots.find((l) => l.key === rt.key);
-      const html = crumbsHtml(rt, nameOf, esc) + (on ? `<p class="city-cap">${esc(sentence(on))}</p>` : '') + `<ul class="city-names">${c.lots.map((l) => `<li data-kind="${esc(l.kind)}"><a href="#/city/${esc(l.key)}"${l.key === rt.key ? ' aria-current="page"' : ''} aria-label="${esc(sentence(l))}"><b>${esc(l.name)}</b><span aria-hidden="true">${l.kind === 'tower' ? l.floors : l.kind === 'lot' ? 'lot' : 'office'}</span></a></li>`).join('')}</ul>`
+      const T = rt.level && M.towers?.towers?.find((x) => x.key === rt.key && x.kind === 'tower');   // a building's own level: its cutaway or a floor's sheet
+      const deep = !T ? '' : rt.level >= 2 ? floorHtml(T, rt.pr, !!rt.old, esc) : cutawayHtml(T, esc, M.n);
+      const html = crumbsHtml(rt, nameOf, esc) + (on && rt.level < 2 ? `<p class="city-cap">${esc(sentence(on))}</p>` : '') + deep + `<ul class="city-names">${c.lots.map((l) => `<li data-kind="${esc(l.kind)}"><a href="#/city/${esc(l.key)}"${l.key === rt.key ? ' aria-current="page"' : ''} aria-label="${esc(sentence(l))}"><b>${esc(l.name)}</b><span aria-hidden="true">${l.kind === 'tower' ? l.floors : l.kind === 'lot' ? 'lot' : 'office'}</span></a></li>`).join('')}</ul>`
         + `<p class="city-cap"${cap ? '' : ' hidden'} role="status">${esc(cap)}</p>` + (!c.loading && !c.lots.length ? '<p class="city-cap">No projects yet: the City fills in as work merges.</p>' : '');
-      if (o.names.innerHTML !== html) {   // rebuilt: the focus stays on the link it was on, else the building the route is on
-        const a = document.activeElement; const h = o.names.contains(a) ? a.getAttribute('href') || '' : null; o.names.innerHTML = html;
-        if (h !== null) (o.names.querySelector(`a[href="${h}"]`) || o.names.querySelector('a[aria-current="page"]') || o.names.querySelector('a'))?.focus();
+      if (o.names.innerHTML !== html) {   // rebuilt: the focus stays on its link (or Show more), else the building the route is on
+        const a = document.activeElement; const q = o.names.contains(a) ? (a.hasAttribute('href') ? `a[href="${a.getAttribute('href')}"]` : '[data-city-more]') : ''; o.names.innerHTML = html;
+        if (q) (o.names.querySelector(q) || o.names.querySelector('a[aria-current="page"]') || o.names.querySelector('a'))?.focus();
       }
     } else if (s && !c.loading) {
       const cv = o.strip.querySelector('canvas') || o.strip.appendChild(Object.assign(document.createElement('canvas'), { className: 'city-canvas' })); cv.setAttribute('aria-hidden', 'true');
@@ -341,10 +348,10 @@ export function mountCity(o) {
     return wait;
   }
   const loop = makeLoop({ raf: (f) => requestAnimationFrame(f), ok: () => !document.hidden && !reducedMotion() && M.visible, frame });
-  // a new route: the camera moves toward the building (in) or away from it (out), then the new level is drawn crisp
+  // a new route: the camera moves in or out, then the new level is drawn
   function follow() {
     const r = routeOf(location.hash); const was = M.r; if (hashOf(r) === hashOf(was)) return;
-    if (r.level !== was.level) M.depth = r.level > was.level ? M.depth + 1 : Math.max(0, M.depth - 1); M.r = r;
+    M.n = r.key === was.key ? M.n : 20; if (r.level !== was.level) M.depth = r.level > was.level ? M.depth + 1 : Math.max(0, M.depth - 1); M.r = r;
     const it = M.items.find((x) => x.key === (r.key || was.key)); const cv = o.home.querySelector('canvas');
     if (o.get().view !== 'pass' || !it || !cv || r.level === was.level) { M.key = ''; return; }
     M.moving = true; cameraMove(cv, (it.x + it.w / 2) / M.W, r.level > was.level, reducedMotion(), () => { M.moving = false; M.key = ''; frame(); loop.start(); });
@@ -356,6 +363,7 @@ export function mountCity(o) {
     frame(); loop.start();
   }
   o.strip.addEventListener('click', () => o.go('#/pass'));
+  o.names.addEventListener('click', (e) => { if (e.target.closest('[data-city-more]')) { M.n += 50; M.key = ''; frame(); } });
   const hitAt = (x) => M.items.find((it) => x * M.W >= it.slot[0] && x * M.W < it.slot[1])?.key || null;
   attachGestures(o.home, { at: hitAt, buzz: o.buzz, onLong: o.onLong, onGesture: (g) => { if (g.gesture === 'pinch-in' || (g.gesture === 'tap' && hitAt(g.at) === M.r.key)) { if (g.gesture === 'pinch-in' && M.r.level) up(); return; } const to = gestureTo(g, M.r, hitAt(g.at), M.c.lots.map((l) => l.key)); if (to && to.level === M.r.level) location.replace(hashOf(to)); else if (to) o.go(hashOf(to)); } });   // a sideways move replaces the route: Back still zooms out
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && M.r.level && o.get().view === 'pass' && !document.querySelector('dialog[open]')) up(); });

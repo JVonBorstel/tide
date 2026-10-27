@@ -351,14 +351,14 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   check('Render_Layout: the gate, the Yard lot, then every building in order; no slot overlaps another or leaves the picture', items.map((i) => i.key).join() === 'gate,yard,td,side,gemini-brain' && items.every((it, i) => it.slot[1] <= W && (i === 0 || it.slot[0] >= items[i - 1].slot[1])));
   const px = (g, x, y) => g.buf[y * g.W + x]; const pal = CJ.palettes(C.sky); const box = a.boxes.td;
   const has = (g, k, x0, y0, x1, y1) => { for (let y = Math.max(0, y0); y < Math.min(g.H, y1); y++) for (let x = Math.max(0, x0); x < Math.min(g.W, x1); x++) if (px(g, x, y) === pal[k]) return true; return false; };
-  check('Render_StoneBase: a 60-commit stone base is 3 px of stone under the tower (1 px per 20 commits)', px(a.g, box.x + 2, CJ.ART.GROUND - 1) === pal.k || px(a.g, box.x + 2, CJ.ART.GROUND - 1) === pal.j);
+  check('Render_StoneBase: a 60-commit stone base is 3 px of stone under the tower (1 px per 20 commits)', px(a.g, box.x + 2, (CJ.ART.H - 14) - 1) === pal.k || px(a.g, box.x + 2, (CJ.ART.H - 14) - 1) === pal.j);
   check('Render_Beacon: a waiting sign-off lights a beacon on the roof; none without one', has(a.g, BEACONK(C.lots[0].beacon), box.x - 4, box.top - 8, box.x + 4, box.top) && (() => { const n = CJ.paintCity(CJ.cityOf(towersOf(), { ...S, jobs: [job('J1')] }, [], NOW), W, 13, ph); const bx = n.boxes.td; return !has(n.g, BEACONK(C.lots[0].beacon), bx.x - 4, bx.top - 8, bx.x, bx.top); })());
-  check('Render_CraneTag: a crane with red CI carries a red tag; a gate sign reads PAUSED in red', has(a.g, 'B', box.x + box.w, box.top, box.x + box.w + 4, box.top + 8) && has(a.g, 'B', items[0].x, CJ.ART.GROUND - 26, items[0].x + 28, CJ.ART.GROUND - 16));
+  check('Render_CraneTag: a crane with red CI carries a red tag; a gate sign reads PAUSED in red', has(a.g, 'B', box.x + box.w, box.top, box.x + box.w + 4, box.top + 8) && has(a.g, 'B', items[0].x, (CJ.ART.H - 14) - 26, items[0].x + 28, (CJ.ART.H - 14) - 16));
   const quiet = CJ.paintCity(CJ.cityOf({ ok: true, towers: [] }, {}, [], NOW), CJ.minWidth({ lots: [] }) + 20, 13, ph);
-  const gx = CJ.layoutCity({ lots: [] }, quiet.g.W)[0].x, cy = CJ.ART.GROUND - 12; const clockAt = (g) => has(g, 'p', gx + 4, cy + 2, gx + 9, cy + 7);
+  const gx = CJ.layoutCity({ lots: [] }, quiet.g.W)[0].x, cy = (CJ.ART.H - 14) - 12; const clockAt = (g) => has(g, 'p', gx + 4, cy + 2, gx + 9, cy + 7);
   const wq = quiet.g.W; const ticking = CJ.paintCity(CJ.cityOf({ ok: true, towers: [] }, { stalled: false }, [], NOW), wq, 13, ph).g; const stopped = CJ.paintCity(CJ.cityOf({ ok: true, towers: [] }, { stalled: true }, [], NOW), wq, 13, ph).g;
   check('Render_TruthRule: with no state and no buildings there is no gate sign, no meter, no beacon and no site clock (only the sky, the cabin and the street); the clock runs (two hands) only when the state says it is not stalled',
-    !has(quiet.g, 'B', 0, 0, quiet.g.W, CJ.ART.GROUND) && !has(quiet.g, 'v', 0, 0, quiet.g.W, CJ.ART.GROUND) && !clockAt(quiet.g) && clockAt(ticking) && clockAt(stopped)
+    !has(quiet.g, 'B', 0, 0, quiet.g.W, (CJ.ART.H - 14)) && !has(quiet.g, 'v', 0, 0, quiet.g.W, (CJ.ART.H - 14)) && !clockAt(quiet.g) && clockAt(ticking) && clockAt(stopped)
     && px(ticking, gx + 7, cy + 4) === pal.a && px(stopped, gx + 7, cy + 4) === pal.p && CJ.cityOf({ ok: true, towers: [] }, null, [], NOW).gate.stalled === null);
   // a private repo (towers.mjs: private, a neutral name): a padlock high over its building, "(private)" in its sentence, a legend row
   const PC = CJ.cityOf(towersOf({ private: true, name: 'Private project', key: 'private' }), S, [], NOW); const pl = CJ.paintCity(PC, W, 13, ph); const pit = pl.items.find((it) => it.key === 'private');
@@ -483,10 +483,47 @@ async function cityLoop({ towers, s, rm = false, ms = 2000, api = async () => to
       const hit = links.find((l) => !m[1] || (m[1] === 'href' ? l.href === m[2] : l.cur)); return hit ? { focus: () => { N.focused = hit.href; } } : null; } }; return N; };
   const two = { ok: true, towers: [...towers.towers, { key: 'side', name: 'Side', kind: 'lot', folder: 'side', floors: [], open: [] }] };
   const follow = (activeElement) => async ({ city, loc }) => { globalThis.document.activeElement = activeElement; loc.hash = '#/city/side'; city.update(); };
-  const viaLink = fakeNames(); await cityLoop({ towers: two, s: { towersV: 'v1', jobs: [] }, names: viaLink, ms: 50, act: follow({ inNames: true, getAttribute: () => '#/city/side' }) });
+  const viaLink = fakeNames(); await cityLoop({ towers: two, s: { towersV: 'v1', jobs: [] }, names: viaLink, ms: 50, act: follow({ inNames: true, hasAttribute: () => true, getAttribute: () => '#/city/side' }) });
   const viaCanvas = fakeNames(); await cityLoop({ towers: two, s: { towersV: 'v1', jobs: [] }, names: viaCanvas, ms: 50, act: follow({ inNames: false }) });
   check(`City_FocusKept: after following the "Side" link the focus is back on it in the rebuilt row (${viaLink.focused}); after a tap on the canvas it is not moved`, viaLink.focused === '#/city/side' && /aria-current="page"[^>]*><b>Side/.test(viaLink.html) && viaCanvas.focused === null);
   check('Strip_HiddenUntilRead: on the other tabs the strip button stays hidden until the City is read (never an empty button with no name), then shows', off.stripHidden === true && on.stripHidden === false);
+}
+
+// ---- G6: a building's own level (the big tower, the cutaway, a floor's sheet) ----
+{
+  const N = await import('./public/city-nav.js'); const CJ = await import('./public/city.js');
+  const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const at = (d) => `2026-10-${String(d).padStart(2, '0')}T10:00:00.000Z`;
+  const T = { key: 'td', name: 'Tide', repo: 'demo-owner/demo-project', publicFrom: at(20), open: [{ pr: 41, title: 'Open <one>', ci: 'red', createdAt: at(25) }],
+    floors: [{ sha: sha('4'), at: at(1), by: 'yard', job: 'J20', past: true }, { pr: 40, at: at(2), by: 'session', title: 'Old forty', pour: 'p1', past: true },
+      ...Array.from({ length: 30 }, (_, i) => ({ pr: i + 1, at: at(20 + (i >> 3)), by: 'github', title: `Floor ${i + 1}`, ...(i < 2 ? { pour: 'p2' } : {}), ...(i === 5 ? { job: 'J7', undone: at(26) } : {}) }))] };
+  const cut = N.cutawayHtml(T, esc); const links = [...cut.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+  check('Cutaway_NewestFirst: open PRs on top, then the floors newest first', links[0] === '#/city/td/f/41' && links[1] === '#/city/td/f/30' && links[2] === '#/city/td/f/29' && cut.includes('building, CI red'));
+  const all = N.cutawayHtml(T, esc, 70); const lineAt = all.indexOf('city-line');
+  check('Cutaway_PublicLine: the "public from" line sits once, right above the first old floor; old floors open as /old', all.split('city-line').length === 2 && all.indexOf('#/city/td/f/1"') < lineAt && all.indexOf('#/city/td/f/40/old') > lineAt && all.includes('public from 10-20'));
+  check('Cutaway_Windowed: 20 floors, then "Show N more" (rows.js: 50 a tap); once every floor is shown the button goes', (cut.match(/<li>/g) || []).length === 21 && cut.includes('Show 12 more of 32 floors') && (all.match(/<li>/g) || []).length === 33 && !all.includes('data-city-more'));
+  check('Cutaway_NoPrFloor: a Yard merge with no PR is a row with its work order and no link; a taken-down floor says so', all.includes('<b>WO-0020</b><i>10-01, no PR</i>') && /f\/6"><b>#6<\/b><span>Floor 6<\/span><i>10-20, taken down/.test(all));
+  check('Cutaway_Escaped: titles are escaped', cut.includes('Open &lt;one&gt;') && !cut.includes('<one>'));
+  const f1 = N.floorHtml(T, 1, false, esc), f6 = N.floorHtml(T, 6, false, esc), old = N.floorHtml(T, 40, true, esc), op = N.floorHtml(T, 41, false, esc);
+  check('Floor_Sheet: a floor says when it merged and by whom, its Pour (floors tested together) and a GitHub link', f1.includes('PR #1: Floor 1') && f1.includes('2026-10-20 10:00 on GitHub') && f1.includes('p2: 2 floors tested together') && f1.includes('href="https://github.com/demo-owner/demo-project/pull/1"'));
+  check('Floor_WorkOrder: a floor from a work order links to it; a taken-down one says when', f6.includes('href="#/job/J7">WO-0007') && f6.includes('<dt>Taken down</dt><dd>10-26</dd>'));
+  check('Floor_Old: a floor under the line is the old history and has no GitHub link (the public repo may reuse its number)', old.includes('PR #40: Old forty') && old.includes('the older history') && !old.includes('github.com'));
+  check('Floor_OpenPr: an open PR is under construction with its CI', op.includes('Under construction') && op.includes('<dd>red</dd>'));
+  check('Floor_Missing: a number with no floor says so', N.floorHtml(T, 77, false, esc).includes('No floor or open PR #77') && N.floorHtml(T, 40, false, esc).includes('No floor'));
+  // review F3 at the building's level: a private repo's row as towers.mjs sends it (neutral name and key, no titles; folder and repo kept
+  // only for matching records) shows no repo name anywhere, and its floor sheet has no GitHub link (the link would carry the name)
+  const P = { key: 'private', name: 'Private project', private: true, folder: 'secret-folder', repo: 'demo-owner/secret-demo', floors: [{ pr: 1, at: at(20), by: 'github' }], open: [{ pr: 2, ci: 'green', createdAt: at(21) }] };
+  const pv = N.cutawayHtml(P, esc) + N.floorHtml(P, 1, false, esc) + N.floorHtml(P, 2, false, esc);
+  check('Private_BuildingLevel: a private repo\'s cutaway and floor sheets name no repo and link nowhere outside the City (no GitHub link); a public one keeps its link',
+    !/secret|github\.com/.test(pv) && pv.includes('Private project: floors') && pv.includes('PR #1') && f1.includes('github.com'));
+  check('Nav_OldRoute: #/city/<key>/f/<pr>/old is an old floor, and goes both ways', N.routeOf('#/city/td/f/9/old').old === true && N.hashOf(N.routeOf('#/city/td/f/9/old')) === '#/city/td/f/9/old' && !N.routeOf('#/city/td/f/9').old);
+  const NOW = Date.parse(at(26)); const C = CJ.cityOf({ ok: true, towers: [{ ...T, kind: 'tower', folder: 'tide', plinth: { commits: 40 } }] }, {}, [], NOW); const l = C.lots[0];
+  const rows = CJ.rowsOf(l, C, true), small = CJ.rowsOf(l, C, false);
+  check('Render_BigRows: a building\'s own level draws its newest 22 floors 4 px each and bands the older ones; the City packs k a row', rows.filter((r) => r.h === 4).length === 22 && rows.filter((r) => r.h === 2).length === Math.ceil((l.floors - 22) / C.band) && small.every((r) => r.h === 2) && small.length === Math.ceil(l.floors / C.k) && rows.filter((r) => r.pub).length === 1);
+  const big = CJ.paintCity(C, 120, 13, { blink: 1, step: 0, big: 'td' });
+  check('Render_BigLevel: a building\'s own level is that tower alone, 200 art px tall; an unknown key draws the City', big.g.H === CJ.ART.bigH && big.items.length === 1 && CJ.paintCity(C, 120, 13, { blink: 1, step: 0, big: 'nope' }).g.H === CJ.ART.H);
+  let ended = 0; N.cameraMove({ animate: () => ({ cancel() {} }) }, 0.5, true, false, () => ended++); await new Promise((r) => setTimeout(r, 500));
+  check('Nav_CameraStall: a camera move whose clock stalls (a hidden page) still ends, once', ended === 1);
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
