@@ -4,7 +4,7 @@
 // the Temporal worker calls it inside one activity (temporal/activities.mjs), so both engines write the same events for the same step.
 // Waiting (timers, Jordan's tap) is not here: that is the engine's job (a timer table in the fake, sleep/condition in Temporal).
 // Called by core/engine/fake.mjs, core/engine/temporal/activities.mjs and tests/core/engine/*.
-import { reduce, classify, MAX_RETRIES } from './wo.mjs';
+import { reduce, next, classify, MAX_RETRIES } from './wo.mjs';
 import { makeActivity, once, result } from './activity.mjs';
 import { makeDecision } from './cards.mjs';
 import { decide } from './governor.mjs';
@@ -66,6 +66,12 @@ export async function execute(wo, cmd, p) {
   const add = (e) => p.sink.append({ at: at(), actor: 'engine', wo, proof: null, ...e });
   const events = p.sink.forWo(wo);
   const s = reduce(events, wo);
+  // A command is carried out only if it is still the order's next command. A Temporal activity retried after its result was lost
+  // (the first try already asked the card, or already ran) would otherwise do it twice: a second card, a second step.
+  const now = next(s);
+  if (now.do !== cmd.do || ('name' in now ? now.name : '') !== ('name' in cmd ? cmd.name : '') || ('attempt' in now ? now.attempt : 0) !== ('attempt' in cmd ? cmd.attempt : 0)) {
+    return { events: [], stale: `the order moved on: its next command is now ${now.do}${'name' in now ? ` ${now.name}` : ''} (${now.why})` };
+  }
   if (cmd.do === 'ask') {
     const decision = makeDecision({ ...cmd.decision, id: p.sink.nextDecisionId(), wo, at: at() });
     return { events: [add({ kind: 'decision.asked', data: { decision } })] };

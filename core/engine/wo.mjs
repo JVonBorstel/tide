@@ -48,7 +48,7 @@ export function backoffSec(n, { base = 60, factor = 2, cap = 3600 } = {}) {
 export function classify(exit) {
   if (exit === 0) return 'ok';
   if (exit === 11) return 'later';      // the station said "come back later" (CI running, merge freeze, red main)
-  if (exit === 10) return 'held';       // the station held the order for Jordan (unrelated history, bad freeze file)
+  if (exit === 10 || exit === 3) return 'held'; // held for Jordan (a station's unrelated history or bad freeze file; adopt's refusal: 3)
   if (exit === 127) return 'not-built'; // the activity is not wired yet (another lane's piece); waits, burns no retry
   return 'failed';                      // includes 124 (time limit) and 125 (memory cap) from scripts/run-bounded.ps1
 }
@@ -65,7 +65,11 @@ const retryOrStuck = (s, why) => (s.retries < MAX_RETRIES
     wait: { sec: backoffSec(s.retries + 1), reason: `retry ${s.retries + 1} of ${MAX_RETRIES} with a fresh crew: ${why}` }, why }
   : { state: 'stuck', why: `stuck after ${s.retries} retries: ${why}` });
 const failedStep = (s, e) => `${e.data.step} failed (exit ${e.data.exit ?? 'none'}): ${e.data.reason}`;
-const verdict = (e, v) => e.data.verdict === v;
+// CREED 6 in the reducer too (the log is a file a hand can edit): a verdict counts only with a named crew reviewer and a named crew
+// builder that differ. A verdict with no builder, or by its builder, moves nothing.
+const CREW = /^crew:[a-z0-9][a-z0-9-]*$/;
+export const fairVerdict = (e) => !!e.data && CREW.test(String(e.data.reviewer)) && CREW.test(String(e.data.builder)) && e.data.reviewer !== e.data.builder;
+const verdict = (e, v) => e.data.verdict === v && fairVerdict(e);
 const answer = (s, e, card, a) => e.data.decision === s.cards[card] && e.data.answer === a;
 
 /**
@@ -82,7 +86,7 @@ export const EDGES = [
   { id: 'head moved > review again', from: ['review', 'ci', 'merge-ready', 'jordan'], on: 'pr.updated', when: (s, e) => e.data.why !== 'closed' && e.data.head !== s.head,
     to: (s, e) => ({ stage: 'review', head: e.data.head, reviewed: null, cards: { ...s.cards, merge: null }, cardHead: null, mergeYes: null, why: `head moved (${e.data.why}): re-review; any yes was for the old head` }) },
   { id: 'review > ci: ship on this head', from: ['review'], on: 'review.verdict',
-    when: (s, e) => verdict(e, 'ship') && e.data.head === s.head && e.data.reviewer !== e.data.builder, to: () => ({ stage: 'ci', why: 'review SHIP' }) },
+    when: (s, e) => verdict(e, 'ship') && e.data.head === s.head, to: () => ({ stage: 'ci', why: 'review SHIP' }) },
   { id: 'review fix > build (retry) or stuck', from: ['review'], on: 'review.verdict', when: (s, e) => verdict(e, 'fix') && e.data.head === s.head,
     to: (s, e) => retryOrStuck(s, `review said fix: ${e.data.reasons}`) },
   { id: 'review hold > stuck', from: ['review'], on: 'review.verdict', when: (s, e) => verdict(e, 'hold') && e.data.head === s.head,

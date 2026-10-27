@@ -22,15 +22,19 @@ export const HISTORY_LIMIT = 4000; // continue as new before Temporal's history 
 /** One work order, start to closed (or dropped, replaced, or stuck waiting on a card). @param {{ wo: string }} input */
 export async function woLifecycle({ wo }) {
   let wakes = 0;
+  let s = reduce([], wo);
   setHandler(eventSignal, () => { wakes++; });
-  let s = reduce(await loadEvents(wo), wo);
   setHandler(stateQuery, () => s);
+  // seen is taken BEFORE every read of the log. The client writes an event, then signals. A signal that lands while loadEvents is in
+  // flight (its event maybe not in what was read) still counts as new, so the next wait returns at once and the log is read again.
+  // Taking seen after the read would swallow that wake and wait for a signal that has already come (a lost wake-up).
+  let seen = wakes;
+  s = reduce(await loadEvents(wo), wo);
   let waitUntil = 0;
   for (;;) {
     if (workflowInfo().historyLength > HISTORY_LIMIT) await continueAsNew({ wo });
     const cmd = next(s);
     if (cmd.do === 'none') return s;
-    const seen = wakes;
     if (cmd.do === 'await') {
       await condition(() => wakes > seen);
     } else if (cmd.do === 'wait') {
@@ -41,6 +45,7 @@ export async function woLifecycle({ wo }) {
       const r = await runCommand(wo, cmd);
       if (r.hold) await condition(() => wakes > seen, r.hold.retrySec * 1000);
     }
+    seen = wakes;
     s = reduce(await loadEvents(wo), wo);
   }
 }

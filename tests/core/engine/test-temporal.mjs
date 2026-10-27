@@ -6,7 +6,7 @@
 //           2 minutes: ci-wait's poll), and a signal that wakes a waiting order. Without Temporal each one is SKIPPED, saying why.
 // UNVERIFIED until the install: the Temporal part has never run on this PC (no temporal CLI, no @temporalio packages on 2026-10-26).
 // Called by tests/core/engine/test-engine.mjs. Every process it starts is killed in finally.
-import fs from 'node:fs'; import net from 'node:net'; import path from 'node:path'; import { spawn, spawnSync } from 'node:child_process'; import { fileURLToPath } from 'node:url';
+import fs from 'node:fs'; import net from 'node:net'; import path from 'node:path'; import { spawn, spawnSync } from 'node:child_process'; import { fileURLToPath, pathToFileURL } from 'node:url';
 import { temporalStatus, openEngine, ADAPTER_METHODS } from '../../../core/engine/engine.mjs';
 import { createActivities } from '../../../core/engine/temporal/activities.mjs';
 import { parseArgs } from '../../../core/engine/temporal/worker.mjs';
@@ -16,17 +16,37 @@ import { check, skip, tmp, CREATED, H1, PR } from './lib.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const workerJs = path.join(repo, 'core/engine/temporal/worker.mjs');
-const ACCEPTANCE = ['temporal: kill the worker mid-wait, restart it, the order resumes (spike)', 'temporal: a timer fires after a worker restart', 'temporal: a signal wakes a waiting order'];
+const ACCEPTANCE = ['temporal: kill the worker mid-wait, restart it, the order resumes (spike)', 'temporal: a timer fires after a worker restart', 'temporal: a signal wakes a waiting order',
+  'temporal: signals sent back to back, with no wait between them, are never lost'];
 
 async function testWithout() {
   const sink = memorySink(); const acts = createActivities({ sink, store: memoryStore(), impls: {}, usage: () => ({ known: true, used: 0.1, why: 'x' }), clock: () => new Date('2030-01-07T09:00:00Z') });
-  sink.append({ at: '2030-01-07T09:00:00Z', actor: 'engine', kind: 'wo.created', wo: 'WO-2101', data: CREATED, proof: null });
-  const r = await acts.runCommand('WO-2101', { do: 'ask', why: 'x', decision: { kind: 'merge', ask: 'Merge example#41?', options: ['Yes', 'Hold', 'No'], recommended: 'Yes', why: 'x' } });
+  const at = '2030-01-07T09:00:00Z'; const add = (kind, data, actor = 'engine') => sink.append({ at, actor, kind, wo: 'WO-2101', data, proof: null });
+  add('wo.created', CREATED); add('pr.opened', { pr: PR, branch: 'wo/2101-example', base: 'main', head: H1 }, 'github');
+  add('review.verdict', { verdict: 'ship', reasons: 'x', head: H1, reviewer: 'crew:verifier-1', builder: 'crew:builder-1' }, 'crew:verifier-1');
+  add('ci.result', { pr: PR, head: H1, conclusion: 'success' }, 'github');
+  const ask = { do: 'ask', why: 'x', decision: { kind: 'merge', ask: 'Merge example#41?', options: ['Yes', 'Hold', 'No'], recommended: 'Yes', why: 'x' } };
+  const r = await acts.runCommand('WO-2101', ask);
   const t = await acts.addTimer('WO-2101', 60, 'example');
   check('temporal activities: runCommand and addTimer write the same contract events as the fake engine (no Temporal needed)',
-    r.events[0].kind === 'decision.asked' && r.events[0].data.decision.id === 'D-1' && t.kind === 'x.engine.timer' && (await acts.loadEvents('WO-2101')).length === 3);
+    r.events[0].kind === 'decision.asked' && r.events[0].data.decision.id === 'D-1' && t.kind === 'x.engine.timer' && (await acts.loadEvents('WO-2101')).length === 6);
+  const again = await acts.runCommand('WO-2101', ask);
+  check('temporal activities: a retried ask (its first result lost) asks no second card: the order moved on, so the command is stale',
+    again.events.length === 0 && sink.all().filter((e) => e.kind === 'decision.asked').length === 1 && /moved on/.test(again.stale || ''), JSON.stringify(again));
   check('temporal worker: refuses an address that is not this PC', /not this PC/.test(parseArgs(['--state', 'x', '--address', '203.0.113.5:7233']).error || ''));
+  const kj = (sw) => { const d = tmp('kj'); const p = path.join(d, 'kitchen.json'); fs.writeFileSync(p, JSON.stringify({ upgrade: { v: '1.0', engine: { adopted: sw, improve: 'old' } } })); return p; };
+  const oldJson = kj('old'); const newJson = kj('new');
+  check('temporal worker: --mode new is refused while the upgrade switch engine.adopted is not "new"; allowed when it is',
+    /needs the upgrade switch/.test(parseArgs(['--state', 'x', '--mode', 'new', '--kitchen-json', oldJson]).error || '') && !parseArgs(['--state', 'x', '--mode', 'new', '--kitchen-json', newJson]).error
+    && /needs the upgrade switch/.test(parseArgs(['--state', 'x', '--mode', 'new']).error || ''));
+  for (const p of [oldJson, newJson]) fs.rmSync(path.dirname(p), { recursive: true, force: true });
   check('temporal worker: needs --state, accepts a loopback address', /--state/.test(parseArgs([]).error || '') && !parseArgs(['--state', 'x', '--address', 'localhost:7233']).error);
+  // The workflow itself, raced under a stand-in for @temporalio/workflow (workflow-double.mjs, a child process): Jordan's tap lands
+  // while loadEvents is in flight. Before the 10-26 fix this waited forever (a lost wake-up).
+  const sim = spawnSync(process.execPath, ['--import', pathToFileURL(path.join(repo, 'tests/core/engine/workflow-double.mjs')).href, path.join(repo, 'tests/core/engine/workflow-sim.mjs')], { encoding: 'utf8', timeout: 30000, cwd: repo });
+  let simOut = {}; try { simOut = JSON.parse(sim.stdout.trim().split(/\r?\n/).pop()); } catch { simOut = { error: sim.stderr.slice(-300) }; }
+  check('temporal workflow: a wake signal that lands while the log is being read is not lost (the order still merges once and ships)',
+    simOut.raced === true && simOut.done === true && simOut.state === 'shipped' && simOut.merges === 1, JSON.stringify(simOut));
   const st = await temporalStatus();
   if (!st.ok) {
     const wd = tmp('worker');
@@ -61,6 +81,7 @@ async function testWith() {
       return until(async () => (await eng.query(wo)).stage === 'jordan', 60000);
     };
     const reached = await toJordan('WO-2101');
+    check(ACCEPTANCE[3], reached, 'start, pr.opened and the SHIP verdict were signalled back to back; the order did not reach jordan within 60 s');
     worker.kill('SIGKILL'); worker = startWorker();
     const card = (await eng.query('WO-2101')).cards.merge;
     await eng.signal('WO-2101', { kind: 'decision.answered', actor: 'jordan', data: { decision: card, answer: 'Yes', via: 'board' } });
