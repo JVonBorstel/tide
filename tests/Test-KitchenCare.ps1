@@ -9,7 +9,7 @@ $saved = @{}; foreach ($v in 'BRAIN_KITCHEN', 'KITCHEN_RECIPES', 'BRAIN_NTFY_TOP
 $env:BRAIN_KITCHEN = $root; $env:BRAIN_NTFY_TOPIC = $null; $env:BRAIN_AGENT_DEPTH = $null; $env:KITCHEN_JOB = $null; $env:KITCHEN_NO_WATCH = '1'; $env:KITCHEN_AGY_EXE = 'off'
 $script:pass = 0; $script:fail = 0
 function Check($n, $c, [scriptblock]$why = $null) { if ($c) { $script:pass++ } else { $script:fail++; Write-Host "FAIL: $n"; if ($why) { try { & $why | ForEach-Object { Write-Host "  $_" } } catch { } } } }
-function Job($id) { Get-Content (Join-Path $root "jobs\$id.json") -Raw | ConvertFrom-Json -AsHashtable }
+function Read-CareJob($id) { Get-Content (Join-Path $root "jobs\$id.json") -Raw | ConvertFrom-Json -AsHashtable }
 function Events { @(Get-Content (Join-Path $root 'events.jsonl') -ErrorAction SilentlyContinue | ForEach-Object { $_ | ConvertFrom-Json }) }
 function Iso([DateTime]$d) { $d.ToUniversalTime().ToString('o') }
 $now = [DateTime]::UtcNow
@@ -62,14 +62,14 @@ try {
     $spec = Join-Path $root 'spec.json'; @{ name = 'care: same'; recipe = 'care'; vars = @{ goal = 'Make kitchen/notify.ps1 say the job number.' }; steps = @(@{ script = $w; args = @{ Behavior = 'ok' } }) } | ConvertTo-Json -Depth 6 | Set-Content $spec
     $o = & $k add -SpecPath $spec | Out-String; $code = $LASTEXITCODE
     $o2 = & $k add -SpecPath $spec -Force | Out-String
-    Check 'add (kitchen.ps1): DUPLICATE names the open order, exit 4; -Force adds it and notes it' ($o -match "^DUPLICATE: $($c1.job) is open" -and $code -eq 4 -and $o2 -match '^added (J\d+)' -and (Job ([regex]::Match($o2, 'added (J\d+)').Groups[1].Value)).forcedOver -eq $c1.job)
+    Check 'add (kitchen.ps1): DUPLICATE names the open order, exit 4; -Force adds it and notes it' ($o -match "^DUPLICATE: $($c1.job) is open" -and $code -eq 4 -and $o2 -match '^added (J\d+)' -and (Read-CareJob ([regex]::Match($o2, 'added (J\d+)').Groups[1].Value)).forcedOver -eq $c1.job)
     & $k kill -All | Out-Null
 
     # ---- every failure has a plain sentence ----
     $a = & $k add -Name 'breaks' -Script $w -ScriptArgs @{ Behavior = 'fail' } -Retries 0 -TimeoutSec 60 -HungSec 60 | Out-String
     $fid = [regex]::Match($a, 'added (J\d+)').Groups[1].Value
     & $k watch -Seconds 90 -BackoffBaseSec 1 -BreakerMin 99 -Quiet | Out-Null
-    $fj = Job $fid
+    $fj = Read-CareJob $fid
     $stepEv = @(Events | Where-Object { $_.job -eq $fid -and $_.type -eq 'step.fail' })
     $qEv = @(Events | Where-Object { $_.job -eq $fid -and $_.type -eq 'job.quarantined' })
     Check 'every failure has a plain sentence' ($fj.status -eq 'quarantined' -and $fj.failure.text -match '^Something failed that the Yard does not recognise at step 1 of 1 \(demo\); next: real failure, needs a look: See why has the detail, then Retry or Close\.$' -and $fj.failure.text -notmatch 'exit 1' -and $fj.failure.detail -match 'exit 1: fail: something is broken' -and $stepEv.Count -and $stepEv[-1].say -eq $fj.failure.text -and $qEv.Count -and $qEv[-1].class -eq 'real' -and @($fj.history)[-1].say) { $fj.failure | ConvertTo-Json -Compress }
@@ -77,22 +77,22 @@ try {
     Check 'every failure has a plain sentence: a stopped order too' ($killed.Count -ge 1 -and @($killed | Where-Object { $_.failure.class -ne 'stopped' -or $_.failure.text -notmatch '^It was stopped by hand' }).Count -eq 0)
     Put-Job 'J90' @{ history = @(@{ step = 0; attempt = 1; outcome = 'crash'; detail = 'worker died without an exit code; its log is empty'; at = (Iso $now.AddHours(-30)) }); stateAt = (Iso $now.AddHours(-30)) }
     $null = Doctor
-    Check 'every failure has a plain sentence: an older order gets its words from the doctor' ((Job J90).failure.class -eq 'flaky' -and (Job J90).failure.text -match '^The worker stopped without an exit code')
+    Check 'every failure has a plain sentence: an older order gets its words from the doctor' ((Read-CareJob J90).failure.class -eq 'flaky' -and (Read-CareJob J90).failure.text -match '^The worker stopped without an exit code')
 
     # ---- a 3-day-old quarantined order cleared as stale and reopenable; -FindOnly clears nothing ----
     Put-Job 'J91' @{ stateAt = (Iso $now.AddDays(-4)); history = @(@{ step = 0; attempt = 0; outcome = 'fail'; detail = 'exit 1: tests: FAILED: Test-X'; at = (Iso $now.AddDays(-4)) }) }
     Put-Job 'J92' @{ status = 'killed'; stateAt = (Iso $now.AddDays(-2)) }   # (2 days: not yet)
     $before = Get-Content (Join-Path $root 'jobs\J91.json') -Raw
     $fo = Doctor -FindOnly
-    Check '-FindOnly clears nothing' ((Get-Content (Join-Path $root 'jobs\J91.json') -Raw) -eq $before -and (Job J91).status -eq 'quarantined' -and $fo.findOnly -and [int]$fo.care.cleared -ge 1 -and @($fo.care.items) -match '^J91 stale: no human action for 4 days' -and -not @(Events | Where-Object { $_.type -eq 'job.cleared' -and $_.job -eq 'J91' }).Count) { $fo.care | ConvertTo-Json -Compress }
+    Check '-FindOnly clears nothing' ((Get-Content (Join-Path $root 'jobs\J91.json') -Raw) -eq $before -and (Read-CareJob J91).status -eq 'quarantined' -and $fo.findOnly -and [int]$fo.care.cleared -ge 1 -and @($fo.care.items) -match '^J91 stale: no human action for 4 days' -and -not @(Events | Where-Object { $_.type -eq 'job.cleared' -and $_.job -eq 'J91' }).Count) { $fo.care | ConvertTo-Json -Compress }
     $dr = Doctor
-    $j91 = Job J91; $ce = @(Events | Where-Object { $_.type -eq 'job.cleared' -and $_.job -eq 'J91' })
+    $j91 = Read-CareJob J91; $ce = @(Events | Where-Object { $_.type -eq 'job.cleared' -and $_.job -eq 'J91' })
     $ro = & $k reopen -Id J91 | Out-String
-    $j91b = Job J91
+    $j91b = Read-CareJob J91
     Check 'a 3-day-old quarantined order cleared as stale and reopenable' ($j91.status -eq 'closed' -and $j91.cleared.state -eq 'stale' -and $j91.cleared.reason -match 'no human action for 4 days' -and $j91.cleared.at -and $j91.cleared.from -eq 'quarantined' -and $ce.Count -eq 1 -and $ce[0].state -eq 'stale' -and $ro -match 'reopened J91 as quarantined' -and $j91b.status -eq 'quarantined' -and -not $j91b.cleared -and @($j91b.clearedBefore).Count -eq 1 -and @(Events | Where-Object { $_.type -eq 'job.reopened' -and $_.job -eq 'J91' }).Count -eq 1) { "doctor: $($dr.care | ConvertTo-Json -Compress)"; "reopen: $ro" }
-    Check 'stale: a 2-day-old stopped order is left alone (a working state until 3 days)' ((Job J92).status -eq 'killed' -and -not (Job J92).cleared)
+    Check 'stale: a 2-day-old stopped order is left alone (a working state until 3 days)' ((Read-CareJob J92).status -eq 'killed' -and -not (Read-CareJob J92).cleared)
     $null = Doctor
-    Check 'stale: a reopened order starts its 3 days again' ((Job J91).status -eq 'quarantined')
+    Check 'stale: a reopened order starts its 3 days again' ((Read-CareJob J91).status -eq 'quarantined')
     Check 'reopen refuses an order that was never cleared' ((& $k reopen -Id J92 | Out-String) -match 'never cleared')
 
     # ---- each cleared state written with reason ----
@@ -116,13 +116,13 @@ try {
     $want = [ordered]@{ J93 = @('dropped', '', 'no longer wanted'); J94 = @('superseded', 'J93', 'done in J93'); J95 = @('superseded', 'https://github.com/example/repo/pull/7', 'merged by hand')
         J96 = @('duplicate', 'J98', 'open as J98'); J97 = @('duplicate', 'J98', 'open as J98'); J99 = @('superseded', 'J100', 'handed over as J100'); J101 = @('retried', '', 'fresh main') }
     $bad = @(foreach ($id in $want.Keys) {
-            $x = Job $id; $e = @(Events | Where-Object { $_.type -eq 'job.cleared' -and $_.job -eq $id })
+            $x = Read-CareJob $id; $e = @(Events | Where-Object { $_.type -eq 'job.cleared' -and $_.job -eq $id })
             $byOk = if ($want[$id][1]) { $x.cleared.by -eq $want[$id][1] } else { $true }
             if ($x.status -ne 'closed' -or $x.cleared.state -ne $want[$id][0] -or $x.cleared.reason -notmatch $want[$id][2] -or -not $x.cleared.at -or -not $byOk -or $e.Count -ne 1 -or $e[0].state -ne $want[$id][0] -or -not $e[0].reason) { "$id $($x.status) $($x.cleared | ConvertTo-Json -Compress) events $($e.Count)" }
         })
     $newId = [regex]::Match($rq, 're-cooked recipe care as (J\d+)').Groups[1].Value
-    Check "each cleared state written with reason ($($bad -join ' | '))" ($bad.Count -eq 0 -and $newId -and (Job J101).cleared.by -eq $newId -and (Job $newId).retryOf -eq 'J101') { "requeue: $rq" }
-    Check 'cleared: an open twin stays open' ((Job J98).status -eq 'pending' -and -not (Job J98).cleared)
+    Check "each cleared state written with reason ($($bad -join ' | '))" ($bad.Count -eq 0 -and $newId -and (Read-CareJob J101).cleared.by -eq $newId -and (Read-CareJob $newId).retryOf -eq 'J101') { "requeue: $rq" }
+    Check 'cleared: an open twin stays open' ((Read-CareJob J98).status -eq 'pending' -and -not (Read-CareJob J98).cleared)
     Check 'cleared: one cleared state only (a second doctor run does not clear again)' (@(Events | Where-Object { $_.type -eq 'job.cleared' -and $_.job -eq 'J96' }).Count -eq 1)
 
     # ---- the policy's one action, once, for a fresh failure: flaky with a freshen step behind it goes back to freshen ----
@@ -131,9 +131,9 @@ try {
     Put-Job 'J103' @{ steps = $steps; cursor = 2; history = @(@{ step = 2; attempt = 0; outcome = 'fail'; detail = 'exit 1: tests: FAILED: Test-Y'; at = (Iso $now.AddMinutes(-20)) }); stateAt = (Iso $now.AddMinutes(-20)) }
     $null = & $k kill -All   # (J98 must not start)
     $null = Doctor
-    $j102 = Job J102
+    $j102 = Read-CareJob J102
     Check 'care action: a fresh flaky failure is retried once from its freshen step (on fresh main)' ($j102.status -eq 'pending' -and $j102.cursor -eq 1 -and $j102.care.action -eq 'retry' -and @(Events | Where-Object { $_.type -eq 'job.care' -and $_.job -eq 'J102' }).Count -eq 1) { $j102 | ConvertTo-Json -Depth 4 -Compress }
-    Check 'care action: a real failure is never retried by itself (stop and say why)' ((Job J103).status -eq 'quarantined' -and -not (Job J103).care)
+    Check 'care action: a real failure is never retried by itself (stop and say why)' ((Read-CareJob J103).status -eq 'quarantined' -and -not (Read-CareJob J103).care)
 
     # ---- stale reason names the files main changed since the brief was written (one git log per repo) ----
     $repo = Join-Path $root 'repo'; New-Item -ItemType Directory -Force -Path "$repo\kitchen" | Out-Null
@@ -147,7 +147,7 @@ try {
     $env:GIT_COMMITTER_DATE = $null; $env:GIT_AUTHOR_DATE = $null
     Put-Job 'J104' @{ status = 'killed'; recipe = 'care'; vars = @{ goal = 'change kitchen/a.ps1 to say hello'; repo = $repo }; stateAt = (Iso $now.AddDays(-3.5)) }
     $null = Doctor
-    Check 'stale: the reason names the files main changed since the brief was written' ((Job J104).cleared.state -eq 'stale' -and (Job J104).cleared.reason -match '^its brief was written against kitchen/a\.ps1, which changed on main since; no human action for 3 days since it stopped') { (Job J104).cleared | ConvertTo-Json -Compress }
+    Check 'stale: the reason names the files main changed since the brief was written' ((Read-CareJob J104).cleared.state -eq 'stale' -and (Read-CareJob J104).cleared.reason -match '^its brief was written against kitchen/a\.ps1, which changed on main since; no human action for 3 days since it stopped') { (Read-CareJob J104).cleared | ConvertTo-Json -Compress }
 } finally {
     foreach ($v in $saved.Keys) { [Environment]::SetEnvironmentVariable($v, $saved[$v]) }
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue

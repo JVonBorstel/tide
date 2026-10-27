@@ -4,13 +4,11 @@
 //   node pass-app/test-failures.mjs [--shots <folder>] [--label before|after]
 // The real Board server on a throwaway state folder (pass-app/speed/fixture.mjs 'calm' plus made-up failed, stopped and cleared orders) in
 // headless Chrome or Edge (pass-app/test-browser-kit.mjs boardPage); Retry and Close run the real kitchen.ps1 on that folder. Nothing private.
-import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
-import { makeYard } from './speed/fixture.mjs';
-import { boardPage } from './test-browser-kit.mjs';
+import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import { makeYard } from './speed/fixture.mjs'; import { boardPage } from './test-browser-kit.mjs';
 
-const argOf = (n) => { const i = process.argv.indexOf('--' + n); return i > 0 ? process.argv[i + 1] : ''; };
-const shotsDir = argOf('shots') ? path.resolve(argOf('shots')) : ''; const label = argOf('label') || 'after';
-const out = [];
+const out = [];   // one {name, pass} per check, printed as JSON at the end
+const flag = (n) => { const i = process.argv.indexOf('--' + n); return i > 0 ? process.argv[i + 1] : ''; };
+const shotsDir = flag('shots') ? path.resolve(flag('shots')) : '', label = flag('label') || 'after';
 const check = (name, pass, detail = '') => out.push({ name: detail && !pass ? `${name} (${String(detail).slice(0, 600)})` : name, pass: !!pass });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (ms) => new Date(ms).toISOString();
