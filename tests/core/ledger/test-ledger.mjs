@@ -645,7 +645,49 @@ async function testShare37() {
   check('l3-37: the example private words list reads, with neutral placeholders only', ex.warning === null && ex.words.length === 2 && ex.words.every((w) => /^example/i.test(w)));
 }
 
+// ---- WO-UPG-L1-4: secrets, tailnet names and private remotes are redacted by pattern, without the private words list ----
+// every secret-shaped value is built at run time from parts (CREED 8; the CI secret scan reads this file), and is synthetic
+async function testSecrets() {
+  const { makeRedactor, MARK } = await import('../../../core/ledger/share.mjs');
+  const r = makeRedactor(); const rep = (n, c = 'A1b2') => c.repeat(n);
+  const secrets = [
+    ['a GitHub classic token', ['ghp', rep(9)].join('_')], ['a GitHub OAuth token', ['gho', rep(9)].join('_')], ['a GitHub app token', ['ghs', rep(9)].join('_')],
+    ['a GitHub fine-grained token', ['github', 'pat', rep(6), rep(8)].join('_')], ['an Anthropic-style key', ['sk', 'ant', 'api03', rep(8)].join('-')],
+    ['an OpenAI-style key', ['sk', 'proj', rep(8)].join('-')], ['a Slack token', ['xoxb', '1234567890', rep(4)].join('-')],
+    ['a JWT', ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxMjM0NTY3ODkwIn0', 'c2lnbmF0dXJlLXNpZ25hdHVyZQ'].join('.')],
+  ];
+  for (const [name, value] of secrets) { const out = r(`use ${value} now`); check(`l4: ${name} is redacted`, !out.includes(value) && out.includes(MARK.secret), out); }
+  const bearer = r(['Authorization:', 'Bearer', rep(5)].join(' '));
+  check('l4: a Bearer header keeps the word and loses the value', bearer === `Authorization: Bearer ${MARK.secret}`, bearer);
+  const hex = 'f00d'.repeat(10), b64 = 'QUJD'.repeat(12);
+  check('l4: a long hex value in key=value form is redacted, the key stays', r(`session=${hex}`) === `session=${MARK.secret}`);
+  check('l4: a long base64 value in key: value form is redacted', r(`blob: ${b64}`) === `blob: ${MARK.secret}`);
+  check('l4: a value given to a key named like a secret is redacted (api_key=..., password: "...")', !r(`api_key=${rep(3)}xyz`).includes(rep(3)) && !r(`password: "${rep(3)}"`).includes(rep(3)));
+  const pwReq = ['password', 'required'].join(': ');   // built at run time: the CI secret scan reads this file
+  check('l4: ordinary words stay ("token expired", a password field that is required, "the auth flow", a merge sha in a sentence)',
+    r('token expired after a while') === 'token expired after a while' && r(pwReq) === pwReq && r('the auth flow') === 'the auth flow'
+    && r(`merge commit ${'a1'.repeat(20)} on main`) === `merge commit ${'a1'.repeat(20)} on main`);
+  // tailnet names and addresses
+  for (const [name, value] of [['a tailnet name', ['tail', '1a2b3c'].join('')], ['a tailnet name with a dash', ['tail', '1a2b3c'].join('-')], ['a MagicDNS name', ['desk', ['tail', '1a2b3c'].join(''), 'ts', 'net'].join('.')],
+    ['a 100.64/10 address (low end)', ['100', '64', '0', '1'].join('.')], ['a 100.64/10 address (high end)', ['100', '127', '255', '254'].join('.')]]) {
+    const out = r(`reach ${value} now`); check(`l4: ${name} is redacted`, !out.includes(value) && out.includes(MARK.host), out);
+  }
+  check('l4: a public 100.x address outside 100.64/10 stays', r('dns 100.128.0.1') === 'dns 100.128.0.1');
+  // git remotes: a private repo loses owner/name; the public repo stays
+  const priv = ['Some' + 'Owner', 'hidden-thing'];
+  const remotes = [`git@github.com:${priv.join('/')}.git`, `ssh://git@github.com/${priv.join('/')}.git`, `https://github.com/${priv.join('/')}`, `https://github.com/${priv.join('/')}/pull/7`,
+    `https://${['user', 'pw'].join(':')}@github.com/${priv.join('/')}.git`, `https://git.example.org/team/${priv[1]}.git`];
+  for (const value of remotes) { const out = r(`remote ${value} here`); check(`l4: a private remote is redacted (${value.split(':')[0]}, ${value.length} chars)`, !out.includes(priv[1]) && !out.includes(priv[0]) && out.includes(MARK.repo), out); }
+  const pub = 'https://github.com/JVonBorstel/tide/pull/31';
+  check('l4: the public repo\'s remotes stay (https and git@)', r(pub) === pub && r('git@github.com:JVonBorstel/tide.git') === 'git@github.com:JVonBorstel/tide.git');
+  check('l4: an ordinary web link stays', r('see https://docs.example.org/guide/start') === 'see https://docs.example.org/guide/start');
+  // neutral words in public text
+  const src = ['core/ledger/share.mjs', 'core/ledger/ledger-private-words.example.json', 'core/ledger/README.md'].map((f) => fs.readFileSync(path.join(repo, f), 'utf8')).join('\n');
+  check('l4: public code, warning and example use neutral words ("private topics", no job-search words)', /private topics/.test(src) && !/job[- ]?(hunt|search)/i.test(src));
+}
+
 try {
+  await testSecrets();
   await testShare37();
   await testShare();
   await testLegacy();
