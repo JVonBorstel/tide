@@ -1,0 +1,30 @@
+{
+  "v": "1.0",
+  "seq": 10,
+  "at": "2030-01-07T09:10:00Z",
+  "actor": "engine",
+  "kind": "decision.asked",
+  "wo": "WO-2001",
+  "data": {
+    "decision": {
+      "v": "1.0",
+      "id": "D-1",
+      "wo": "WO-2001",
+      "kind": "merge",
+      "ask": "Merge example#41 (sunrise colour)?",
+      "options": [
+        "Yes",
+        "Hold",
+        "No"
+      ],
+      "recommended": "Yes",
+      "why": "The tests and the review are green.",
+      "answer": null,
+      "note": null,
+      "at": "2030-01-07T10:00:00Z",
+      "answeredAt": null,
+      "via": null
+    }
+  },
+  "proof": null
+}

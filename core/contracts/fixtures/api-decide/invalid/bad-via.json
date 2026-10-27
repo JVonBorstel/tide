@@ -1,0 +1,11 @@
+{
+  "why": "taps come from the Board or /decide",
+  "expect": "/via: enum",
+  "doc": {
+    "decision": "D-1",
+    "answer": "Yes",
+    "note": null,
+    "via": "chat",
+    "requestId": "req-0004-example"
+  }
+}

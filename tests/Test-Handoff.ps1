@@ -370,7 +370,7 @@ try {
     Check 'ZG44 the flag ships off: this repo''s kitchen.json does not set lobe.briefFromFrame' (-not ((Get-Content (Join-Path $PSScriptRoot '..\kitchen\kitchen.json') -Raw) -match 'briefFromFrame'))
     # byte-for-byte: the script without the switch block (the Toolbox talk before ZG-44) and the script with it, flag off, every frame input ready
     $tree = Join-Path $root 'tree14'; New-Item -ItemType Directory -Force "$tree\scripts", "$tree\kitchen" | Out-Null
-    foreach ($f in 'scripts\secret-patterns.ps1', 'scripts\run-registry.ps1', 'kitchen\CREED.md', 'kitchen\main-status.ps1', 'kitchen\jobs-lib.ps1') { Copy-Item (Join-Path $PSScriptRoot "..\$f") "$tree\$f" }
+    foreach ($f in 'scripts\secret-patterns.ps1', 'scripts\run-registry.ps1', 'kitchen\CREED.md', 'kitchen\main-status.ps1', 'kitchen\jobs-lib.ps1', 'kitchen\repo-config.ps1') { Copy-Item (Join-Path $PSScriptRoot "..\$f") "$tree\$f" }   # (jobs-lib.ps1 dot-sources repo-config.ps1 since TD-3)
     $src = [IO.File]::ReadAllText($ho)
     $before = [regex]::Replace($src, '(?ms)^# >>> ZG-44 switch.*?^# <<< ZG-44 switch\r?\n', '')
     [IO.File]::WriteAllText("$tree\scripts\handoff.ps1", $src); [IO.File]::WriteAllText("$tree\scripts\handoff-before.ps1", $before)

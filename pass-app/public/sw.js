@@ -2,7 +2,7 @@
 // instead of a browser error. Network first for everything (never a stale app after an update); live data (/api/*) is never cached.
 // The server writes the app build into this file, so every new build installs a fresh worker that drops the old shell.
 const CACHE = 'chef-shell-__BUILD__';
-const SHELL = ['/', '/app.css', '/app.js', '/scene.js', '/world.js', '/sprites.js', '/live.js', '/frame.js', '/moments.js', '/patch.js', '/rows.js', '/main-status.js', '/undo-pause.js', '/lobe.js', '/lobe-self.js','/world-line.js', '/city.js', '/city-art.js', '/city-nav.js', '/icon.svg', '/manifest.webmanifest', '/jetbrains-mono.woff2'];
+const SHELL = ['/', '/app.css', '/app.js', '/scene.js', '/world.js', '/sprites.js', '/live.js', '/frame.js', '/frame-meter.js', '/moments.js', '/purpose.js', '/patch.js', '/rows.js', '/main-status.js', '/undo-pause.js', '/site-stop.js', '/ci-budget.js', '/lobe.js', '/lobe-self.js', '/world-line.js', '/sites.js', '/city.js', '/city-art.js', '/city-nav.js', '/icon.svg', '/manifest.webmanifest', '/jetbrains-mono.woff2'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));

@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tide.example/contracts/v1/event.schema.json",
+  "title": "Event: one line of the append-only record of truth",
+  "description": "Every change to a work order is one event (build-way 4.2). Events are only ever appended: the ledger, Jordan's queue and BOOT are queries over them. 17 kinds are fixed; x.<source>.<name> is an open namespace for kinds no lane depends on yet (for example Claude Code hook lines).",
+  "type": "object",
+  "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
+    "seq": { "description": "Position in the log, from 1, assigned by the one writer.", "type": "integer", "minimum": 1 },
+    "at": { "$ref": "common.schema.json#/$defs/time" },
+    "actor": { "$ref": "common.schema.json#/$defs/actor" },
+    "kind": {
+      "anyOf": [
+        { "$ref": "#/$defs/kind" },
+        { "description": "Open namespace: x.<source>.<name>.", "type": "string", "pattern": "^x\\.[a-z0-9-]+\\.[a-z0-9.-]+$", "maxLength": 80 }
+      ]
+    },
+    "wo": {
+      "description": "The work order this event belongs to, or null for an event about no single order (a flag, an import run).",
+      "anyOf": [{ "$ref": "common.schema.json#/$defs/woId" }, { "type": "null" }]
+    },
+    "data": { "description": "What changed; its shape depends on kind (below).", "type": "object" },
+    "proof": {
+      "x-local-only": true, "description": "Where the claim can be checked: a sha, a URL, a file, a command and its output line. null when the event claims nothing outside itself.",
+      "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 500 }, { "type": "null" }]
+    }
+  },
+  "required": ["v", "seq", "at", "actor", "kind", "wo", "data", "proof"],
+  "additionalProperties": false,
+  "allOf": [
+    { "if": { "$ref": "#/$defs/isWoKind" }, "then": { "properties": { "wo": { "$ref": "common.schema.json#/$defs/woId" } } } },
+    { "if": { "properties": { "kind": { "const": "wo.created" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/woCreated" } } } },
+    { "if": { "properties": { "kind": { "const": "stage.entered" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/stageEntered" } } } },
+    { "if": { "properties": { "kind": { "const": "step.started" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/stepStarted" } } } },
+    { "if": { "properties": { "kind": { "const": "step.done" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/stepDone" } } } },
+    { "if": { "properties": { "kind": { "const": "step.failed" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/stepFailed" } } } },
+    { "if": { "properties": { "kind": { "const": "pr.opened" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/prOpened" } } } },
+    { "if": { "properties": { "kind": { "const": "pr.updated" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/prUpdated" } } } },
+    { "if": { "properties": { "kind": { "const": "ci.result" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/ciResult" } } } },
+    { "if": { "properties": { "kind": { "const": "review.verdict" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/reviewVerdict" }, "actor": { "not": { "const": "jordan" } } } } },
+    { "if": { "properties": { "kind": { "const": "decision.asked" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/decisionAsked" } } } },
+    { "if": { "properties": { "kind": { "const": "decision.answered" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/decisionAnswered" }, "actor": { "const": "jordan" } } } },
+    { "if": { "properties": { "kind": { "const": "flag.set" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/flagSet" } } } },
+    { "if": { "properties": { "kind": { "const": "merged" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/merged" }, "proof": { "type": "string" } } } },
+    { "if": { "properties": { "kind": { "const": "docs.done" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/docsDone" } } } },
+    { "if": { "properties": { "kind": { "const": "closed" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/closed" }, "proof": { "type": "string" } } } },
+    { "if": { "properties": { "kind": { "const": "dropped" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/dropped" } } } },
+    { "if": { "properties": { "kind": { "const": "replaced" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/replaced" } } } }
+  ],
+  "$defs": {
+    "kind": {
+      "enum": ["wo.created", "stage.entered", "step.started", "step.done", "step.failed", "pr.opened", "pr.updated", "ci.result", "review.verdict",
+        "decision.asked", "decision.answered", "flag.set", "merged", "docs.done", "closed", "dropped", "replaced"]
+    },
+    "isWoKind": {
+      "description": "Every fixed kind except flag.set belongs to one work order.",
+      "properties": { "kind": { "allOf": [{ "$ref": "#/$defs/kind" }, { "not": { "const": "flag.set" } }] } }
+    },
+    "step": { "description": "A Yard station or engine activity name (freshen, ci-wait, merge).", "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 40 },
+    "attempt": { "type": "integer", "minimum": 1, "maximum": 20 },
+    "woCreated": {
+      "type": "object",
+      "properties": {
+        "goal": { "$ref": "common.schema.json#/$defs/text" },
+        "stream": { "$ref": "common.schema.json#/$defs/stream" },
+        "plan": { "anyOf": [{ "$ref": "common.schema.json#/$defs/planRef" }, { "type": "null" }] },
+        "alias": { "$ref": "common.schema.json#/$defs/yardAlias" },
+        "repo": { "$ref": "common.schema.json#/$defs/repo" },
+        "private": { "description": "true for an order whose content must never leave this PC (no prompt text in spans, no OTel content).", "type": "boolean" }
+      },
+      "required": ["goal", "stream"],
+      "additionalProperties": false
+    },
+    "stageEntered": {
+      "type": "object",
+      "properties": { "stage": { "$ref": "common.schema.json#/$defs/stage" }, "from": { "anyOf": [{ "$ref": "common.schema.json#/$defs/stage" }, { "type": "null" }] } },
+      "required": ["stage"],
+      "additionalProperties": false
+    },
+    "stepStarted": {
+      "type": "object",
+      "properties": { "step": { "$ref": "#/$defs/step" }, "attempt": { "$ref": "#/$defs/attempt" }, "idempotencyKey": { "type": "string", "minLength": 8, "maxLength": 200 } },
+      "required": ["step", "attempt"],
+      "additionalProperties": false
+    },
+    "stepDone": {
+      "type": "object",
+      "properties": { "step": { "$ref": "#/$defs/step" }, "attempt": { "$ref": "#/$defs/attempt" }, "exit": { "type": "integer" }, "sec": { "type": "number", "minimum": 0 } },
+      "required": ["step", "attempt", "exit"],
+      "additionalProperties": false
+    },
+    "stepFailed": {
+      "type": "object",
+      "properties": {
+        "step": { "$ref": "#/$defs/step" }, "attempt": { "$ref": "#/$defs/attempt" }, "exit": { "type": "integer" },
+        "reason": { "$ref": "common.schema.json#/$defs/text" },
+        "retry": { "description": "true when the engine will try again (at most 2 retries, build-way 2.1).", "type": "boolean" }
+      },
+      "required": ["step", "attempt", "reason", "retry"],
+      "additionalProperties": false
+    },
+    "prOpened": {
+      "type": "object",
+      "properties": {
+        "pr": { "$ref": "common.schema.json#/$defs/prRef" }, "branch": { "$ref": "common.schema.json#/$defs/branch" },
+        "base": { "$ref": "common.schema.json#/$defs/branch" }, "head": { "$ref": "common.schema.json#/$defs/sha" },
+        "title": { "$ref": "common.schema.json#/$defs/text" }
+      },
+      "required": ["pr", "branch", "base", "head"],
+      "additionalProperties": false
+    },
+    "prUpdated": {
+      "type": "object",
+      "properties": {
+        "pr": { "$ref": "common.schema.json#/$defs/prRef" }, "head": { "$ref": "common.schema.json#/$defs/sha" },
+        "why": { "enum": ["push", "freshen", "retarget", "title", "conflict", "closed", "reopened"] },
+        "mergeable": { "enum": ["yes", "conflicting", "unknown"] }
+      },
+      "required": ["pr", "head", "why"],
+      "additionalProperties": false
+    },
+    "ciResult": {
+      "type": "object",
+      "properties": {
+        "pr": { "$ref": "common.schema.json#/$defs/prRef" }, "head": { "$ref": "common.schema.json#/$defs/sha" },
+        "conclusion": { "enum": ["success", "failure", "cancelled", "timed-out", "pending"] },
+        "checks": { "type": "integer", "minimum": 0 }, "failed": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["head", "conclusion"],
+      "additionalProperties": false
+    },
+    "reviewVerdict": {
+      "description": "The verifier's verdict on one head sha. The reviewer is never the builder (CREED 6; validate.mjs refuses reviewer = builder and an event written by the builder), and never Jordan (his yes is decision.answered).",
+      "type": "object",
+      "properties": {
+        "verdict": { "enum": ["ship", "fix", "hold"] },
+        "reasons": { "$ref": "common.schema.json#/$defs/text" },
+        "head": { "$ref": "common.schema.json#/$defs/sha" },
+        "reviewer": { "type": "string", "pattern": "^crew:[a-z0-9][a-z0-9-]*$" },
+        "builder": { "type": "string", "pattern": "^crew:[a-z0-9][a-z0-9-]*$" },
+        "findings": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["verdict", "reasons", "head", "reviewer", "builder"],
+      "additionalProperties": false
+    },
+    "decisionAsked": {
+      "type": "object",
+      "properties": { "decision": { "$ref": "decision.schema.json" } },
+      "required": ["decision"],
+      "additionalProperties": false
+    },
+    "decisionAnswered": {
+      "description": "One of Jordan's taps: the only proof of his yes. Written by the Board or /decide, never relayed by a chat.",
+      "type": "object",
+      "properties": {
+        "decision": { "$ref": "common.schema.json#/$defs/decisionId" },
+        "answer": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "note": { "anyOf": [{ "type": "string", "maxLength": 2000 }, { "type": "null" }] },
+        "via": { "enum": ["board", "/decide"] },
+        "requestId": { "type": "string", "minLength": 8, "maxLength": 64 }
+      },
+      "required": ["decision", "answer", "via"],
+      "additionalProperties": false
+    },
+    "flagSet": {
+      "description": "A feature flag turned on or off (switches, not stacks). Turning one on needs a decision.",
+      "type": "object",
+      "properties": {
+        "flag": { "type": "string", "pattern": "^[a-z][a-z0-9.-]*$", "maxLength": 60 },
+        "on": { "type": "boolean" },
+        "decision": { "anyOf": [{ "$ref": "common.schema.json#/$defs/decisionId" }, { "type": "null" }] }
+      },
+      "required": ["flag", "on", "decision"],
+      "additionalProperties": false,
+      "if": { "properties": { "on": { "const": true } } },
+      "then": { "properties": { "decision": { "$ref": "common.schema.json#/$defs/decisionId" } } }
+    },
+    "merged": {
+      "type": "object",
+      "properties": {
+        "pr": { "$ref": "common.schema.json#/$defs/prRef" }, "sha": { "$ref": "common.schema.json#/$defs/sha" },
+        "decision": { "$ref": "common.schema.json#/$defs/decisionId" }
+      },
+      "required": ["pr", "sha"],
+      "additionalProperties": false
+    },
+    "docsDone": {
+      "type": "object",
+      "properties": { "dod": { "$ref": "common.schema.json#/$defs/dod" } },
+      "required": ["dod"],
+      "additionalProperties": false
+    },
+    "closed": {
+      "type": "object",
+      "properties": { "sha": { "$ref": "common.schema.json#/$defs/sha" }, "report": { "$ref": "common.schema.json#/$defs/relPath" } },
+      "required": ["sha"],
+      "additionalProperties": false
+    },
+    "dropped": {
+      "type": "object",
+      "properties": { "reason": { "$ref": "common.schema.json#/$defs/text" }, "decision": { "$ref": "common.schema.json#/$defs/decisionId" } },
+      "required": ["reason", "decision"],
+      "additionalProperties": false
+    },
+    "replaced": {
+      "type": "object",
+      "properties": { "by": { "$ref": "common.schema.json#/$defs/woId" }, "reason": { "$ref": "common.schema.json#/$defs/text" } },
+      "required": ["by", "reason"],
+      "additionalProperties": false
+    }
+  }
+}

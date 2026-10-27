@@ -1,0 +1,19 @@
+{
+  "v": "1.0",
+  "id": "D-1",
+  "wo": "WO-2001",
+  "kind": "merge",
+  "ask": "Merge example#41 (sunrise colour)?",
+  "options": [
+    "Yes",
+    "Hold",
+    "No"
+  ],
+  "recommended": "Yes",
+  "why": "The tests and the review are green.",
+  "answer": "Yes",
+  "note": "Looks good on the phone.",
+  "at": "2030-01-07T10:00:00Z",
+  "answeredAt": "2030-01-07T11:00:00Z",
+  "via": "board"
+}

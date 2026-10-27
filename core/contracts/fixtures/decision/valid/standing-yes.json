@@ -1,0 +1,20 @@
+{
+  "v": "1.0",
+  "id": "D-10",
+  "wo": null,
+  "kind": "close",
+  "ask": "Standing yes: remove worktrees that are merged, clean and idle for 24 h?",
+  "options": [
+    "Yes",
+    "Hold",
+    "No"
+  ],
+  "recommended": "Yes",
+  "why": "The tests and the review are green.",
+  "answer": "Yes",
+  "note": null,
+  "at": "2030-01-07T10:00:00Z",
+  "answeredAt": "2030-01-07T11:00:00Z",
+  "via": "/decide",
+  "standing": true
+}

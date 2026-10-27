@@ -1,0 +1,8 @@
+{
+  "why": "an error answer has a code",
+  "expect": "/code: required",
+  "doc": {
+    "ok": false,
+    "error": "No work order WO-9999."
+  }
+}

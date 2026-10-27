@@ -181,6 +181,49 @@ try {
     if (($before.counts | ConvertTo-Json -Compress) -ne ($after.counts | ConvertTo-Json -Compress)) { Write-Host ("  counts " + ($before.counts | ConvertTo-Json -Compress) + " vs " + ($after.counts | ConvertTo-Json -Compress)) }
     if ((& $sig $before) -ne (& $sig $after) -or (& $fsig $before) -ne (& $fsig $after)) { Compare-Object @((& $sig $before) -split "`n") @((& $sig $after) -split "`n") | Select-Object -First 4 | ForEach-Object { Write-Host "  ledger diff $($_.SideIndicator) $($_.InputObject)" }; Compare-Object @((& $fsig $before) -split "`n") @((& $fsig $after) -split "`n") | Select-Object -First 4 | ForEach-Object { Write-Host "  flags diff $($_.SideIndicator) $($_.InputObject)" } }
 
+    # ---- TD-5: programs grouped by Site; one bad Tower is a named finding and the rest still report ---------------------------------
+    $d4 = Get-Content (Join-Path $kr 'ledger.json') -Raw | ConvertFrom-Json -AsHashtable
+    Check 'TD5 no Sites: every program line has exactly the keys it had before Sites, and ledger.json has no "sites" key' (@($d4.programs).Count -ge 1 -and -not @($d4.programs | Where-Object { (@($_.Keys | Sort-Object) -join ',') -cne 'repo,shipped,stuck,total' }).Count -and (@($d4.Keys | Sort-Object) -join ',') -ceq 'counts,drift,flags,items,lobe,ok,programs,top,updated')
+    Check 'TD5 no Sites: no Site or Tower finding' (-not @($d4.flags | Where-Object { $_.rule -in 'tower-unreadable', 'sites-registry-unreadable' }).Count)
+    # three more Towers: td names its Site in kitchen.repo.json, zg only in its Blueprint's site block, plain has none; gw gets GW from the registry
+    $td = Join-Path $root 'td'; $zg = Join-Path $root 'zg'; $plain = Join-Path $root 'plain'
+    foreach ($tw in @(@($td, '{"roadmap":"map/roadmap.json","site":"TD"}', $null, @('TD-1', 'TD-2')), @($zg, '{"roadmap":"map/roadmap.json"}', @{ code = 'ZG' }, @('ZG-1')), @($plain, '{"roadmap":"map/roadmap.json"}', $null, @('P-1')))) {
+        $dir = $tw[0]; New-Item -ItemType Directory -Force -Path $dir | Out-Null; G $dir init -q -b main
+        Put (Join-Path $dir 'kitchen.repo.json') $tw[1]
+        $bp = [ordered]@{ waves = @(@{ id = 'W1'; goal = 'g'; items = @($tw[3] | ForEach-Object { & $item $_ @() }) }) }; if ($tw[2]) { $bp.site = $tw[2] }
+        Put (Join-Path $dir 'map\roadmap.json') ($bp | ConvertTo-Json -Depth 8)
+        Put (Join-Path $dir "docs\changes\$($tw[3][0]).md") 'what, why, undo'
+        G $dir add -A; G $dir commit -q -m 'start'
+    }
+    # a closed order per Tower (so the Ledger knows the Tower); written here, not by Job (a bare Job reads as an alias of Get-Job)
+    function Add-TowerOrder([string]$id, [string]$tower) { Put (Join-Path $kr "jobs\$id.json") (@{ id = $id; name = "improve: $id"; recipe = 'improve'; status = 'closed'; created = (Iso 1); vars = @{ goal = 'g'; repo = $tower }; steps = @($code); history = @() } | ConvertTo-Json -Depth 6) }
+    Add-TowerOrder 'J61' $td; Add-TowerOrder 'J62' $zg; Add-TowerOrder 'J63' $plain
+    Put (Join-Path $kr 'kitchen.json') (@{ maxConcurrent = 4; sites = @{ GW = @{ name = 'Demo Project'; towers = @($rm) } } } | ConvertTo-Json -Depth 5)
+    $r = Run @('build'); $d5 = Get-Content (Join-Path $kr 'ledger.json') -Raw | ConvertFrom-Json -AsHashtable
+    $pl = @($d5.programs | ForEach-Object { "$($_.repo):$($_.site):$($_.shipped)/$($_.total)" }) -join ' '
+    Check "TD5 grouped by Site: Sites by code (registry GW, kitchen.repo.json TD, Blueprint ZG), then the Tower with none ($pl)" ($r.Code -eq 0 -and $pl -ceq 'gw:GW:2/4 td:TD:1/2 zg:ZG:1/1 plain::1/1' -and -not @($d5.programs | Where-Object { $_.repo -eq 'plain' })[0].Contains('site'))
+    $sl = @($d5.sites | ForEach-Object { "$($_.site)=$($_.name)|$(@($_.towers) -join '+')|$($_.shipped)/$($_.total)" }) -join ' '
+    Check "TD5 one line per Site, its name from the registry ($sl)" ($sl -ceq 'GW=Demo Project|gw|2/4 TD=TD|td|1/2 ZG=ZG|zg|1/1')
+    # one bad Tower of each kind: a Blueprint that is not JSON, a kitchen.repo.json that is not JSON, a path no file system can hold
+    $bad1 = Join-Path $root 'bad1'; $bad2 = Join-Path $root 'bad2'
+    foreach ($dir in $bad1, $bad2) { New-Item -ItemType Directory -Force -Path $dir | Out-Null; G $dir init -q -b main }
+    Put (Join-Path $bad1 'kitchen.repo.json') '{"roadmap":"map/roadmap.json"}'; Put (Join-Path $bad1 'map\roadmap.json') '{ broken'
+    Put (Join-Path $bad2 'kitchen.repo.json') '{ nope'
+    Add-TowerOrder 'J64' $bad1; Add-TowerOrder 'J65' $bad2; Add-TowerOrder 'J66' "$root\nul$([char]0)tower"
+    Remove-Item -LiteralPath (Join-Path $kr 'ledger.json')   # (so a build that stops reads as no ledger, never as the last good one)
+    $r = Run @('build'); $d6 = if (Test-Path -LiteralPath (Join-Path $kr 'ledger.json')) { Get-Content (Join-Path $kr 'ledger.json') -Raw | ConvertFrom-Json -AsHashtable } else { @{} }
+    $tf = @($d6.flags | Where-Object { $_.rule -eq 'tower-unreadable' })
+    Check "TD5 the Ledger survives bad Towers: exit 0, each a named finding for Claude ($(@($tf.id) -join ', '))" ($r.Code -eq 0 -and @($tf | Where-Object { $_.id -eq 'bad1' -and $_.say -match 'bad1' }).Count -eq 1 -and @($tf | Where-Object { $_.id -eq 'bad2' }).Count -eq 1 -and @($tf | Where-Object { $_.id -match '^nul.tower$' }).Count -eq 1 -and -not @($tf | Where-Object { $_.owner -ne 'Claude' -or $_.pri -ne 2 }).Count)
+    $pl6 = @($d6.programs | ForEach-Object { "$($_.repo):$($_.site):$($_.shipped)/$($_.total)" }) -join ' '
+    Check "TD5 and every good Tower still reports, unchanged ($pl6)" ($pl6 -ceq $pl -and $d6.top -match '^Ledger: ' -and @($d6.items | Where-Object { $_.id -eq 'TD-2' }).Count -eq 1)
+    Check 'TD5 a NUL in a Tower path never reaches a finding''s text (no \u0000 in ledger.json)' ((Test-Path -LiteralPath (Join-Path $kr 'ledger.json')) -and (Get-Content (Join-Path $kr 'ledger.json') -Raw) -notmatch '\\u0000' -and (Get-Content (Join-Path $kr 'ledger.json') -Raw) -match 'nul\?tower')
+    # an unreadable registry is a finding too; the Towers then group by their own Site only (gw loses GW)
+    Put (Join-Path $kr 'kitchen.json') '{ broken'
+    $r = Run @('build'); $d7 = Get-Content (Join-Path $kr 'ledger.json') -Raw | ConvertFrom-Json -AsHashtable
+    $pl7 = @($d7.programs | ForEach-Object { "$($_.repo):$($_.site)" }) -join ' '
+    Check "TD5 an unreadable Sites registry: exit 0, a finding, Towers keep their own Site ($pl7)" ($r.Code -eq 0 -and @($d7.flags | Where-Object { $_.rule -eq 'sites-registry-unreadable' -and $_.owner -eq 'Claude' }).Count -eq 1 -and $pl7 -ceq 'td:TD zg:ZG gw: plain:')
+    Remove-Item -LiteralPath (Join-Path $kr 'kitchen.json')
+
     # ---- 3. fail visible -------------------------------------------------------------------------------------------------------------
     Put (Join-Path $kr 'ideas.json') '{ broken'
     Check 'an unreadable idea list fails (exit 1), never an empty ledger' ((Run @('build')).Code -eq 1)

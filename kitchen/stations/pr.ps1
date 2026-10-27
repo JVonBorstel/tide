@@ -80,6 +80,14 @@ $open = @($mine | Where-Object { [string]$_.state -eq 'OPEN' }) | Select-Object 
 $merged = @($mine | Where-Object { [string]$_.state -eq 'MERGED' }) | Select-Object -First 1
 $closed = @($mine | Where-Object { [string]$_.state -eq 'CLOSED' }) | Select-Object -First 1
 if (-not $open -and -not $merged -and $closed) { Write-Output "pr: Jordan closed PR #$($closed.number) on GitHub; the kitchen does not reopen it (reopen it there to go on)"; exit 1 }
+# TD-11 (Owner's Q8 = yes): a Site over its monthly CI budget opens no NEW pull request (an open one is still pushed to). The chores'
+# count (<kitchen>\ci-budget.json, kitchen/ci-budget-lib.ps1) decides; a count that is unknown never holds. Asked again every 6 hours.
+if (-not $open -and -not $merged) {
+    . (Join-Path $PSScriptRoot '..\ci-budget-lib.ps1')
+    $site = Get-KitchenJobSite $jj; if (-not $site) { $site = Get-TowerSite $Repo }
+    $cb = Get-CiBudgetHold $kroot $site
+    if ($cb.hold) { Later 21600 "held, no new pull request: $($cb.why)" }
+}
 
 $how = 'already merged on GitHub'
 if (-not $merged -or $open) {

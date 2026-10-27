@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tide.example/contracts/v1/report.schema.json",
+  "title": "Report: the front matter of a work order's REPORT.md",
+  "description": "What a crew hands back (build-way 3.7). The ledger reads this front matter; the body is for people. Line forms: 'tests: Contracts 52/0; RepoConfig 142/0' and 'dod: change-note yes | tests yes | glossary n/a' (the marks from the build-way template are read too).",
+  "type": "object",
+  "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
+    "wo": { "$ref": "common.schema.json#/$defs/woId" },
+    "status": { "enum": ["pushed", "blocked", "partial", "abandoned"] },
+    "branch": { "$ref": "common.schema.json#/$defs/branch" },
+    "pr": { "anyOf": [{ "$ref": "common.schema.json#/$defs/prRef" }, { "const": "none" }] },
+    "head": { "anyOf": [{ "$ref": "common.schema.json#/$defs/sha" }, { "const": "none" }] },
+    "tests": {
+      "description": "Counts only, from runs the crew read.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "suite": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "maxLength": 60 },
+          "passed": { "type": "integer", "minimum": 0 },
+          "failed": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["suite", "passed", "failed"],
+        "additionalProperties": false
+      }
+    },
+    "dod": { "$ref": "common.schema.json#/$defs/dod" },
+    "asks": {
+      "description": "none, or one question for Jordan with the recommended answer first.",
+      "anyOf": [{ "const": "none" }, { "$ref": "common.schema.json#/$defs/text" }]
+    },
+    "next": { "description": "What the Yard should do next, or adopt.", "$ref": "common.schema.json#/$defs/text" }
+  },
+  "required": ["v", "wo", "status", "branch", "pr", "head", "tests", "dod", "asks", "next"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "description": "A pushed report names its PR and head sha.",
+      "if": { "properties": { "status": { "const": "pushed" } } },
+      "then": { "properties": { "pr": { "$ref": "common.schema.json#/$defs/prRef" }, "head": { "$ref": "common.schema.json#/$defs/sha" } } }
+    }
+  ]
+}

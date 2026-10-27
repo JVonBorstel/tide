@@ -11,7 +11,9 @@
 # Reads the PR (gh api repos/<repo>/pulls/<n>) and every check run on its head commit (gh api .../commits/<sha>/check-runs, GitHub's
 # latest run of each check). Refuses, with a plain reason and exit 1, unless: the PR is open and not a draft; at least one check
 # exists; every check is completed with success, skipped or neutral; the repo's kitchen.repo.json on the PR's base branch (read from
-# GitHub) has no merge freeze window covering now (kitchen/freeze-lib.ps1); and the PR's head is still that commit just before the
+# GitHub) has no merge freeze window covering now (kitchen/freeze-lib.ps1), counting its Site's closed windows from the Sites registry
+# when that config names a "site" (TD-9: kitchen.json "sites.<CODE>.closed", read by kitchen/site-registry.ps1 from the kitchen
+# state folder; no "site", or no registry, = the Tower's own windows only, exactly as before); and the PR's head is still that commit just before the
 # merge. Then the merge commit is made here, not by GitHub (step 5 says why), as the account's noreply address from exactly that
 # commit, and pushed as a fast-forward of the base (refused if the base moved), with a subject and
 # body that say a Claude session merged it, and one line {pr, repo, sha, actor:'claude-session', why, at, ok[, error]} is appended to
@@ -62,14 +64,15 @@ $sha = [string]$p.head.sha; $base = [string]$p.base.ref
 if ($sha -notmatch '^[0-9a-f]{40,64}$' -or -not $base) { Refuse 'GitHub did not say which commit the pull request is at' }
 $short = $sha.Substring(0, 7)
 
-# 2. a merge freeze on the base branch's kitchen.repo.json (no file there = no freeze; a file that will not load = refuse)
+# 2. a merge freeze on the base branch's kitchen.repo.json (no file there = no freeze; a file that will not load = refuse), plus its Site's
+#    closed windows (TD-9) when it names a Site; a registry that will not read then refuses too (nobody can say whether one covers now)
 $cf = Invoke-Gh @('api', '-H', 'Accept: application/vnd.github.raw+json', "repos/$Repo/contents/kitchen.repo.json?ref=$([uri]::EscapeDataString($base))")
 if ($cf.ok) {
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ('merge-pr-' + [guid]::NewGuid().ToString('N'))
     try {
         New-Item -ItemType Directory -Path $tmp | Out-Null
         [IO.File]::WriteAllText((Join-Path $tmp 'kitchen.repo.json'), $cf.out, [Text.UTF8Encoding]::new($false))
-        $fzErr = ''; $fw = try { Get-ActiveFreeze (Read-RepoConfig $tmp).Freeze (Get-FreezeNow) } catch { $fzErr = $_.Exception.Message.Replace((Join-Path $tmp "kitchen.repo.json"), "$base on GitHub"); $null }
+        $fzErr = ''; $fw = try { Get-ActiveFreeze (Get-TowerFreezeWindows (Read-RepoConfig $tmp) $kroot) (Get-FreezeNow) } catch { $fzErr = $_.Exception.Message.Replace((Join-Path $tmp "kitchen.repo.json"), "$base on GitHub"); $null }
     } finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
     if ($fzErr) { Refuse "cannot tell whether merges into $Repo are frozen: $fzErr" }
     if ($fw) { Refuse "$Repo is $(Format-FreezeReason $fw)" }

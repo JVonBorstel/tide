@@ -273,6 +273,40 @@ try {
     $vtx = Get-Content (Join-Path $vd '.kitchen\TESTS.txt') -Raw
     Check 'verdict words: the why record and TESTS.txt keep the summaries whole (only the printed copy is bent)' ($vRec -and @($vRec.suites | Where-Object { $_.suite -eq 'Test-Liar' })[0].summary -eq 'FAILED: Test-Fake' -and @($vRec.suites | Where-Object { $_.suite -eq 'Test-Boaster' })[0].summary -eq 'RESULT: ALL PASS' -and $vtx -match '(?m)^FAIL\s+Test-Liar\s+FAILED: Test-Fake' -and $vtx -match '(?m)^FAILED: Test-Boaster, Test-Liar\s*$')
 
+    # --- the Tower's inspector block (TD-12): "local": "impacted" makes an order's own run an impacted one; no block = exactly as before ---
+    # One order (J31) changed tests/Test-A.ps1 only, so an impacted run picks Test-A and skips Test-B. kitchen.repo.json is untracked
+    # here (in .gitignore): changing it between runs is not a change of the order's (that would run every suite as a shared file).
+    $ik = Join-Path $dir 'inspkroot'; $iw = Join-Path $ik 'worktrees\J31'; New-Item -ItemType Directory -Force -Path (Join-Path $iw 'tests'), (Join-Path $iw '.kitchen') | Out-Null
+    foreach ($sn in 'A', 'B') { Set-Content (Join-Path $iw "tests\Test-$sn.ps1") "'$sn tests: 1 passed, 0 failed'; exit 0" }
+    Set-Content (Join-Path $iw '.gitignore') ".kitchen/`nkitchen.repo.json"
+    & git -C $iw init -q 2>&1 | Out-Null; & git -C $iw add -A 2>&1 | Out-Null; & git -C $iw -c user.name=t -c user.email=t@localhost commit -q -m base 2>&1 | Out-Null
+    Set-Content (Join-Path $iw '.kitchen\BASE') ((& git -C $iw rev-parse HEAD).Trim())
+    Add-Content (Join-Path $iw 'tests\Test-A.ps1') '# the change'; & git -C $iw -c user.name=t -c user.email=t@localhost commit -q -am change 2>&1 | Out-Null
+    $irc = Join-Path $iw 'kitchen.repo.json'; $irj = Join-Path $ik 'results\J31.tests.json'
+    function Run-Insp([string]$Json, [hashtable]$More) {
+        if ($Json) { Set-Content -LiteralPath $irc -Value $Json } else { Remove-Item -LiteralPath $irc -Force -ErrorAction SilentlyContinue }
+        Remove-Item -LiteralPath $irj, (Join-Path $iw '.kitchen\TESTS.txt') -Force -ErrorAction SilentlyContinue
+        $sv = @{ k = $env:BRAIN_KITCHEN; j = $env:KITCHEN_JOB }; if (-not $More) { $More = @{} }
+        try { $env:BRAIN_KITCHEN = $ik; $env:KITCHEN_JOB = 'J31'; $o = & $st -SuiteTimeoutSec 60 @More *>&1 | Out-String; $c = $LASTEXITCODE } finally { $env:BRAIN_KITCHEN = $sv.k; $env:KITCHEN_JOB = $sv.j }
+        $r = try { Get-Content -LiteralPath $irj -Raw | ConvertFrom-Json } catch { $null }
+        [pscustomobject]@{ Out = $o; Code = $c; Final = $r.final; Lines = @($o -split "`r?`n" | Where-Object { $_ -match '^tests: (PASS|FAIL|-)\s|^tests: (ALL PASS|PARTIAL PASS|FAILED:)|^tests: (impacted run|inspector)' } | ForEach-Object { $_ -replace '\([\d.]+s\)', '' } | Sort-Object) }
+    }
+    $iNone = Run-Insp '' @{}
+    $iNoBlock = Run-Insp '{"github":"o/n"}' @{}
+    Check 'inspector: no block runs every suite, writes the pass for auto-merge, prints no inspector line' ($iNone.Code -eq 0 -and $iNone.Out -match '(?m)^tests: ALL PASS' -and $iNone.Out -match 'PASS\s+Test-A' -and $iNone.Out -match 'PASS\s+Test-B' -and $iNone.Final -eq 'ALL PASS' -and $iNone.Out -notmatch 'inspector|impacted run')
+    Check 'inspector: a kitchen.repo.json with no block behaves exactly as no file (same suites, same verdict lines, same result)' ($iNoBlock.Code -eq 0 -and $iNoBlock.Final -eq 'ALL PASS' -and ($iNoBlock.Lines -join '|') -eq ($iNone.Lines -join '|') -and $iNoBlock.Out -notmatch 'inspector')
+    $iFull = Run-Insp '{"inspector":{"local":"full","ci":"quick"}}' @{}
+    Check 'inspector: local full = as before, and it says the plan' ($iFull.Code -eq 0 -and $iFull.Final -eq 'ALL PASS' -and $iFull.Out -match 'tests: inspector: local full, ci quick\r?\n' -and (@($iFull.Lines | Where-Object { $_ -notmatch 'inspector' }) -join '|') -eq ($iNone.Lines -join '|'))
+    $iImp = Run-Insp '{"inspector":{"local":"impacted","ci":"full"}}' @{}
+    Check 'inspector: local impacted runs only the changed suite, ends PARTIAL PASS, records no pass' ($iImp.Code -eq 0 -and $iImp.Out -match 'inspector: local impacted, ci full \(this run maps the change' -and $iImp.Out -match 'impacted run: 1 of 2 suites \(Test-A\)' -and $iImp.Out -match 'Test-B\s+not run \(not impacted\)' -and $iImp.Out -match '(?m)^tests: PARTIAL PASS: 1 of 2 suites' -and $iImp.Out -notmatch 'ALL PASS' -and $null -eq $iImp.Final)
+    $iOnly = Run-Insp '{"inspector":{"local":"impacted","ci":"full"}}' @{ Only = @('Test-B') }
+    Check 'inspector: -Only is left alone by local impacted (the named suite runs)' ($iOnly.Out -match 'PASS\s+Test-B' -and $iOnly.Out -notmatch 'impacted run' -and $iOnly.Out -notmatch 'this run maps')
+    $svI = $env:BRAIN_KITCHEN; $env:BRAIN_KITCHEN = $ik
+    try { $iDir = & $st -Dir $iw -SuiteTimeoutSec 60 *>&1 | Out-String } finally { $env:BRAIN_KITCHEN = $svI }
+    Check 'inspector: a run with -Dir (verify on main) stays full under local impacted' ($iDir -match '(?m)^tests: ALL PASS' -and $iDir -match 'PASS\s+Test-B' -and $iDir -notmatch 'impacted run')
+    $iBad = Run-Insp '{"inspector":{"local":"impacted","ci":"quick"}}' @{}
+    Check 'inspector: impacted with ci quick stops the run (exit 2), never a quietly smaller check' ($iBad.Code -eq 2 -and $iBad.Out -match 'needs ''inspector.ci'' "full"' -and $null -eq $iBad.Final)
+
     # --- the pool: several suites at once, by measured memory (kitchen/suite-times-lib.ps1) ---
     . (Join-Path $PSScriptRoot '..\kitchen\suite-times-lib.ps1')
     $pk = Join-Path $dir 'poolkroot'; New-Item -ItemType Directory -Force -Path $pk | Out-Null

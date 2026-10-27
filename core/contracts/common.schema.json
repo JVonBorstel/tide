@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tide.example/contracts/v1/common.schema.json",
+  "title": "Shared pieces every Tide contract uses",
+  "description": "Ids, times, actors, stages, states and the definition-of-done checklist. Referenced as common.schema.json#/$defs/<name>; never validated on its own.",
+  "$defs": {
+    "version": {
+      "description": "The contract version a persisted record was written with: <major>.<minor>. These schemas are major 1 and accept every 1.x (a minor only adds optional fields). A breaking change is a new major under contracts/v2/; readers accept the majors they know and refuse the rest by name.",
+      "type": "string",
+      "pattern": "^1\\.(0|[1-9][0-9]*)$"
+    },
+    "woId": {
+      "description": "A work order id: WO- then upper-case letters, digits and dashes (WO-312, WO-0207, WO-UPG-L1-3).",
+      "type": "string",
+      "pattern": "^WO-[A-Z0-9]+(-[A-Z0-9]+)*$",
+      "maxLength": 40
+    },
+    "yardAlias": {
+      "description": "The old Yard job id a work order was imported from (J312).",
+      "type": "string",
+      "pattern": "^J[0-9]+$"
+    },
+    "decisionId": {
+      "description": "A decision (one card for Jordan): D- then a number.",
+      "type": "string",
+      "pattern": "^D-[0-9]+$"
+    },
+    "time": {
+      "description": "A UTC or offset time, RFC 3339 (2030-01-07T09:00:00Z).",
+      "type": "string",
+      "format": "date-time"
+    },
+    "sha": {
+      "description": "A git commit id, 7 to 40 lower-case hex characters.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "prRef": {
+      "description": "A pull request as <repo short name>#<number> (tide#21).",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*#[0-9]+$"
+    },
+    "repo": {
+      "description": "A GitHub repo as owner/name.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$"
+    },
+    "branch": {
+      "description": "A git branch name: no spaces, no '..', not starting with '-' or '/'.",
+      "type": "string",
+      "pattern": "^(?!-)(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+$",
+      "maxLength": 200
+    },
+    "stream": {
+      "description": "A build stream name, upper case (CITY, ART, UPG-L1). At most 4 are open at once (build-way 3.3).",
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9-]*$",
+      "maxLength": 40
+    },
+    "planRef": {
+      "description": "The one plan that owns the work: plans/<file>.md, optionally #<anchor>.",
+      "type": "string",
+      "pattern": "^plans/[A-Za-z0-9._/-]+\\.md(#[A-Za-z0-9._-]+)?$"
+    },
+    "actor": {
+      "description": "Who wrote an event: jordan (only Jordan's own taps), engine, yard, github, import, or crew:<id>.",
+      "anyOf": [
+        { "enum": ["jordan", "engine", "yard", "github", "import"] },
+        { "type": "string", "pattern": "^crew:[a-z0-9][a-z0-9-]*$", "maxLength": 60 }
+      ]
+    },
+    "stage": {
+      "description": "Where a work order is on its way to closed (build-way 2.1 and 3.1).",
+      "enum": ["build", "review", "ci", "merge-ready", "jordan", "merged", "docs", "closed"]
+    },
+    "state": {
+      "description": "How a work order is doing (build-way 3.1). shipped always needs proof on main.",
+      "enum": ["moving", "waiting-on-jordan", "stuck", "stale", "lost", "shipped", "dropped", "replaced"]
+    },
+    "owner": {
+      "description": "Who has the next move: a crew, Jordan (a card waits on him), or nobody (a lost or finished row).",
+      "enum": ["crew", "jordan", "nobody"]
+    },
+    "check": {
+      "description": "One definition-of-done line: yes (done), no (missing), n/a (does not apply).",
+      "enum": ["yes", "no", "n/a"]
+    },
+    "dod": {
+      "description": "The definition-of-done checklist (build-way 3.5), as the docs station and REPORT.md see it.",
+      "type": "object",
+      "properties": {
+        "change-note": { "$ref": "#/$defs/check" },
+        "tests": { "$ref": "#/$defs/check" },
+        "names": { "$ref": "#/$defs/check" },
+        "glossary": { "$ref": "#/$defs/check" },
+        "docs": { "$ref": "#/$defs/check" },
+        "map": { "$ref": "#/$defs/check" }
+      },
+      "additionalProperties": false
+    },
+    "decisionKind": {
+      "description": "What a card asks Jordan (build-way 3.2 and 4.2).",
+      "enum": ["merge", "look", "close", "resume", "publish", "install", "question", "choose"]
+    },
+    "text": {
+      "description": "Plain words for a person, one line or a short paragraph.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "apiError": {
+      "description": "Every Board API error answer: ok false, a code a program can act on, and plain words for the phone.",
+      "type": "object",
+      "properties": {
+        "ok": { "const": false },
+        "code": { "enum": ["unauthorized", "not-found", "bad-request", "unknown-card", "already-answered", "bad-answer", "unavailable"] },
+        "error": { "$ref": "#/$defs/text" }
+      },
+      "required": ["ok", "code", "error"],
+      "additionalProperties": false
+    },
+    "relPath": {
+      "description": "A path relative to a known root (the repo or the private notes folder). Refused: an absolute path (/x, \\x, \\\\host), a drive letter or any scheme (C:, file:), a home path (~ or ~user), and any '..' step.",
+      "type": "string",
+      "pattern": "^(?![A-Za-z][A-Za-z0-9+.-]*:)(?![\\\\/])(?!~)(?!(?:.*[\\\\/])?\\.\\.(?:[\\\\/]|$))[^\\s<>|\"*?:]+$",
+      "maxLength": 300
+    }
+  }
+}

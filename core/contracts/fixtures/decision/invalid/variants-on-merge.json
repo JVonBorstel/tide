@@ -1,0 +1,40 @@
+{
+  "why": "only choose cards carry variants",
+  "expect": ": not:",
+  "doc": {
+    "v": "1.0",
+    "id": "D-1",
+    "wo": "WO-2001",
+    "kind": "merge",
+    "ask": "Merge example#41 (sunrise colour)?",
+    "options": [
+      "Yes",
+      "Hold",
+      "No"
+    ],
+    "recommended": "Yes",
+    "why": "The tests and the review are green.",
+    "answer": null,
+    "note": null,
+    "at": "2030-01-07T10:00:00Z",
+    "answeredAt": null,
+    "via": null,
+    "variants": [
+      {
+        "option": "A",
+        "title": "Warm orange band",
+        "preview": "mockups/WO-2001/a.png"
+      },
+      {
+        "option": "B",
+        "title": "Soft pink fade",
+        "preview": "mockups/WO-2001/b.png"
+      },
+      {
+        "option": "C",
+        "title": "Gold rim on the towers",
+        "preview": "mockups/WO-2001/c.png"
+      }
+    ]
+  }
+}

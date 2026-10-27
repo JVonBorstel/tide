@@ -1,0 +1,17 @@
+{
+  "why": "a URL or scheme is not a relative path",
+  "expect": "/worktree: pattern",
+  "doc": {
+    "v": "1.0",
+    "wo": "WO-2001",
+    "stream": "DEMO",
+    "plan": "plans/example-plan.md#slice-2",
+    "decision": "D-8",
+    "repo": "example-owner/example-repo",
+    "branch": "wo/2001-sunrise",
+    "base": "main",
+    "worktree": "file:///srv/wt/wo-2001",
+    "budget": "40 turns",
+    "depth": 1
+  }
+}
