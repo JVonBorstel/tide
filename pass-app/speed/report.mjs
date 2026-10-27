@@ -27,9 +27,9 @@ export function summarize(busy, calm) {
   const taps = S.events.filter((e) => e.phase === 'tap' || e.phase === 'flight');
   return { firstUsefulPaintMs: round(S.fup, 0), fcpMs: round(S.fcp, 0), lcpMs: round(S.lcp, 0), cls: round(S.shifts, 3), inpMs: round(inpOf(taps), 0),
     frameP50Ms: scene.p50, frameP95Ms: scene.p95, frameP99Ms: scene.p99, paintP95Ms: scene.paintP95, longFrames16: scene.over16, longFrames33: scene.over33,
-    zoomP95Ms: zoom.n ? zoom.p95 : null, flightP95Ms: flight.n ? flight.p95 : null, drawsMax: scene.drawsMax, sceneFrames: scene.n,
+    zoomP95Ms: zoom.n ? zoom.p95 : null, cityZoomP95Ms: busy.kind === 'city' && zoom.n ? zoom.p95 : null, flightP95Ms: flight.n ? flight.p95 : null, drawsMax: scene.drawsMax, sceneFrames: scene.n,
     loafCount: S.loaf.filter((x) => x.phase !== 'load').length, heapMB: round(busy.heapMB, 1), domNodes: busy.nodes, canvases: busy.canvases,
-    idleRafPerSec: round(calm.rafPerSec, 1), idleScriptPct: round(calm.scriptPct, 2), stage: busy.stage, notes: [...busy.notes, ...calm.notes] };
+    idleRafPerSec: round(calm.rafPerSec, 1), idleScriptPct: round(calm.scriptPct, 2), stage: busy.stage, stageKind: busy.kind || null, notes: [...busy.notes, ...calm.notes] };
 }
 // the median of each numeric metric over the runs (a metric a run could not take is left out of its median)
 export function medianOf(runs) {
@@ -71,7 +71,7 @@ export function markdown({ rows, median, size, enforce, runs, profile }) {
     ...rows.map((r) => `| ${r.label} | ${fmt(r.value, r.unit)} | ${r.target} | ${r.hard} | ${MARK[r.status]} |`), '',
     `Also measured: frame p50 ${fmt(median.frameP50Ms, 'ms')}, painted-frame p95 ${fmt(median.paintP95Ms, 'ms')}, frames over 16.7 ms ${fmt(median.longFrames16)},`
     + ` long animation frames ${fmt(median.loafCount)}, most canvas draws in one frame ${fmt(median.drawsMax)}, DOM nodes ${fmt(median.domNodes)},`
-    + ` canvases ${fmt(median.canvases)}, FCP ${fmt(median.fcpMs, 'ms')}, LCP ${fmt(median.lcpMs, 'ms')}, stage ${median.stage}.`, ''];
+    + ` canvases ${fmt(median.canvases)}, FCP ${fmt(median.fcpMs, 'ms')}, LCP ${fmt(median.lcpMs, 'ms')}, stage ${median.stage} (${median.stageKind || 'none'}).`, ''];
   if (median.notes.length) L.push('Notes: ' + median.notes.join('; ') + '.', '');
   L.push(`### Size (information only; warns past ${size.warnBrotliKB} KB brotli of scripts)`, '',
     `Scripts ${size.scriptsBrotliKB} KB brotli, everything ${size.totalBrotliKB} KB brotli${size.warn ? ' **(over the warning line)**' : ''}.`, '',

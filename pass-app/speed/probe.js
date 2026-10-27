@@ -23,9 +23,13 @@
   watch('layout-shift', (e) => { if (!e.hadRecentInput) P.shifts += e.value; });
   watch('event', (e) => { if (e.interactionId) P.events.push({ name: e.name, id: e.interactionId, ms: e.duration, phase: P.phase }); }, { durationThreshold: 16 });
   watch('long-animation-frame', (e) => P.loaf.push({ ms: e.duration, phase: P.phase }));
-  // first useful paint: the app's own mark when it sets one, else the first frame painted after the headline has words and the scene
-  // slot has content (the status line, the scene or its still card, and the first number)
-  const useful = () => { const s = document.getElementById('summary'), sc = document.getElementById('scene-pass'); return !!(s && s.textContent.trim() && sc && sc.firstElementChild); };
+  // first useful paint: the app's own mark when it sets one, else the first frame painted after the headline has words and the stage
+  // has content (the status line, the stage, and the first number). The stage is the Board's pixel scene slot (#scene-pass) or, on the
+  // City home (which replaces that slot), the City's canvas (#city canvas); whichever the page has.
+  const useful = () => {
+    const s = document.getElementById('summary'), sc = document.getElementById('scene-pass'), city = document.getElementById('city');
+    return !!(s && s.textContent.trim() && ((sc && sc.firstElementChild) || (!sc && city && city.querySelector('canvas'))));
+  };
   const done = (t) => { if (P.fup === null) P.fup = t; };
   watch('mark', (e) => { if (e.name === 'board-first-useful') done(e.startTime); });
   const mo = new MutationObserver(() => { if (P.fup !== null || !useful()) return; mo.disconnect(); raf(() => setTimeout(() => done(performance.now()), 0)); });
