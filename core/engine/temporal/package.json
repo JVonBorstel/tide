@@ -1,0 +1,13 @@
+{
+  "name": "tide-engine-temporal",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Temporal packages for core/engine/temporal (pinned; Jordan's install tap, INSTALL.md). Not published.",
+  "license": "MIT",
+  "dependencies": {
+    "@temporalio/activity": "1.24.0",
+    "@temporalio/client": "1.24.0",
+    "@temporalio/worker": "1.24.0",
+    "@temporalio/workflow": "1.24.0"
+  }
+}

@@ -133,6 +133,10 @@ async function testLogAndShape() {
     let msg = ''; try { sink.append({ at: 'x', actor: 'engine', kind: 'wo.created', wo: WO, data: {}, proof: null }); } catch (err) { msg = err.message; }
     check('event log: an event the contract refuses is never written', /not valid/.test(msg) && sink.all().length === 2, msg.slice(0, 120));
     check('event log: no lock file left behind', !fs.existsSync(`${file}.lock`));
+    // A brand-new state folder (the first real Temporal run hit ENOENT here): the lock's folder is made before the lock is taken.
+    const fresh = fileSink(path.join(dir, 'new-state', 'engine', 'events.jsonl'));
+    const firstId = fresh.nextDecisionId(); const firstEv = fresh.append({ at: '2030-01-07T09:00:00Z', actor: 'engine', kind: 'wo.created', wo: WO, data: CREATED, proof: null });
+    check('event log: a first decision id and a first append into a folder that does not exist yet both work (no ENOENT)', firstId === 'D-1' && firstEv.seq === 1 && fresh.all().length === 1);
     const timer = (n, at = '2030-01-07T09:03:00Z') => ({ at, actor: 'engine', kind: 'x.engine.timer', wo: WO, data: { sec: n }, proof: null });
     let batchErr = ''; try { sink.appendAll([timer(1), { ...timer(2), at: 'bad' }]); } catch (err) { batchErr = err.message; }
     const two = sink.appendAll([timer(3), timer(4)]);

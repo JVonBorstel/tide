@@ -14,7 +14,7 @@ The engine carries each work order (WO) from build to closed. It retries, waits 
 | `governor.mjs` | May a crew start now? It reads `<state>\plan-usage.json`. Unknown readings, including a missing weekly number, mean hold. The week: from 85 % hold, from 95 % stop. In the last 60 min before the 5-hour window resets: run until 100 %, because what is left is lost at the reset. Otherwise: below 70 % run, from 70 % hold, from 85 % stop. |
 | `engine.mjs` | The adapter interface (`start`, `signal`, `query`, `close`), `openEngine()` and `temporalStatus()`. |
 | `fake.mjs` | The in-process engine. It needs no install and keeps everything in files in its own folder. It is used by the tests and as the stand-in until Temporal runs. |
-| `temporal/` | The Temporal engine: the workflow, the activities, the worker and the client. It needs Jordan's two installs (`temporal/INSTALL.md`). |
+| `temporal/` | The Temporal engine: the workflow, the activities, the worker and the client. It needs the Temporal CLI and the pinned packages (`temporal/package-lock.json`). Both are installed on Jordan's PC; `temporal/INSTALL.md` says how to install them again. |
 | `cli.mjs` | Read-only looks (see below). |
 | `converge/` | The convergence workflows (build-way 3.6): freshen-pr, re-review, retry (a fresh crew, at most 2, then a card), re-cook from intent, the PICKUP archive, worktree tidy, close-superseded, the contradiction finder and the morning card. Each is a pure plan over a snapshot; `run.mjs` carries the actions out or only prints them (dry run). An action that needs Jordan's yes only creates a card, unless a standing yes is in the log. Section 9 allows a standing yes only for removing done worktrees and for freshening; closing a PR needs a yes each time. Every repeatable action is bounded (`BOUNDS`: tries per key, a cool-down, then one re-plan-or-drop card), and at most 2 heavy or bulk starts happen per tick. `schedule.mjs` says when each one runs. |
 
@@ -52,7 +52,7 @@ node core/engine/adopt.mjs --brief <BRIEF.md> --streams <file> [--pr <repo#n> --
 
 `pwsh -File scripts/run-bounded.ps1 -Script tests/Test-Engine.ps1 -TimeoutSeconds 600 -MaxMB 3000`
 
-This runs `tests/core/engine/test-engine.mjs`. The suites are wo, activity, runner, governor, converge and temporal. `adopt` has its own suite: `tests/Test-Adopt.ps1`. Each test is named after an acceptance line. The Temporal suite skips its three live tests, saying why, until the installs are done.
+This runs `tests/core/engine/test-engine.mjs`. The suites are wo, activity, runner, governor, converge and temporal. `adopt` has its own suite: `tests/Test-Adopt.ps1`. Each test is named after an acceptance line. The Temporal suite's 4 live tests start a dev server on a free local port in a scratch folder. They need the Temporal CLI and the packages, installed with `npm ci --ignore-scripts` in `core/engine/temporal` (see `temporal/INSTALL.md`). They take about 2.5 min. Where the CLI or the packages are missing, they skip and say why.
 
 ## Not here yet (later slices, each its own PR)
 

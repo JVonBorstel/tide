@@ -4,8 +4,9 @@
 // (sent after the Board or /decide has written Jordan's decision.answered to the log) wakes an order that waits on him.
 // Workflow code must be deterministic: no files, no clock, no network here. Everything that touches the world is an activity
 // (activities.mjs): loadEvents reads the WO's events, runCommand carries out one command (driver.mjs), addTimer records a fired timer.
-// Bundled by the worker (worker.mjs, workflowsPath). Needs @temporalio/workflow (Jordan's install tap, INSTALL.md). UNVERIFIED until
-// that install: that the bundler takes this .mjs file and its import of ../wo.mjs as written (tests/core/engine/test-temporal.mjs checks).
+// Bundled by the worker (worker.mjs, workflowsPath) from core/engine/temporal/node_modules (package-lock.json, @temporalio 1.24.0).
+// Checked on 2026-10-26 with Temporal CLI 1.9.1 on Node 22.12 and 24.22: the bundler takes this .mjs file and ../wo.mjs as written
+// (tests/core/engine/test-temporal.mjs: kill the worker mid-wait, a timer after a restart, a signal that wakes, back-to-back signals).
 import { proxyActivities, defineSignal, defineQuery, setHandler, condition, continueAsNew, workflowInfo } from '@temporalio/workflow';
 import { reduce, next } from '../wo.mjs';
 
