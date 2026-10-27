@@ -10,6 +10,7 @@
   - the building names wrap instead of being cut with an ellipsis;
   - the frame follows the City's own sky (`#city[data-sky]`). By day the pixels are as drawn (Look A). At dusk and night the picture gets more contrast and colour, so lit windows, beacons and signs stand out (B's lighting, decision D-3).
 - **Can't reach the Yard:** the red bar now really appears after 10 s. The live stream's own retries (an error every few seconds while the server is down) used to restart the 10 s timer each time, so the bar never came. Now one timer runs per drop.
+- Until `city.js` draws its picture, the City holds half the width as room (`#city:not([data-drawn])`, about a six-building City), so the Board below jumps less on a cold open. `renderNotices` returns at once when no notice changed.
 - New screen tests: `pass-app/test-status-line.mjs`. They drive the real Board server on a throwaway state folder (made-up work orders) in headless Chrome or Edge. The City's `/api/towers` answer is replaced by a synthetic one with long made-up names.
 - The browser start-up and DevTools connection that `pass-app/test-work-ui.mjs` had inline now live in `pass-app/test-browser-kit.mjs`. Both screen tests use it, so the code-quality ratchet finds no duplicate.
 
@@ -36,8 +37,13 @@ Measured at 412 x 900, dark, with four notices at once: auto-merge paused, the W
   - `NoHScroll360`, `NoHScroll360_ManyChips`, `NoHScroll412`;
   - `City_FullWidth`, `City_Higher`, `City_Taller`, `City_LookAByDay_BAtNight`;
   - `SpeedBudget_NotWorse`: no canvas, animation or frame loop added. The budget itself is measured by CI's `speed` job on the pull request.
+- CI `speed` job (report only, phone profile), this change against the last three main runs:
+  - layout shift 0.766 against 0.936 on all three main runs (better);
+  - frame work, pinch, view change, paint, heap and idle numbers: inside the range of the main runs;
+  - INP (slowest tap): 9 runs each; the median is 176 ms here against 152 ms on main (ranges 120-232 and 88-352). Whether that 24 ms is real or runner noise is unknown. A full-width City is about 17% more pixels to redraw when the Board tab comes back.
+  - Hard limits in `budget.json` are unchanged.
 - `tests/Test-PassApp.ps1`: 1298 passed, 0 failed (the 27 above included). The "Phone alerts are off" checks now test the Settings line and check that no banner says it.
-- `tests/Test-Work.ps1` (its screen test now uses the shared kit): 118 passed, 0 failed.
+- `tests/Test-Work.ps1` (its screen test now uses the shared kit, which waits up to 30 s for the browser: a cold CI runner once took over 10 s): 118 passed, 0 failed.
 - Code-quality ratchet (`scripts/quality/metrics.ps1 -ChangedSince origin/main`): 0 new violations.
 
 **L1-L4:** person: the Board home shows the City and what needs Jordan at a glance on the phone; only real breakage is loud. Business, MSP, community: none.
