@@ -1,0 +1,97 @@
+/* The Work tab (lane L5, WO-UPG-L5-4, look A "inline list"). The Board's own tokens (app.css :root, light and dark) and rules
+   (DESIGN.md): full-bleed rows with hairlines inset 16 px, ember only for what needs Jordan, state = shape + word, 44 px touch targets,
+   ease-out motion on transform / opacity / grid rows only (120 fps), reduced motion = short fades and no movement. */
+.wk-switch{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:8px var(--gutter) 4px;padding:4px;border-radius:14px;background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.wk-switch a{display:flex;align-items:center;justify-content:center;min-height:44px;border-radius:10px;color:var(--ink-2);font-weight:600;font-size:15px;text-decoration:none;transition:background .2s var(--ease),color .2s}
+.wk-switch a[aria-current="page"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 0 var(--line-strong)}
+.wk-switch a:focus-visible,.wk button:focus-visible,.wk textarea:focus-visible,.wk input:focus-visible,.wk summary:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.wk{padding-bottom:8px}
+.wk .mono{font-family:var(--mono);font-size:13px;line-height:18px;font-variant-numeric:tabular-nums}
+.wk .fault{color:var(--fault)}
+.wk .ember{color:var(--ember);font-weight:600}
+.wk-top{margin:8px var(--gutter) 0;font-size:16px;line-height:22px;color:var(--ink)}
+.wk-line{margin:8px var(--gutter) 0;padding:10px 12px;border-radius:10px;background:var(--raised);font-size:14px;line-height:20px;color:var(--ink)}
+.wk-line.warn{border:1.5px solid var(--control-border)}
+.wk-link{background:none;border:0;padding:0 2px;min-height:44px;color:var(--ink);font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
+.wk-sec{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:22px var(--gutter) 8px}
+.wk-sec h2{margin:0;font-size:15px;line-height:20px;font-weight:600;outline:none}
+.wk-meta{font-size:14px;line-height:20px;color:var(--ink-2)}
+.wk-list{background:var(--surface)}
+.wk-row,.wk-card-in,.wk-empty{position:relative;padding:12px var(--gutter)}
+.wk-list>*+*::before{content:"";position:absolute;left:var(--gutter);right:0;top:0;border-top:1px solid var(--line)}
+.wk-list>.wk-card+*::before,.wk-list>*+.wk-card::before{z-index:1}
+.wk-empty{margin:0;color:var(--ink-2)}
+.wk-row{content-visibility:auto;contain-intrinsic-size:auto 76px}
+.wk-l1{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.wk-l2{font-size:14px;line-height:20px;color:var(--ink);margin-top:2px}
+.wk-goal{font-size:16px;line-height:22px;margin-top:2px}
+.wk-sym{display:inline-block;width:18px;text-align:center}
+.wk-over{color:var(--fault);font-weight:600}
+.wk-pips{display:inline-flex;gap:3px;align-self:center}
+.wk-pips i{width:10px;height:10px;border-radius:2px;border:1.5px solid var(--ink-2)}
+.wk-pips i.f{background:var(--ink-2)}
+.wk-pips i.c{background:var(--ember);border-color:var(--ember)}
+.wk-skel span{display:block;height:14px;margin:6px 0;border-radius:4px;background:var(--raised);width:60%}
+.wk-skel span+span{width:85%}
+/* the Needs-you rows: a grid row that grows in and folds away (1fr <-> 0fr), so nothing below jumps */
+.wk-card{position:relative;display:grid;grid-template-rows:1fr;background:var(--surface);transition:grid-template-rows .32s var(--ease),opacity .24s var(--ease),transform .32s var(--ease)}
+.wk-fold{min-height:0;overflow:hidden}
+.wk-card.enter{grid-template-rows:0fr;opacity:0;transform:translateY(-6px)}
+.wk-card.gone{grid-template-rows:0fr;opacity:0;pointer-events:none}
+.wk-card.busy .wk-ans,.wk-card.busy .wk-abc{opacity:.75}
+.wk-kind{margin:0;font-size:14px;line-height:20px;color:var(--ink-2)}
+.wk-ask{margin:2px 0 0;font-size:16px;line-height:22px;font-weight:600}
+.wk-why{margin:4px 0 0;font-size:14px;line-height:20px;color:var(--ink-2)}
+.wk-facts{margin:4px 0 0;font-size:14px;line-height:20px;color:var(--ink-2)}
+.wk-ans{display:grid;gap:8px;margin-top:10px}
+.wk-ans.n1{grid-template-columns:1fr}.wk-ans.n2{grid-template-columns:1fr 1fr}.wk-ans.n3{grid-template-columns:1.4fr 1fr 1fr}.wk-ans.n4,.wk-ans.n5,.wk-ans.n6{grid-template-columns:repeat(3,1fr)}
+.wk-btn{min-height:48px;padding:0 10px;border-radius:14px;border:1.5px solid var(--control-border);background:var(--surface);color:var(--ink);font:inherit;font-size:16px;font-weight:600;cursor:pointer;touch-action:manipulation;transition:transform .1s var(--ease),background .2s,opacity .2s}
+.wk-btn.primary{background:var(--ember-grad,var(--ember));border-color:transparent;color:var(--on-ember);box-shadow:var(--glow,none)}
+.wk-btn:active{transform:scale(.97)}
+.wk-btn[aria-pressed="true"]{outline:2px solid var(--ink);outline-offset:2px}
+.wk-btn:disabled{cursor:default}
+.wk-notap .wk-btn[data-answer],.wk-notap .wk-tile,.wk-notap [data-m-rec]{opacity:.55}
+.wk-abc{display:grid;gap:8px;margin-top:10px}
+.wk-abc.n2{grid-template-columns:1fr 1fr}.wk-abc.n3{grid-template-columns:repeat(3,1fr)}
+.wk-tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:88px;padding:10px;border-radius:14px;border:1.5px solid var(--control-border);background:var(--surface);color:var(--ink);font:inherit;text-align:left;cursor:pointer;touch-action:manipulation;transition:transform .1s var(--ease)}
+.wk-tile:active{transform:scale(.97)}
+.wk-tile.rec{border-color:var(--ember);box-shadow:inset 0 0 0 1.5px var(--ember)}
+.wk-tile-op{font-size:20px;line-height:24px;font-weight:700}
+.wk-tile-t{font-size:14px;line-height:19px}
+.wk-tile-rec{font-size:13px;line-height:18px;color:var(--ink-2);font-weight:600}
+.wk-note-btn{display:inline-flex;align-items:center;min-height:44px;margin-top:4px;padding:0;background:none;border:0;color:var(--ink-2);font:inherit;font-size:14px;font-weight:600;text-decoration:underline;cursor:pointer}
+.wk-note label{display:block;font-size:14px;line-height:20px;color:var(--ink-2)}
+.wk-note textarea{display:block;width:100%;margin-top:4px;padding:10px;border-radius:10px;border:1.5px solid var(--control-border);background:var(--bg);color:var(--ink);font:inherit;font-size:16px;line-height:22px;resize:vertical}
+.wk-msg{margin:6px 0 0;min-height:0;font-size:14px;line-height:20px;color:var(--ink-2)}
+.wk-msg:empty{display:none}
+.wk-morning{margin:12px 0 0;padding:14px var(--gutter);background:var(--ember-wash);transition:opacity .28s var(--ease),transform .28s var(--ease)}
+.wk-morning.gone{opacity:0;transform:translateY(-6px)}
+.wk-more{display:block;width:calc(100% - 2 * var(--gutter));margin:10px var(--gutter) 0;min-height:44px;border-radius:14px;border:1.5px solid var(--control-border);background:transparent;color:var(--ink);font:inherit;font-weight:600;cursor:pointer}
+.wk-flags{margin:0;padding:10px var(--gutter);background:var(--surface);border-top:1px solid var(--line);font-size:14px;line-height:20px}
+.wk-flags summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:var(--ink);font-weight:600}
+.wk-flags ul{margin:4px 0 0;padding-left:18px;color:var(--ink-2)}
+/* the week */
+.wk-week{padding:12px var(--gutter) 14px;background:var(--surface)}
+.wk-bars{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;height:56px;align-items:end;padding:0 4px}
+.wk-bar{height:100%;display:flex;align-items:end;border-radius:4px;background:var(--raised);overflow:hidden}
+.wk-bar i{display:block;width:100%;height:100%;background:var(--steel);transform-origin:bottom;transform:scaleY(max(var(--h,0),.04));transition:transform .4s var(--ease),background .2s}
+.wk-bar.on i{background:var(--ember)}
+.wk-range{display:block;width:100%;height:44px;margin:4px 0 0;accent-color:var(--ember);cursor:pointer}
+.wk-days{display:grid;grid-template-columns:repeat(7,1fr);font-size:13px;line-height:18px;color:var(--ink-2);text-align:center}
+.wk-days .on{color:var(--ink);font-weight:700}
+.wk-week-acts{margin-top:8px}
+.wk-play{width:100%}
+.wk-snap{margin-top:10px;transition:opacity .16s var(--ease)}
+.wk-snap.swap{opacity:.35}
+.wk-snap-h{margin:0;font-size:15px;line-height:20px}
+.wk-ev{margin:6px 0 0;padding:0;list-style:none;font-size:14px;line-height:20px;color:var(--ink)}
+.wk-ev li{padding:5px 0;border-top:1px solid var(--line)}
+.wk-ev time{color:var(--ink-2);margin-right:6px}
+@media (prefers-reduced-motion:reduce){
+  .wk-card,.wk-morning,.wk-snap,.wk-bar i,.wk-switch a{transition:opacity .12s linear!important;transform:none!important}
+  .wk-card.gone,.wk-card.enter{grid-template-rows:0fr}
+  .wk-btn:active,.wk-tile:active{transform:none}
+}
+@media (min-width:600px){.wk-abc .wk-tile{min-height:72px}}
+/* Work holds the Ledger tab's place: its own count (cards waiting), not the Ledger's */
+.bar a.wk-on #count-ledger{display:none}

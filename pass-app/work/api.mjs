@@ -26,7 +26,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(here, '..', '..');
 
 /** The paths this module answers (the server's seam asks this first). @param {string} p */
-export const isWorkPath = (p) => p === '/api/decide' || p === '/api/work' || p.startsWith('/api/work/');
+export const isWorkPath = (p) => p === '/api/decide' || p === '/api/work' || p.startsWith('/api/work/') || p.startsWith('/work/');
+/** The Work tab's screen files (pass-app/public/work), served here so a changed file is never answered from an old cache. */
+const PUB_WORK = path.resolve(here, '..', 'public', 'work');
+const STATIC_TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 /** core/ is loaded on the first Work request only, so the Board starts and runs as before when the tab is never used. */
 /** @type {Promise<any> | null} */ let coreP = null;
@@ -273,7 +276,9 @@ export class WorkApi {
       }
       if (req.method !== 'GET' && req.method !== 'HEAD') fail(405, 'bad-request', 'GET only.');
       if (p === '/api/work') return ctx.send(res, 200, await this.work(url, res));
+      if (p.startsWith('/work/')) return this.file(p, res, ctx);
       if (p === '/api/work/stream') return await this.stream(req, res, url, ctx);
+      if (p === '/api/work/events') return ctx.send(res, 200, await this.week(url));
       let id = ''; try { id = decodeURIComponent(p.slice('/api/work/'.length)); } catch { fail(400, 'bad-request', 'A work order id looks like WO-312 or J312.'); }
       return ctx.send(res, 200, await this.item(id, res));
     } catch (e) {
@@ -283,6 +288,27 @@ export class WorkApi {
       console.error('work api:', p, err?.message);
       return ctx.send(res, 503, { ok: false, code: 'unavailable', error: 'The Work tab hit an error; nothing was recorded. Try again.' });
     }
+  }
+
+  /**
+   * GET /api/work/events?days=7: the events of the last days (at most 14), newest 3000, shared like every other answer, for the
+   * Work tab's week replay. Not in the contracts yet (a card asks for it); each item is an event contract object.
+   * @param {URL} url
+   */
+  async week(url) {
+    const C = await core(); await this.ready();
+    const days = Math.min(14, Math.max(1, Math.floor(Number(url.searchParams.get('days')) || 7)));
+    const from = new Date(this.now().getTime() - days * 86400e3).toISOString();
+    const list = this.events.filter((e) => String(e.at) >= from).slice(-3000).map((e) => this.pubEvent(C, e));
+    return { ok: true, at: this.now().toISOString(), from, events: list };
+  }
+
+  /** One file of pass-app/public/work (.js, .css, .svg only), read fresh and never cached by the browser. @param {string} p @param {any} res @param {Ctx} ctx */
+  file(p, res, ctx) {
+    let rel = ''; try { rel = decodeURIComponent(p.slice('/work/'.length)); } catch { }
+    const full = path.resolve(PUB_WORK, rel); const type = STATIC_TYPES[/** @type {keyof typeof STATIC_TYPES} */ (path.extname(full))];
+    if (!rel || !type || !full.startsWith(PUB_WORK + path.sep) || !fs.existsSync(full) || !fs.statSync(full).isFile()) return ctx.send(res, 404, { ok: false, code: 'not-found', error: 'not found' });
+    return ctx.send(res, 200, fs.readFileSync(full), type);
   }
 
   close() { for (const c of [...this.clients]) this.drop(c); this.stopTimers(); this.reset(); }

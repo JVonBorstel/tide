@@ -234,6 +234,7 @@ function rowMenu(id) {
 
 // ---------- routing ----------
 const TITLES = { pass: 'Board', talk: 'Talk', activity: 'Activity', cooks: 'Live', ledger: 'Ledger', world: 'World' };
+import('./work/work.js').then((m) => m.mountWork({ titles: TITLES, buzz })).catch(() => {});   // L5 seam (the Work tab, behind flag board.work; a failed load never stops the Board): lane L5 alone edits this line
 function go(h) { if (location.hash === h) route(); else location.hash = h; }
 function route() {
   const [a, b0] = location.hash.replace(/^#\/?/, '').split('/'); const b = a === 'job' ? jobIdOf(b0) : b0;
