@@ -17,6 +17,14 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 permissions:
   contents: read
+# Gate switches (lane L4, WO-UPG-L4-5): each gate reports on the summary page and never blocks while it says "report". Changing one line
+# to "enforce" makes that gate block a PR; each change is a card for Jordan (build-way 4.3 cutover step 5).
+env:
+  GATE_WO_TITLE: report
+  GATE_GENERATED: report
+  GATE_DECISION: report
+  GATE_NAMES: report
+  GATE_VALE: report
 jobs:
   # Code-quality ratchet (scripts/quality/metrics.ps1 over kitchen/quality-baseline.json): new long functions, deep nesting and duplicated
   # blocks fail, growth warns; PSScriptAnalyzer regressions on the PowerShell files this change touched (only when the runner image
@@ -37,10 +45,12 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/quality/metrics.ps1 -ChangedSince HEAD^1 -Summary $env:GITHUB_STEP_SUMMARY
       # Old names guard (Tide rename): lists kitchen words in the display text this change adds, against the same HEAD^1 base. Report
-      # only for now (exit 0); enforce mode is the -Enforce flag on this line, after the S1 display slices land (RENAME-PLAN.md section 4).
-      - name: Old names guard (report only; scripts/check-names.ps1)
+      # only while GATE_NAMES (top of this file) says report (exit 0); "enforce" adds -Enforce, which fails on new hits only (baseline).
+      - name: Old names guard (scripts/check-names.ps1; GATE_NAMES)
         shell: pwsh
-        run: pwsh -NoProfile -File scripts/check-names.ps1 -Base HEAD^1 -Summary $env:GITHUB_STEP_SUMMARY
+        run: |
+          $enforce = @(); if ($env:GATE_NAMES -eq 'enforce') { $enforce = @('-Enforce') }
+          pwsh -NoProfile -File scripts/check-names.ps1 -Base HEAD^1 -Summary $env:GITHUB_STEP_SUMMARY @enforce
       - name: Quality tests (tests/Test-Quality.ps1)
         shell: pwsh
         run: |
@@ -79,6 +89,38 @@ jobs:
           $keep = @(($fix + $out) -split "`n" | Where-Object { $_ -match '^(Contracts fixtures:|Contracts tests:|FAIL:)' } | ForEach-Object { "- $($_.Trim())" })
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value (@('', '## Contracts', '') + $keep)
           if ($c1 -ne 0 -or $c2 -ne 0) { exit 1 }
+      # The ship path (core/ship, scripts/check-*.mjs, flags.json; WO-UPG-L4): flags, gates, docs step, Resurvey, Handover queue. Throwaway
+      # git repos in the temp folder only; no network.
+      - name: Ship (core/ship flags, gates, docs step, Resurvey, Handover queue)
+        shell: pwsh
+        run: |
+          $flags = node core/ship/flags.mjs check 2>&1 | Out-String; $c1 = $LASTEXITCODE
+          $out = pwsh -NoProfile -File tests/Test-Ship.ps1 2>&1 | Out-String; $c2 = $LASTEXITCODE
+          Write-Output $flags; Write-Output $out
+          $keep = @(($flags + $out) -split "`n" | Where-Object { $_ -match '^(Flags:|Ship tests:|FAIL:)' } | ForEach-Object { "- $($_.Trim())" })
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value (@('', '## Ship', '') + $keep)
+          if ($c1 -ne 0 -or $c2 -ne 0) { exit 1 }
+      # Every .mjs under core/ passes node --check (ci-quick-checks.ps1 covers kitchen/ and pass-app/ only), then the other lanes' suites
+      # listed in core/ship/gates.json "coreSuites" (ledger, engine, adopt), each once its file is on the branch. They need node:sqlite
+      # (Node 22 or later); an older runner Node is named as a failure, never skipped silently.
+      - name: Core (node --check core/**/*.mjs; the lanes' suites when present)
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -LiteralPath core -Recurse -File -Filter *.mjs | Sort-Object FullName)
+          $bad = @(foreach ($f in $files) { node --check $f.FullName 2>&1 | Out-Null; if ($LASTEXITCODE -ne 0) { "FAIL: node --check $([IO.Path]::GetRelativePath($PWD, $f.FullName))" } })
+          $lines = @("Core: $($files.Count) .mjs files checked with node --check $(node --version), $($bad.Count) failed") + $bad
+          $code = [int]($bad.Count -gt 0)
+          $major = [int]((node --version).TrimStart('v').Split('.')[0])
+          foreach ($suite in (Get-Content -Raw core/ship/gates.json | ConvertFrom-Json).coreSuites.paths) {
+            if (-not (Test-Path -LiteralPath $suite)) { $lines += "${suite}: not on this branch yet"; continue }
+            if ($major -lt 22) { $lines += "FAIL: $suite needs Node 22 or later; the runner has $(node --version)"; $code = 1; continue }
+            $out = pwsh -NoProfile -File $suite 2>&1 | Out-String; $c = $LASTEXITCODE; if ($c -ne 0) { $code = 1 }; Write-Output $out
+            $got = @($out -split "`n" | Where-Object { $_ -match '^(\w[\w ]* tests:|FAIL:)' } | ForEach-Object { "$($suite): $($_.Trim())" })
+            $lines += if ($got) { $got } else { "${suite}: exit $c, and it printed no count line" }
+          }
+          $lines | ForEach-Object { Write-Output $_ }
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value (@('', '## Core', '') + ($lines | ForEach-Object { "- $_" }))
+          exit $code
       - name: Rust check (kitchen-sandbox targets Windows; checked from Linux, no linking)
         working-directory: rust/kitchen-sandbox
         run: |
@@ -88,3 +130,49 @@ jobs:
         working-directory: rust/kitchen-sandbox
         continue-on-error: true
         run: cargo clippy --offline --locked --target x86_64-pc-windows-gnu
+  # The ship gates (lane L4, WO-UPG-L4-5): each writes its verdict to the summary page and follows its switch at the top of this file
+  # (report = never blocks). fetch-depth 2 gives HEAD^1, the base branch of GitHub's merge commit. On a push to main the PR gates say
+  # SKIP. Vale (MIT, errata-ai/vale) lints the prose of docs/ with the Tide vocabulary in .vale/; only lines a PR adds are annotated.
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Gate - WO id in the PR title (GATE_WO_TITLE)
+        run: node scripts/check-wo-title.mjs --mode "$GATE_WO_TITLE"
+      - name: Gate - no generated files in the PR (GATE_GENERATED)
+        run: node scripts/check-generated.mjs --mode "$GATE_GENERATED" --base HEAD^1
+      - name: Gate - decision before the Board's look changes (GATE_DECISION)
+        run: node scripts/check-decision-gate.mjs --mode "$GATE_DECISION" --base HEAD^1
+      - name: Gate - Vale vocabulary on docs/ (GATE_VALE)
+        id: vale
+        if: github.event_name == 'pull_request'
+        continue-on-error: ${{ env.GATE_VALE != 'enforce' }}
+        uses: vale-cli/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3.0.0
+        with:
+          version: 3.24.0
+          files: docs
+          config: .vale/vale.ini
+          filter_mode: added
+          fail_level: ${{ env.GATE_VALE == 'enforce' && 'error' || 'none' }}
+      - name: Gate - Vale summary
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          word="${{ steps.vale.outcome }}"
+          vale=$(command -v vale || ls "$RUNNER_TOOL_CACHE"/vale/*/x64/vale 2>/dev/null | head -n 1 || true)
+          if [ -n "$vale" ]; then
+            w=$("$vale" --config .vale/vale.ini --output=line --minAlertLevel=warning docs 2>/dev/null | wc -l)
+            e=$("$vale" --config .vale/vale.ini --output=line --minAlertLevel=error docs 2>/dev/null | wc -l)
+            line="all of docs/: ${e} error(s), ${w} alert(s) at warning or above; the annotations show the ones on lines this PR adds"
+          else
+            line="the Vale binary was not found after the action, so no count (see the annotations)"
+          fi
+          printf '### Gate Vale vocabulary (docs/): %s (%s)\n\n- %s\n' "$word" "$GATE_VALE" "$line" >> "$GITHUB_STEP_SUMMARY"
+          echo "Gate Vale vocabulary: ${word} (${GATE_VALE}); ${line}"

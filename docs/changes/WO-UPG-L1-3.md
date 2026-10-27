@@ -5,7 +5,7 @@
   answer of `cli.mjs` (`build`, `show`, `queue`, `streams`, `flags`, `parity`).
   - Free text (goals, titles, why, proof, notes, flag sentences) loses this PC's paths, email addresses, private host names (tailnet,
     `.local`, `.lan`, `.internal`) and private addresses (10/8, 172.16/12, 192.168/16, 100.64/10). It also loses the private words in
-    `<state>\ledger-private-words.json`: a JSON list of private repo names and job-hunt companies, kept only in the state folder.
+    `<state>\ledger-private-words.json`: a JSON list of private repo names and private topics, kept only in the state folder.
     Each value becomes a fixed marker (`<local path>`, `<email>`, `<private host>`, `<private>`).
   - A private order shows only "a private work order". The Yard marks one with `vars.private` yes/true or a step run with `-Private`.
     The ledger used to miss `yes`, which is the Yard's own word. Its repo names count as private words.

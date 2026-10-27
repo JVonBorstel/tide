@@ -16,6 +16,7 @@ The engine carries each work order (WO) from build to closed. It retries, waits 
 | `fake.mjs` | The in-process engine. It needs no install and keeps everything in files in its own folder. It is used by the tests and as the stand-in until Temporal runs. |
 | `temporal/` | The Temporal engine: the workflow, the activities, the worker and the client. It needs the Temporal CLI and the pinned packages (`temporal/package-lock.json`). Both are installed on Jordan's PC; `temporal/INSTALL.md` says how to install them again. |
 | `cli.mjs` | Read-only looks (see below). |
+| `converge/` | The convergence workflows (build-way 3.6): freshen-pr, re-review, retry (a fresh crew, at most 2, then a card), re-cook from intent, the PICKUP archive, worktree tidy, close-superseded, the contradiction finder and the morning card. Each is a pure plan over a snapshot; `run.mjs` carries the actions out or only prints them (dry run). An action that needs Jordan's yes only creates a card, unless a standing yes is in the log. Section 9 allows a standing yes only for removing done worktrees and for freshening; closing a PR needs a yes each time. Every repeatable action is bounded (`BOUNDS`: tries per key, a cool-down, then one re-plan-or-drop card), and at most 2 heavy or bulk starts happen per tick. `schedule.mjs` says when each one runs. |
 
 ## Safety lines (each one has a named test)
 
@@ -39,7 +40,10 @@ The engine carries each work order (WO) from build to closed. It retries, waits 
 node core/engine/cli.mjs governor [--state <folder>]      # may a crew start now? exit 0 run, 1 hold/stop
 node core/engine/cli.mjs show <WO-id> [--state <folder>]  # stage, state and the next command, from <state>\engine\events.jsonl
 node core/engine/cli.mjs temporal                         # is Temporal installed? names what is missing
+node core/engine/converge/run.mjs <workflow> --snapshot <json> [--events <log>]   # dry run of one convergence workflow; does nothing
 node core/engine/temporal/worker.mjs --state <folder>     # the Temporal worker (after INSTALL.md); 127.0.0.1 only
+node core/engine/adopt.mjs --brief <BRIEF.md> --streams <file> [--pr <repo#n> --head <sha>] [--files <f> | --repo-dir <checkout>] [--decisions <log>] [--write <log>]
+                                                          # a pushed branch or PR + its BRIEF -> a WO; refusals named; writes only with --write
 ```
 
 `--state` defaults to `$BRAIN_KITCHEN`, else `%LOCALAPPDATA%\brain-kitchen`. The commands only read.
@@ -48,10 +52,13 @@ node core/engine/temporal/worker.mjs --state <folder>     # the Temporal worker 
 
 `pwsh -File scripts/run-bounded.ps1 -Script tests/Test-Engine.ps1 -TimeoutSeconds 600 -MaxMB 3000`
 
-This runs `tests/core/engine/test-engine.mjs`. The suites are wo, activity, runner, governor and temporal. Each test is named after an acceptance line. The Temporal suite's 4 live tests start a dev server on a free local port in a scratch folder. They need the Temporal CLI and the packages, installed with `npm ci --ignore-scripts` in `core/engine/temporal` (see `temporal/INSTALL.md`). They take about 2.5 min. Where the CLI or the packages are missing, they skip and say why.
+This runs `tests/core/engine/test-engine.mjs`. The suites are wo, activity, runner, governor, converge and temporal. `adopt` has its own suite: `tests/Test-Adopt.ps1`. Each test is named after an acceptance line. The Temporal suite's 4 live tests start a dev server on a free local port in a scratch folder. They need the Temporal CLI and the packages, installed with `npm ci --ignore-scripts` in `core/engine/temporal` (see `temporal/INSTALL.md`). They take about 2.5 min. Where the CLI or the packages are missing, they skip and say why.
 
 ## Not here yet (later slices, each its own PR)
 
-- `adopt`: turn a pushed branch or PR plus its BRIEF into a WO.
-- The convergence workflows: freshen-pr, re-review, retry, re-cook from intent, the archive and tidy cards, the morning card.
+- The actions the convergence workflows call. Today each one is an activity name the engine does not have yet:
+  - `freshen-pr` and the merge queue (lane L4);
+  - `review`, `retry`, `recook` and `pick` (lane L3 crews);
+  - `pickup-archive`, `worktree-remove`, `pr-close` and `contradiction-finder`.
+- The snapshots the convergence workflows read: open PRs, rows, worktrees and PICKUP entries. They come from lane L1's ledger once it lands.
 - The build and review crews (lane L3) and the docs station (lane L4). Until they land, the steps that need them wait with exit 127 ("not built yet"). They do not use up retries.

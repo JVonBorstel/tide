@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { makeTowers } from './towers.mjs';
+import { isWorkPath, workRoute } from './work/api.mjs';   // L5 seam (the Work tab, WO-UPG-L5-1): lane L5 alone edits this line
 
 const VERSION = '2.10.0';
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -2382,6 +2383,7 @@ async function handle(req, res) {
   }
   if (url.pathname === '/api/health') return send(res, 200, { ok: true, version: VERSION, build: build.id, server: SERVER, up: Math.round(process.uptime()), loop: loopView(), work });   // no data (numbers only: loop delay, files read); for watchdogs, update.ps1 and the W4 tests
   if (!authed(req)) return send(res, 401, { ok: false, error: 'pass key required' });
+  if (isWorkPath(url.pathname)) return workRoute(req, res, url, { root, send, readBody, sec, audit, who: tailscaleUser(req) || 'key' });   // L5 seam (the Work tab, behind flag board.work): lane L5 alone edits this line
   if (url.pathname === '/api/state') return send(res, 200, state());
   if (url.pathname === '/api/bye') {   // update.ps1, just before a restart (pass key only, POST): phones reconnect quietly
     if (req.method !== 'POST' || !keyOk((req.headers.authorization || '').slice(7))) return send(res, 403, { ok: false, error: 'pass key only' });
