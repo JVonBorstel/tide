@@ -50,6 +50,10 @@ try {
     $bad = @($texts | Where-Object { $_ -match ':[^;]*:' -or $_ -cmatch '\b(retry|close|see why)\b' })
     Check "failure sentences read cleanly: one colon after next, button names keep their capitals ($($bad -join ' | '))" ($bad.Count -eq 0 -and ($texts -join "`n") -cmatch 'next: Retry puts it back in the queue; Close ends it\.')
     Check 'policy table: the back-off classes are read from it (Get-FailureClass)' ((& { . (Join-Path $kd 'backoff-lib.ps1'); (Get-FailureClass 'fail' 'gh: API rate limit exceeded') + ',' + (Get-FailureClass 'fail' 'exit 1') }) -eq 'wait,code')
+    # a full disk is not the network: waiting never frees space, so it stops and says so (never the infra class or its long wait)
+    $dv = Get-FailureVerdict 'fail' 'exit 1: There is not enough space on the disk.' $pol; $dt = Format-FailureText $dv 3 5 'build'
+    $db = & { . (Join-Path $kd 'backoff-lib.ps1'); Get-FailureClass 'fail' 'write error: no space left on device' }
+    Check "a full disk says so and stops, with no wait back-off ($($dv.class) $db | $dt)" ($dv.class -eq 'real' -and $dv.backoff -eq 'code' -and $db -eq 'code' -and $dt -eq 'This PC ran out of disk space at step 3 of 5 (build); next: free some disk space on this PC, then Retry.')
 
     # ---- add refuses a duplicate and the force flag works ----
     $c1 = (& $cook -Recipe care -Vars @{ goal = 'Make kitchen/notify.ps1 say the job number.' } -Json | Out-String) | ConvertFrom-Json

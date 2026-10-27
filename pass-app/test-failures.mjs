@@ -31,6 +31,8 @@ const orders = [
   // not counted: days old (in Older), and two cleared ones (in Older, with their end and reason)
   job('J64', 'improve: Example days-old failure', 'quarantined', now - 5 * D, { failure: real(now - 5 * D) }),
   job('J65', 'improve: Example cleared as stale', 'closed', now - 4 * D, { failure: real(now - 4 * D), cleared: { state: 'stale', reason: 'no human action for 4 days since it failed', at: iso(now - H), from: 'quarantined' } }),
+  // open (queued): a new order with the same goal is refused at the door and named in plain words (the duplicate check below)
+  job('J68', 'improve: Example order already in the queue', 'pending', now - 20 * 60e3, { cursor: 0, history: [], recipe: 'improve', vars: { goal: 'Example order already in the queue' } }),
   job('J66', 'improve: Make the example sky warmer at dusk again', 'closed', now - 2 * H, { cleared: { state: 'duplicate', reason: 'the same goal is open as J60 (quarantined)', at: iso(now - 90 * 60e3), by: 'J60', from: 'quarantined' } }),
 ];
 for (const j of orders) fs.writeFileSync(path.join(root, 'jobs', j.id + '.json'), JSON.stringify(j));
@@ -109,12 +111,29 @@ try {
     /^Show older and cleared \(\d+\)$/.test(v1.older) && ['J64', 'J65', 'J66', 'J61'].every((id) => olderIds.includes(id)) && c65?.cleared && c65.say === 'Cleared as stale: no human action for 4 days since it failed'
       && c66?.say === 'Duplicate (J60): the same goal is open as J60 (quarantined)' && /^Dropped: closed by Jordan on the Board$/.test(c61?.say || '') && c65.btns.length === 0, JSON.stringify({ olderIds, c65, c66, c61 }));
 
+  // ---------- duplicates at the door: a refused order names the open one in plain words, with Open (review round 4, D-11) ----------
+  const dupGoal = 'Example order already in the queue';
+  const jobFiles = () => fs.readdirSync(path.join(root, 'jobs')).filter((n) => /^J\d+\.json$/.test(n)).length; const dupBefore = jobFiles();
+  const dupApi = await ev(`fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'cook', recipe: 'improve', vars: { goal: ${JSON.stringify(dupGoal)} } }) }).then((r) => r.json())`);
+  await ev(`(() => { const b = document.createElement('button'); b.type = 'button'; b.dataset.quietOrder = ''; document.getElementById('board').append(b); b.click(); b.remove(); })()`);
+  await until(`!!document.querySelector('input[name=recipe][value=improve]')`, 15000);
+  await ev(`(() => { const r = document.querySelector('input[name=recipe][value=improve]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); })()`); await settle(300);
+  await ev(`(() => { const g = document.getElementById('v-goal'); g.value = ${JSON.stringify(dupGoal)}; g.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('order-form').requestSubmit(); })()`);
+  await until(`[...document.querySelectorAll('#toasts .toast.bad')].some((t) => /already asks/.test(t.textContent))`, 30000);
+  const dupToast = await ev(`(() => { const t = [...document.querySelectorAll('#toasts .toast.bad')].find((x) => /already asks/.test(x.textContent)); return { msg: t?.querySelector('.msg')?.textContent || '', btn: t?.querySelector('[data-a]')?.textContent || '' }; })()`);
+  await ev(`[...document.querySelectorAll('#toasts .toast.bad')].find((x) => /already asks/.test(x.textContent))?.querySelector('[data-a]')?.click()`); await settle(400);
+  const dupHash = await ev('location.hash'); const dupFiles = jobFiles();
+  check('DuplicateAtTheDoor_PlainWords: a new order whose goal is already open is not added; the phone says which work order already asks for it in plain words (WO-0068, its state, its title) with an Open button, never a bare J-id or a CLI flag',
+    dupApi.ok === false && dupApi.sameAs === 'J68' && dupApi.error === 'WO-0068 already asks for this (queued)'
+      && dupToast.msg === 'Not added: WO-0068 already asks for this (queued) · Example order already in the queue' && dupToast.btn === 'Open' && dupHash === '#/job/J68'
+      && !/-Force|\bJ68\b|DUPLICATE/.test(dupApi.error + dupToast.msg) && dupFiles === dupBefore, JSON.stringify({ dupApi, dupToast, dupHash, dupFiles, dupBefore }));
+  await ev(`(() => { document.getElementById('order-sheet')?.close?.(); location.hash = ''; })()`); await settle(300);
   // ---------- a long list: the window counts failure rows only (review round 3, D-11 and the truth rule) ----------
   // 22 more recent failures in two more classes (11 Real failure, 11 Infrastructure), so 25 need Jordan in 5 classes and the window of 20
   // cuts through a group; the old count took the group heads as rows ("Showing 20 of 29") and could leave a head last with no rows under it
   for (let i = 0; i < 22; i++) {
     const id = 'J' + (100 + i), at = now - (10 + i) * 60e3;
-    const f = i % 2 ? F('infra', 'Infrastructure', 'retry', 'The machine ran out of room at step 3 of 3 (tests); next: the Yard tries it once more; if it fails again, Retry or Close.', at) : real(at);
+    const f = i % 2 ? F('infra', 'Infrastructure', 'wait', 'GitHub, CI or the network did not answer at step 3 of 3 (tests); next: it waits for GitHub, CI or the network and tries again by itself.', at) : real(at);
     fs.writeFileSync(path.join(root, 'jobs', id + '.json'), JSON.stringify(job(id, `improve: Example long-list failure ${i + 1}`, 'quarantined', at, { failure: f })));
   }
   const winView = () => ev(`(() => { const t = (el) => (el?.textContent || '').replace(/\\s+/g, ' ').trim(); const sec = document.getElementById('sec-aside');

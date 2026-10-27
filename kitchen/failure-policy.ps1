@@ -22,7 +22,7 @@ function Read-FailurePolicy([string]$Path = (Join-Path $PSScriptRoot 'failure-po
     if ($raw.v -ne 1 -or $raw.classes -isnot [Collections.IDictionary] -or $raw.unknown -isnot [Collections.IDictionary]) { throw "failure policy $Path is not version 1 with classes and unknown" }
     $sigs = @(foreach ($s in @($raw.signatures)) {
             if (-not $raw.classes.Contains([string]$s.class)) { throw "failure policy: signature class '$($s.class)' is not a class" }
-            @{ class = [string]$s.class; say = [string]$s.say; rx = [regex]::new([string]$s.match, 'IgnoreCase, CultureInvariant') }
+            @{ class = [string]$s.class; say = [string]$s.say; next = [string]$s.next; rx = [regex]::new([string]$s.match, 'IgnoreCase, CultureInvariant') }
         })
     foreach ($k in @($raw.kinds.Keys)) { if (-not $raw.classes.Contains([string]$raw.kinds[$k].class)) { throw "failure policy: kind '$k' names no class" } }
     if (-not $raw.classes.Contains([string]$raw.unknown.class)) { throw 'failure policy: the unknown class is not a class' }
@@ -36,13 +36,13 @@ function Read-FailurePolicy([string]$Path = (Join-Path $PSScriptRoot 'failure-po
 # The class, action and plain words of one failure. Returns @{ class; label; action; actionWords; backoff; say; next; unknown }.
 function Get-FailureVerdict([string]$Kind, [string]$Detail, $Policy = $null) {
     if (-not $Policy) { $Policy = Read-FailurePolicy }
-    $cls = ''; $say = ''; $unknown = $false
+    $cls = ''; $say = ''; $unknown = $false; $sigNext = ''
     if ($Kind -and $Kind -ne 'fail' -and $Policy.kinds.Contains($Kind)) { $cls = [string]$Policy.kinds[$Kind].class; $say = [string]$Policy.kinds[$Kind].say }
     else {
         $d = [string]$Detail
-        foreach ($s in $Policy.signatures) { if ($s.rx.IsMatch($d)) { $cls = $s.class; $say = $s.say; break } }
+        foreach ($s in $Policy.signatures) { if ($s.rx.IsMatch($d)) { $cls = $s.class; $say = $s.say; $sigNext = [string]$s.next; break } }
     }
-    $next = ''
+    $next = $sigNext   # a signature's own next step (disk space) wins over its class's
     if (-not $cls) { $cls = [string]$Policy.unknown.class; $say = [string]$Policy.unknown.say; $next = [string]$Policy.unknown.next; $unknown = $true }
     $c = $Policy.classes[$cls]
     if (-not $next) { $next = [string]$c.next }

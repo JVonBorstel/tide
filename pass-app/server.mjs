@@ -869,9 +869,15 @@ function recipes() {
 function ps(file, args, timeout = 60000, extraEnv = {}) {
   return run(pwsh, ['-NoProfile', '-NonInteractive', '-File', file, ...args], { timeout, windowsHide: true, maxBuffer: 8 << 20, env: { ...process.env, ...extraEnv, BRAIN_KITCHEN: root } });
 }
+// task 32, duplicates at the door (D-11): a refused order names the open one in plain words (WO-0012, its state), never the CLI's words
+const DUP_STATE = { pending: 'queued', running: 'building', 'waiting-approval': 'waiting for your sign-off', 'needs-human': 'waiting for your sign-off' };
+const dupTicket = (id) => 'WO-' + String(id).replace(/^J/, '').padStart(4, '0');
 async function kitchen(op, args = {}) {
   const { err, out } = await ps(api, ['-Channel', 'chef', '-RequestJson', JSON.stringify({ id: 'pass-' + Date.now(), op, args })]);
-  try { return JSON.parse(out.trim().split(/\r?\n/).pop()); } catch { return { ok: false, error: err ? String(err.message) : 'no answer from the Yard' }; }
+  let r; try { r = JSON.parse(out.trim().split(/\r?\n/).pop()); } catch { return { ok: false, error: err ? String(err.message) : 'no answer from the Yard' }; }
+  const dup = r && !r.ok && jobId(r.data?.duplicate) ? r.data.duplicate : '';
+  if (dup) { const st = DUP_STATE[r.data.status]; return { ok: false, sameAs: dup, error: `${dupTicket(dup)} already asks for this${st ? ` (${st})` : ''}` }; }
+  return r;
 }
 // What would the sous chef do with this order? Decides only; nothing is cooked or sent.
 async function preview(body) {

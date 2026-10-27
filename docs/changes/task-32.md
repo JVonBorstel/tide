@@ -79,7 +79,8 @@ Killed, quarantined and closed are working states: the doctor clears them. `doct
 
 - `kitchen.ps1 add` refuses a goal that matches an open order and prints `DUPLICATE: J12 is open with the same goal ...` (exit 4). An open order is one in play: queued, building or waiting for Jordan. A failed or stopped order does not block a new attempt; the doctor clears it as a duplicate of the new one.
 - It matches on normalized text, on the same files and the same title, or on the same roadmap item (`jobs-lib.ps1 Get-OrderDupKeys`). The keys are kept in `jobs-index.json`, so the check opens no job file.
-- `-Force` adds it anyway and notes `forcedOver`. `cook.ps1 -Force` passes it through, and `cook.ps1 -Json` returns `duplicate`.
+- `-Force` adds it anyway and notes `forcedOver`. `cook.ps1 -Force` passes it through, and `cook.ps1 -Json` returns `duplicate` and its `status`.
+- On the phone the refusal is one plain sentence, never the CLI's words: `kitchen-api.ps1` passes the open order back (`data.duplicate`, `data.status`), the server turns it into "WO-0012 already asks for this (queued)" (`sameAs`), and the Board adds its title and an Open button. This covers New work order, the Talk card's Place work order and Find the fix.
 
 **The Board** (`pass-app/public/app.js`, `plain.js`, `app.css`, `server.mjs`):
 
@@ -91,6 +92,7 @@ Killed, quarantined and closed are working states: the doctor clears them. `doct
 - "Older and cleared" (one tap) lists days-old failures and every cleared order, with its end and the Yard's reason.
 - The job sheet leads with the same sentence and keeps the raw line under "The full detail".
 - No failure is a red bar: red bars stay for broken things (D-1).
+- A full disk is its own signature (before the network one): "This PC ran out of disk space; next: free some disk space on this PC, then Retry." It stops and says so, with no wait back-off, because waiting never frees space. A signature may carry its own next step.
 
 Pictures at 412 x 900 (`docs/changes/task-32/`, a throwaway Board with made-up orders, `node pass-app/test-failures.mjs --shots`): home, Failures list and Older, in dark, and the list in light, before and after, plus See why open, plus the end of a long list (`failures-window-412-dark-after.png`: 25 failures in 5 classes, "Showing 20 of 25").
 
@@ -109,20 +111,22 @@ On 10-27 the Yard had 31 killed, 43 quarantined and 36 closed orders sitting for
 
 One check per acceptance line, named after it:
 
-- `tests/Test-KitchenCare.ps1` (new), 23 checks:
+- `tests/Test-KitchenCare.ps1` (new), 24 checks:
   - each cleared state written with reason (retried, superseded twice, duplicate twice, stale, dropped, on the order and in events);
   - a 3-day-old quarantined order cleared as stale and reopenable;
   - -FindOnly clears nothing;
   - policy table maps each class and an unknown failure to "needs a look";
+  - a full disk says so and stops, with no wait back-off;
   - failure sentences read cleanly: one colon after "next:", and a button name (Retry, Close, See why) keeps its capital;
   - add refuses a duplicate and the force flag works (a failed or stopped twin does not block a new attempt);
   - every failure has a plain sentence (a real failing run, a stopped order, an older order given words by the doctor);
   - plus the one action once (flaky back to freshen; a real failure left alone), and the stale reason naming files main changed (a real git repo).
-- `pass-app/test-failures.mjs` (new, run by `tests/Test-PassApp.ps1`), 15 checks:
+- `pass-app/test-failures.mjs` (new, run by `tests/Test-PassApp.ps1`), 16 checks:
   - `Home_CountIgnoresClearedAndOld`;
   - `FailuresList_GroupedByClass`, `FailuresList_PlainSentence`, `FailuresList_OneTapActions`;
   - `FailuresList_SeeWhy` (two checks), `FailuresList_Retry`, `FailuresList_Close` (the real `kitchen.ps1` on the throwaway folder);
   - `OlderList_HasCleared`, `RedBars_StayForBroken`, `NoHScroll360`;
+  - `DuplicateAtTheDoor_PlainWords`: a second order with an open order's goal is not added; the API and the toast say "WO-0068 already asks for this (queued)" with its title and an Open button that opens it, never a bare J-id or `-Force`;
   - `FailuresWindow_CountsRowsOnly`, `FailuresWindow_OlderOpen`, `FailuresWindow_ShowMore` (22 more failures, 25 in 5 classes): both numbers in "Showing N of M" equal the failure rows (`li.row`), and no group head is last or stands without a row under it. The first two failed on the code before the fix ("Showing 20 of 30" with 16 rows);
   - `SpeedBudget_NotWorse`: no canvas, animation or frame loop added, a few nodes per row. The budget itself is measured by CI's report-only `speed` job on the pull request.
 - `pass-app/test-readable.mjs` (task 30): its home-count checks now expect the task 32 words and window.
@@ -131,7 +135,7 @@ One check per acceptance line, named after it:
 
   | Suite | Result |
   |---|---|
-  | `Test-KitchenCare` | 23 passed, 0 failed |
+  | `Test-KitchenCare` | 24 passed, 0 failed |
   | `Test-Backoff` | 48 passed, 0 failed |
   | `Test-JobsIndex` | 13 passed, 0 failed |
   | `Test-KitchenApi` | 64 passed, 0 failed |

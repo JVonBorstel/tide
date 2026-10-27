@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "about": "Failure care (task 32): known failure signatures -> a class -> one action, plus the plain words every failure carries. Read only by kitchen/failure-policy.ps1. The first signature that matches wins; then the kind's class; anything else is the unknown class. Patterns are .NET regular expressions, matched case-insensitively ((?-i:...) for case-sensitive parts).",
+  "about": "Failure care (task 32): known failure signatures -> a class -> one action, plus the plain words every failure carries. Read only by kitchen/failure-policy.ps1. The first signature that matches wins (a signature may carry its own next step); then the kind's class; anything else is the unknown class. Patterns are .NET regular expressions, matched case-insensitively ((?-i:...) for case-sensitive parts).",
   "actions": {
     "retry": "retry once on fresh main",
     "freshen": "freshen",
@@ -20,6 +20,7 @@
   },
   "unknown": { "class": "real", "say": "Something failed that the Yard does not recognise", "next": "It needs a look (See why has the detail), then Retry or Close" },
   "signatures": [
+    { "class": "real", "say": "This PC ran out of disk space", "next": "Free some disk space on this PC, then Retry", "match": "no space left on device|not enough space on the disk|disk (is )?full|ENOSPC" },
     { "class": "conflict", "say": "Main moved and its change conflicts with main", "match": "(?-i:\\bCONFLICT\\b)|needs freshen|merge conflict" },
     { "class": "stale", "say": "Its brief was written against files that changed on main since", "match": "stale base|written against|no longer applies|patch does not apply|patch failed" },
     { "class": "real", "say": "The tests failed", "match": "(?-i:\\btests?: FAILED\\b)|tests? failed" },
@@ -28,7 +29,7 @@
     { "class": "real", "say": "A step refused to go on", "match": "(?-i:\\b(FAILED|STOPPED|REFUSED)\\b)" },
     { "class": "privacy", "say": "It looks private, so it stays on this PC until you say", "match": "privacy (hold|judge)|looks private" },
     { "class": "resting", "say": "Every able crew was resting or at its usage cap", "match": "usage limit|usage cap|quota|rate.?limit|HTTP 429|\\b429\\b|too many requests|cook is resting|no cook was free|cloud hiccup|waited too long for a cook" },
-    { "class": "infra", "say": "GitHub, CI or the network did not answer", "match": "no CI check|CI has not started|CI still running|has not caught up|could not reach|unreachable|network|connection (reset|refused|closed|timed out|aborted)|stream was interrupted|could not resolve host|name resolution|ECONNRESET|ETIMEDOUT|socket hang up|TLS handshake|GitHub API|api\\.github\\.com|HTTP 5\\d\\d|\\b50[234]\\b|UNAVAILABLE|overloaded|Service Unavailable|Bad Gateway|no space left on device|not enough space on the disk" },
+    { "class": "infra", "say": "GitHub, CI or the network did not answer", "match": "no CI check|CI has not started|CI still running|has not caught up|could not reach|unreachable|network|connection (reset|refused|closed|timed out|aborted)|stream was interrupted|could not resolve host|name resolution|ECONNRESET|ETIMEDOUT|socket hang up|TLS handshake|GitHub API|api\\.github\\.com|HTTP 5\\d\\d|\\b50[234]\\b|UNAVAILABLE|overloaded|Service Unavailable|Bad Gateway" },
     { "class": "flaky", "say": "It timed out on something that usually passes", "match": "flaky|intermittent|timed out" }
   ],
   "kinds": {

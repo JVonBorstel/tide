@@ -98,10 +98,10 @@ $spec = Join-Path $specDir ("{0:yyyyMMdd-HHmmss}-{1}-{2}.json" -f (Get-Date), $R
 $out = & (Join-Path $PSScriptRoot 'kitchen.ps1') add -SpecPath $spec -Force:$Force | Out-String
 $m = [regex]::Match($out, 'added (J\d+)')
 # task 32, duplicates at the door: the open order with the same goal comes back as duplicate (its id); -Force adds it anyway
-$dm = [regex]::Match($out, 'DUPLICATE: (J\d+)')
+$dm = [regex]::Match($out, 'DUPLICATE: (J\d+)(?: is open with the same goal \(([\w-]+)\))?')
 if (-not $m.Success -and $dm.Success) {
     Remove-Item -LiteralPath $spec -Force -ErrorAction SilentlyContinue
-    if ($Json) { @{ ok = $false; duplicate = $dm.Groups[1].Value; error = $out.Trim() -replace '^DUPLICATE: ', '' } | ConvertTo-Json -Compress } else { Write-Output $out.Trim() }
+    if ($Json) { @{ ok = $false; duplicate = $dm.Groups[1].Value; status = $dm.Groups[2].Value; error = $out.Trim() -replace '^DUPLICATE: ', '' } | ConvertTo-Json -Compress } else { Write-Output $out.Trim() }
     exit 2
 }
 if (-not $m.Success) { Fail ($out.Trim()) }

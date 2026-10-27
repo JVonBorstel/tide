@@ -119,7 +119,7 @@ function Invoke-Request([string]$json) {
             }
             # bot orders always wait for Jordan before the first step; the chef's own orders start right away
             $out = & (Join-Path $PSScriptRoot 'cook.ps1') -Recipe $name -Vars $vars -Gate:($Channel -ne 'chef') -Json | Out-String
-            try { $c = $out | ConvertFrom-Json; return Reply $req ([bool]$c.ok) $(if ($c.ok) { @{ job = $c.job; recipe = $c.recipe; needsApproval = [bool]$c.gated } } else { $null }) $(if (-not $c.ok) { $c.error } else { '' }) }
+            try { $c = $out | ConvertFrom-Json; return Reply $req ([bool]$c.ok) $(if ($c.ok) { @{ job = $c.job; recipe = $c.recipe; needsApproval = [bool]$c.gated } } elseif ($c.duplicate) { @{ duplicate = [string]$c.duplicate; status = [string]$c.status } } else { $null }) $(if (-not $c.ok) { $c.error } else { '' }) }   # a refused duplicate names the open order (task 32)
             catch { return Reply $req $false $null $out.Trim() }
         }
         default { return Reply $req $false $null "unknown op '$op'" }
