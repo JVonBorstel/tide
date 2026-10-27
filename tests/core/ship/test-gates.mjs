@@ -76,7 +76,7 @@ export function run(check) {
   check('gates: ci.yml runs the three gate scripts', ['check-wo-title.mjs', 'check-generated.mjs', 'check-decision-gate.mjs'].every((s) => ci.includes(`scripts/${s}`)));
   check('gates: ci.yml keeps the L0 "Contracts (core/contracts" step', ci.includes('name: Contracts (core/contracts'));
   check('gates: ci.yml runs the ship suite', ci.includes('tests/Test-Ship.ps1'));
-  check('gates: ci.yml node --checks core/ and runs the ledger suite when its file exists', ci.includes('name: Core (node --check core/**/*.mjs') && ci.includes('tests/Test-CoreLedger.ps1'));
+  check('gates: ci.yml node --checks core/ and runs the lanes\' suites from gates.json coreSuites', ci.includes('name: Core (node --check core/**/*.mjs') && ci.includes('.coreSuites.paths') && loadGates().coreSuites.paths.includes('tests/Test-CoreLedger.ps1'));
   const uses = [...ci.matchAll(/uses:\s*(\S+)/g)].map((m) => m[1]);
   check('gates: every action in ci.yml is pinned by a 40-hex commit sha', uses.length > 0 && uses.every((u) => /@[0-9a-f]{40}$/.test(u)), uses.join(', '));
 }

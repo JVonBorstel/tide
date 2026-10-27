@@ -33,7 +33,7 @@ Nothing in the Yard changed. `scripts/merge-pr.ps1` and `kitchen/train.ps1` are 
 - New: `flags.json`, `core/ship/{flags,flags.schema,git,gates,gates.json,docs,freshen-pr,queue,activity}`, `core/ship/README.md`,
   `scripts/check-wo-title.mjs`, `scripts/check-generated.mjs`, `scripts/check-decision-gate.mjs`, `docs/GLOSSARY.md`, `.vale/**`,
   `tests/Test-Ship.ps1`, `tests/core/ship/*`.
-- `.github/workflows/ci.yml`: the `GATE_*` switches, the names guard reads `GATE_NAMES`, a "Ship" step and a "Core" step (`node --check` on every `core/**/*.mjs`, and lane L1's ledger suite once its file exists) in `checks` (next to the
+- `.github/workflows/ci.yml`: the `GATE_*` switches, the names guard reads `GATE_NAMES`, a "Ship" step and a "Core" step (`node --check` on every `core/**/*.mjs`, and the suites of lanes L1 and L2 listed in `core/ship/gates.json` `coreSuites`, each once its file exists) in `checks` (next to the
   L0 Contracts step, which stays), and a new `gates` job. Vale runs through `vale-cli/vale-action` pinned by commit sha (v3.0.0),
   with Vale 3.24.0 (MIT).
 - `AGENTS.md` line 3: the naming source is `docs/GLOSSARY.md`.

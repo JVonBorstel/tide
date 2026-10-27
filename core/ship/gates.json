@@ -9,6 +9,10 @@
     "what": "The Board's look (sprites, scene, City, icons, layout). A change here starts with mock-ups and needs Jordan's answered decision (D-<n>) named in the PR title or body.",
     "paths": ["pass-app/public/**"]
   },
+  "coreSuites": {
+    "what": "The other upgrade lanes' suites the ci.yml Core step runs, each once its file is on the branch (lanes L1, L2). Add a lane's suite here, not in ci.yml.",
+    "paths": ["tests/Test-CoreLedger.ps1", "tests/Test-Engine.ps1", "tests/Test-Adopt.ps1"]
+  },
   "woTitle": {
     "what": "A PR title starts with its work order id and a colon (WO-312: ..., WO-UPG-L4-1: ...); an old Yard id (J312: ...) is read as its alias.",
     "pattern": "^(WO-[A-Z0-9]+(-[A-Z0-9]+)*|J[0-9]+):\\s",
