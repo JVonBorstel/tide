@@ -1131,11 +1131,16 @@ console.log(JSON.stringify({ banners: siteStopBanners(items, { when }), rows: si
     Check 'city: test-city.mjs exits 0 (a node crash is a failure, not silence)' ($cityExit -eq 0)
     Check 'city: test-city.mjs reported at least 25 checks' (@($cityTest).Count -ge 25)
     foreach ($t in @($cityTest)) { if ($t) { Check "city: $($t.name)" ($t.pass -eq $true) } }
-    # D-1 the status line, D-10 alerts off, the City given the space (pass-app/test-status-line.mjs: a throwaway server and headless Chrome or Edge)
+    # D-1 the status line, D-12 clearable one-row notices, D-10 alerts off, the City given the space (pass-app/test-status-line.mjs: a throwaway server and headless Chrome or Edge)
     $slOut = & node (Join-Path $repo 'pass-app\test-status-line.mjs') 2>$null; $slExit = $LASTEXITCODE; $slTest = $null
     try { $slTest = ($slOut -join "`n") | ConvertFrom-Json } catch { $slTest = $null }
-    Check 'status line: test-status-line.mjs exits 0 and reported at least 25 checks' ($slExit -eq 0 -and @($slTest).Count -ge 25)
+    Check 'status line: test-status-line.mjs exits 0 and reported at least 40 checks' ($slExit -eq 0 -and @($slTest).Count -ge 40)
     foreach ($t in @($slTest)) { if ($t) { Check "status line: $($t.name)" ($t.pass -eq $true) } }
+    # D-11 the Board home's lists: human titles from the one helper (public/titles.js), stuck notes as rows, nothing under the nav (pass-app/test-board-rows.mjs)
+    $brOut = & node (Join-Path $repo 'pass-app\test-board-rows.mjs') 2>$null; $brExit = $LASTEXITCODE; $brTest = $null
+    try { $brTest = ($brOut -join "`n") | ConvertFrom-Json } catch { $brTest = $null }
+    Check 'board rows: test-board-rows.mjs exits 0 and reported at least 10 checks' ($brExit -eq 0 -and @($brTest).Count -ge 10)
+    foreach ($t in @($brTest)) { if ($t) { Check "board rows: $($t.name)" ($t.pass -eq $true) } }
     # D-4 the WebGL2 renderer in a real browser (pass-app/test-scene-gl-screen.mjs: a throwaway server, headless Chrome or Edge with and without the graphics chip)
     $glOut = & node (Join-Path $repo 'pass-app\test-scene-gl-screen.mjs') 2>$null; $glExit = $LASTEXITCODE; $glTest = $null
     try { $glTest = ($glOut -join "`n") | ConvertFrom-Json } catch { $glTest = $null }

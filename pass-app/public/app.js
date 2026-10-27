@@ -39,7 +39,7 @@ const jobLink = (id) => /^J\d{1,6}$/.test(String(id || '')) ? `<a href="#/job/${
 const NEEDS = (j) => j.status === 'waiting-approval' || j.status === 'needs-human';
 const ASIDE = (j) => ['quarantined', 'killed', 'failed'].includes(j.status);
 const OLD_ASIDE = (j) => ASIDE(j) && since(j.updated) > 86400;
-const isOldRecipe = (j) => ASIDE(j) && !!j.created && ((Date.now() - new Date(j.created).getTime()) >= 12 * 3600 * 1000) && !!(j.recipe || title(j.name).kind);
+const isOldRecipe = (j) => ASIDE(j) && !!j.created && ((Date.now() - new Date(j.created).getTime()) >= 12 * 3600 * 1000) && !!(j.recipe || splitName(j.name).kind);
 const money = (x) => '$' + (Number(x) || 0).toFixed(2);
 const fmtTokens = (n) => { n = Number(n) || 0; if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'k'; return String(Math.round(n)); };
 const isToday = (ts) => ts && new Date(ts).toDateString() === new Date().toDateString();
@@ -56,20 +56,12 @@ const since = (ts) => (Date.now() - new Date(ts).getTime()) / 1000;
 const human = (s) => String(s || '').replace(/[-_]+/g, ' ');
 const cap = (s) => { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); };
 const who = (j) => j.station === 'agent' ? (j.cook || j.supplier || 'Dispatcher picks') : human(j.station);
-// "improve: split kitchen.ps1" reads as a kind (small label) and a title
-function title(name) { const m = /^([a-z][\w-]{1,15}):\s+(.+)$/i.exec(String(name || '')); return m ? { kind: cap(human(m[1]).toLowerCase()), text: cap(m[2]) } : { kind: '', text: cap(name) }; }
-const titleHtml = (name) => { const t = title(name); return `${t.kind ? `<span class="kind">${esc(t.kind)}</span>` : ''}${esc(t.text)}`; };
-// plain words for an order on a phone: the idea's short title when the server has one (j.label), else the goal's first clause
-// without file paths ("kitchen/stations/lint.ps1" reads as "lint"), at most ~60 characters
-function plain(text) {
-  let s = String(text || '').replace(/\s*\(Idea I\d+:[\s\S]*$/, '').replace(/\.{3}$|…$/, '');
-  s = s.replace(/(?:[\w.-]+[\\/])+([\w-]+)\.(?:ps1|psm1|mjs|js|json|md|css|html)\b/g, '$1').replace(/\b([\w-]+)\.(?:ps1|psm1|mjs|json|md)\b/g, '$1');
-  s = s.split(/(?<=[a-z0-9)])[.;:]\s|\s\(?\d\)\s/)[0].trim();
-  if (s.length > 60) s = s.slice(0, 58).replace(/\s+\S*$/, '') + '…';
-  return cap(s);
-}
+// D-11 every title comes from public/titles.js titleOf (the one helper): the idea's short title, else the name's first heading or line in
+// plain words, markdown stripped, never a bare id alone ("diagnose: J357" reads as "Why WO-0357 failed"). A kind (small label) and a text.
 const unslug = (s) => /^[\w]+(-[\w]+)+$/.test(s) ? s.replace(/-/g, ' ') : s;   // "fix-budget-spend-rotation" reads as words
-const nameOf = (j) => { const t = title(j?.name); return { kind: t.kind, text: j?.label ? cap(unslug(j.label)) : plain(t.text) }; };
+const nameOf = (j) => titleOf(j);
+// any other title on the Board (an idea, a Ledger row): a slug as words, markdown out, capitalised
+const plainTitle = (s) => cap(cleanTitle(unslug(String(s || ''))));
 const nameHtml = (j) => { const t = nameOf(j); return `${t.kind ? `<span class="kind">${esc(t.kind)}</span>` : ''}${esc(t.text)}`; };
 // an approval text that starts by repeating the job's name says only the new part
 function askText(j) {
@@ -188,29 +180,29 @@ async function doJob(kind, id, btn) {
     const sha = pd?.sha || det?.diffSha || null; const dc = det?.change; const tc = testCounts(dc?.tests);
     const nFiles = pd ? pd.files.length : (dc?.files || []).length;
     const check = sha ? `<ul class="inspect"><li class="${tc && !tc.fail ? 'ok' : 'warn'}">Tests: ${tc ? (tc.all ? 'all passed' : `${Number(tc.pass)} passed, ${Number(tc.fail)} failed`) : 'unknown'}</li><li>Files modified: ${pd || dc ? Number(nFiles) : esc(changeLine(j) || 'unknown')}</li><li class="warn" data-diffstate>${pd?.private ? 'Private work order: file names only' : 'Diff not opened'}</li></ul>${pd ? phoneDiffHtml(pd) : '<p class="note">The file list could not be read right now.</p>'}` : '';
-    const ask = confirmBox({ title: `Approve ${ticket(id)}?`, html: `<p>${esc(title(j.name).text)}</p><div class="quote">${esc(askText(j) || j.name)}</div>${change}${ciLookText(j) ? `<p>${esc(ciLookText(j))}</p>` : ''}${check}${hold}`, yes: sha && !pd?.private ? 'Approve without reading' : 'Approve' });
+    const ask = confirmBox({ title: `Approve ${ticket(id)}?`, html: `<p>${esc(nameOf(j).text)}</p><div class="quote">${esc(askText(j) || j.name)}</div>${change}${ciLookText(j) ? `<p>${esc(ciLookText(j))}</p>` : ''}${check}${hold}`, yes: sha && !pd?.private ? 'Approve without reading' : 'Approve' });
     $('confirm-text')._onPd = () => { const st = $('confirm-text').querySelector('[data-diffstate]'); if (!st) return; const n = $('confirm-text').querySelectorAll('.pd-file.read').length; st.textContent = `Diff opened: ${n} of ${Number(nFiles)} file${nFiles === 1 ? '' : 's'} read`; st.className = 'ok'; $('confirm-yes').textContent = 'Approve'; };
     if (!await ask) return;
     buzz(); sceneApproved(); await act({ op: 'approve', id, approval: asked, ...(sha ? { diffSha: sha } : {}) }, { btn, ok: `${ticket(id)} approved. Starting now.` });
   } else if (kind === 'reject' || kind === 'stop') {
     const reject = kind === 'reject';
-    if (!await confirmBox({ title: `${reject ? 'Reject' : 'Cancel'} ${ticket(id)}?`, html: `<p>${esc(title(j.name).text)}</p><p>${reject ? "It won't run." : 'The crew stops now, with everything it started.'} You can retry it later.</p>`, yes: reject ? 'Reject' : 'Cancel work order', danger: true })) return;
+    if (!await confirmBox({ title: `${reject ? 'Reject' : 'Cancel'} ${ticket(id)}?`, html: `<p>${esc(nameOf(j).text)}</p><p>${reject ? "It won't run." : 'The crew stops now, with everything it started.'} You can retry it later.</p>`, yes: reject ? 'Reject' : 'Cancel work order', danger: true })) return;
     await act({ op: 'kill', id }, { btn, ok: `${ticket(id)} ${reject ? 'rejected' : 'cancelled'}` });
   } else if (kind === 'retry') {
     if (isOldRecipe(j)) {
-      if (!await confirmBox({ title: `Order ${ticket(id)} again?`, html: `<p>${esc(title(j.name).text)}</p><p>Today's spec will be built again as a new work order and this one closed out.</p>`, yes: 'Order it again' })) return;
+      if (!await confirmBox({ title: `Order ${ticket(id)} again?`, html: `<p>${esc(nameOf(j).text)}</p><p>Today's spec will be built again as a new work order and this one closed out.</p>`, yes: 'Order it again' })) return;
       const r = await act({ op: 'requeue', id }, { btn });
       if (r.ok && r.data?.job) toast(`${ticket(r.data.job)} is queued`, { action: { label: 'Open', fn: () => go('#/job/' + r.data.job) } });
       else if (r.ok) toast(`${ticket(id)} is back in the queue`);
     } else {
-      if (!await confirmBox({ title: `Retry ${ticket(id)}?`, html: `<p>${esc(title(j.name).text)}</p><p>It goes back in the queue at step ${Number(j.step)} of ${Number(j.steps)}, which runs again from its start.</p>`, yes: 'Retry' })) return;
+      if (!await confirmBox({ title: `Retry ${ticket(id)}?`, html: `<p>${esc(nameOf(j).text)}</p><p>It goes back in the queue at step ${Number(j.step)} of ${Number(j.steps)}, which runs again from its start.</p>`, yes: 'Retry' })) return;
       await act({ op: 'requeue', id }, { btn, ok: `${ticket(id)} is back in the queue` });
     }
   } else if (kind === 'diagnose') {
     if (!await confirmBox({ title: `Find the fix for ${ticket(id)}?`, html: `<p>A crew reads why it failed (its record, its log and the Yard's code) and explains the fix. It only reads; nothing is changed.${j.private ? '' : ''}</p>`, yes: 'Find the fix' })) return;
     const r = await act({ op: 'diagnose', id }, { btn }); if (r.ok && r.data?.job) toast(`${ticket(r.data.job)} is looking into it`, { action: { label: 'Open', fn: () => go('#/job/' + r.data.job) } });
   } else if (kind === 'undo-merge') {
-    if (!await confirmBox({ title: `Undo ${ticket(id)}?`, html: `<p>${esc(title(j.name).text)}</p><p>This adds a change that reverses the merge. Nothing is deleted; you can order it again.</p>`, yes: 'Undo merge', danger: true })) return;
+    if (!await confirmBox({ title: `Undo ${ticket(id)}?`, html: `<p>${esc(nameOf(j).text)}</p><p>This adds a change that reverses the merge. Nothing is deleted; you can order it again.</p>`, yes: 'Undo merge', danger: true })) return;
     await act({ op: 'undo-merge', id }, { btn, ok: `Undid ${ticket(id)}` });
   } else if (kind === 'logs') return openLog(id, null);
   else if (kind === 'open') return go('#/job/' + id);
@@ -750,7 +742,7 @@ function replayStats(j, runs) {
 }
 function recapMarkdown(j, st) {
   const n = (x) => Number(x).toLocaleString('en-US');
-  return [`# Standup Recap: ${ticket(j.id)} (${title(j.name).text})`,
+  return [`# Standup Recap: ${ticket(j.id)} (${nameOf(j).text})`,
     `- **Verdict**: ${st.verdict}`, `- **Duration**: ${st.minutes.toFixed(1)} min`, `- **Tokens**: ${n(st.tokens)} tokens`,
     `- **Crews**: ${st.cooks.join(', ') || 'none'}`, `- **Busiest crew**: ${st.busiest ? `${st.busiest.name} (${st.busiest.calls} tool calls)` : 'none'}`,
     `- **Tool calls**: ${st.tools}`, `- **Commands**: ${st.commands}`,
@@ -851,7 +843,7 @@ function sentence(e) {
   const t = String(e.type || ''); const tk = e.job ? jobLink(e.job) : ''; const d = esc(e.detail || e.text || e.reason || '');
   const step = e.step != null ? ` step ${(Number(e.step) || 0) + 1}` : '';   // numbers coerced: a string field never lands in the markup
   const map = {
-    'job.added': ['', `<b>New work order</b> ${tk} ${esc(title(e.name).text)}`], 'job.done': ['', `${tk} <b>${STATUS_LABEL.done.toLowerCase()}</b>`],
+    'job.added': ['', `<b>New work order</b> ${tk} ${esc(titleOf({ id: e.job, name: e.name }).text)}`], 'job.done': ['', `${tk} <b>${STATUS_LABEL.done.toLowerCase()}</b>`],
     'step.started': ['', `${tk} started${step}${e.attempt ? `, try ${(Number(e.attempt) || 0) + 1}` : ''}`], 'step.done': ['', `${tk} finished${step}`],
     'step.retry': ['', `${tk} failed${step}; waiting ${minWords(Number(e.inSec) || 0)} before retry`], 'job.quarantined': ['fail', `${tk} <b>${STATUS_LABEL.quarantined.toLowerCase()}</b>${(() => { const m = /^(\w+) x(\d+)$/.exec(e.reason || ''); return m ? ` after ${m[2]} ${m[2] === '1' ? 'try' : 'tries'} (${esc((FAIL_WORD[m[1]] || m[1]).toLowerCase())})` : e.reason ? ': ' + esc(e.reason) : ''; })()}`],
     'approval.requested': ['ask', `${tk} <b>needs your sign-off</b>: ${esc(e.text || '')}`], 'approval.granted': ['', `<b>You</b> approved ${tk}`],
@@ -994,6 +986,13 @@ $('cook-body').addEventListener('click', async (e) => {
 });
 $('cook-body').addEventListener('click', (e) => { if (e.target.closest('.row-link')) closeSheet('cook-sheet'); });
 
+// D-11 nothing sits under the bottom nav: the page's bottom room (--nav-cover, app.css main) is what the nav covers, measured from the nav
+// element itself (its height, its offset from the bottom and the safe-area inset inside it), again whenever the nav or the window changes
+(function navRoom() {
+  const nav = document.querySelector('nav.bar'); if (!nav) return;
+  const set = () => { if (!nav.getClientRects().length) return; const v = Math.max(0, Math.ceil(innerHeight - nav.getBoundingClientRect().top)) + 'px'; if (document.documentElement.style.getPropertyValue('--nav-cover') !== v) document.documentElement.style.setProperty('--nav-cover', v); };
+  set(); if (typeof ResizeObserver === 'function') new ResizeObserver(set).observe(nav); addEventListener('resize', set);
+})();
 // ---------- banners and chrome ----------
 // no board ever arrived and the kitchen can't be reached: say so plainly instead of a skeleton that never resolves
 function offlineCard() {
@@ -1047,27 +1046,125 @@ function noticesOf(markup) {
     return { tone, text, act, chip, moon: el.classList.contains('moon') };
   });
 }
+// D-12 the line never eats the screen: one row at most (chips scroll sideways in it), each chip can be cleared (Clear in its sheet, a
+// swipe up on the chip, or Clear all at the end of the line). A cleared notice stays hidden until it changes (public/notices.js keys it
+// by id + a hash of its words and state), remembered on this phone (localStorage through store, which never throws; without storage the
+// clear lasts until the page reloads). With every chip cleared the line is gone (0 px) and the header's notices count brings them back.
+// A red bar is never hidden (truth rule): it can only be made thin (one line, full text one tap away) until it changes.
+const NOTE = { cleared: new Set(keysOf(store.get('noticesCleared', []))), thin: new Set(keysOf(store.get('noticesThin', []))), v: 0, busy: false };
+const keepNotes = (name) => store.set(name === 'cleared' ? 'noticesCleared' : 'noticesThin', keysOf([...NOTE[name]]));
 function renderNotices(markup) {
-  const key = markup.join(''); if (key === S.noticeKey) return; S.noticeKey = key;   // most state patches change no notice: nothing to parse or draw
-  const list = S.notices = noticesOf(markup);
-  const bars = list.filter((n) => n.tone === 'broken').map((n) => `<div class="redbar"><span>${esc(n.text)}</span>${n.act}</div>`).join('');
-  const chips = list.map((n, i) => (n.tone === 'broken' ? '' : `<button class="notice-chip" type="button" data-notice="${i}" data-tone="${n.tone}"${n.moon ? ' data-moon' : ''} aria-haspopup="dialog"><i aria-hidden="true"></i>${esc(n.chip)}</button>`)).join('');
+  const key = markup.join('') + '|' + NOTE.v; if (key === S.noticeKey || NOTE.busy) return; S.noticeKey = key;   // most state patches change no notice: nothing to parse or draw
+  const list = S.notices = markNotices(noticesOf(markup), NOTE.cleared, NOTE.thin);
+  const bars = list.filter((n) => n.tone === 'broken').map((n) => n.thin
+    ? `<button class="redbar thin" type="button" data-key="${esc(n.key)}" aria-haspopup="dialog" aria-label="${esc(n.text)}"><span>${esc(n.text)}</span></button>`
+    : `<div class="redbar" data-key="${esc(n.key)}"><span>${esc(n.text)}</span>${n.act}<button class="bar-thin" type="button" data-thin="${esc(n.key)}" aria-label="Make this bar thin">${icon('chev')}</button></div>`).join('');
+  const shown = list.filter((n) => n.tone !== 'broken' && !n.cleared);
+  const chips = shown.map((n) => `<button class="notice-chip" type="button" data-key="${esc(n.key)}" data-tone="${n.tone}"${n.moon ? ' data-moon' : ''} aria-haspopup="dialog"><i aria-hidden="true"></i>${esc(n.chip)}</button>`).join('')
+    + (shown.length ? '<button class="clear-all" type="button" data-clear-all>Clear all</button>' : '');
+  const line = $('status-line'), wasHidden = line.hidden;
   if ($('banners').innerHTML !== bars) $('banners').innerHTML = bars;
-  if ($('status-line').innerHTML !== chips) $('status-line').innerHTML = chips;
-  $('status-line').hidden = !chips;
-  if ($('notice-sheet').open) { const o = list.find((n) => n.chip === S.noticeOpen); if (o) fillNotice(o); }   // live: the open sheet keeps its words current
+  if (line.innerHTML !== chips) line.innerHTML = chips;
+  line.hidden = !chips;
+  if (wasHidden && chips && S.noticesDrawn) unfold(line);   // a notice that comes (back) grows the line in, it never pops
+  S.noticesDrawn = true;
+  const nCleared = list.filter((n) => n.cleared).length;
+  $('notices-btn').hidden = !nCleared; $('count-notices').textContent = nCleared || '';
+  $('notices-btn').setAttribute('aria-label', `Notices: ${nCleared} cleared`);
+  if ($('notice-sheet').open) { const o = list.find((n) => n.id === S.noticeOpen); if (o) fillNotice(o); }   // live: the open sheet keeps its words current
+  if ($('notices-sheet').open) fillNoticeList();
+}
+const noticeOf = (key) => S.notices?.find((n) => n.key === key);
+// what a notice's sheet offers besides its own action: Clear (a chip), or thin / full (a red bar, which cannot be cleared)
+function noticeControls(n) {
+  if (n.tone === 'broken') return `<button class="btn" type="button" data-thin-toggle="${esc(n.key)}">${n.thin ? 'Show the full bar' : 'Make the bar thin'}</button>`;
+  return n.cleared ? `<button class="btn" type="button" data-restore="${esc(n.key)}">Restore</button>`
+    : `<button class="btn" type="button" data-clear-notice="${esc(n.key)}">${icon('x')}Clear</button>`;
 }
 function fillNotice(n) {
   $('notice-title').textContent = n.chip;
-  const html = `<p class="notice-text">${esc(n.text)}</p>${n.act ? `<div class="notice-act">${n.act}</div>` : ''}`;
+  const html = `<p class="notice-text">${esc(n.text)}</p>${n.tone === 'broken' ? '<p class="note faint">Broken things stay on the Board until they are fixed.</p>' : ''}<div class="notice-act">${n.act}${noticeControls(n)}</div>`;
   if ($('notice-body').innerHTML !== html) $('notice-body').innerHTML = html;
 }
+// the header count's sheet: every current notice (cleared, showing, red bars) with its actions; any cleared one can be restored
+function fillNoticeList() {
+  const list = S.notices || []; const nCleared = list.filter((n) => n.cleared).length;
+  const state = (n) => (n.tone === 'broken' ? (n.thin ? 'Red bar, thin' : 'Red bar') : n.cleared ? 'Cleared' : 'Showing');
+  const html = list.length ? `<ul class="notice-list">${list.map((n) => `<li class="notice-item" data-key="${esc(n.key)}" data-tone="${n.tone}"><div class="ni-head"><b>${esc(n.chip)}</b><span class="ni-state">${state(n)}</span></div>
+    <p class="notice-text">${esc(n.text)}</p><div class="notice-act">${n.act}${noticeControls(n)}</div></li>`).join('')}</ul>${nCleared > 1 ? `<button class="btn block" type="button" data-restore-all>Restore all ${nCleared}</button>` : ''}`
+    : '<p class="empty-line">No notices right now.</p>';
+  if ($('notices-body').innerHTML !== html) $('notices-body').innerHTML = html;
+}
+// motion (D-6: no flash): a cleared chip folds sideways, the last one folds the whole line (the City below moves up with it); under
+// reduced motion it cuts. The line is not redrawn while it folds (NOTE.busy), then it draws once.
+const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+function fold(el, axis, then) {
+  if (!el || still() || !el.animate) return then();
+  const r = el.getBoundingClientRect(), size = axis === 'x' ? 'width' : 'height';
+  const from = { [size]: (axis === 'x' ? r.width : r.height) + 'px', opacity: 1 }, to = { [size]: '0px', opacity: 0 };
+  if (axis === 'x') Object.assign(from, { paddingLeft: getComputedStyle(el).paddingLeft, paddingRight: getComputedStyle(el).paddingRight, minWidth: '0px' }), Object.assign(to, { paddingLeft: '0px', paddingRight: '0px', minWidth: '0px', borderWidth: '0px' });
+  else Object.assign(from, { paddingTop: getComputedStyle(el).paddingTop, paddingBottom: getComputedStyle(el).paddingBottom, marginTop: getComputedStyle(el).marginTop }), Object.assign(to, { paddingTop: '0px', paddingBottom: '0px', marginTop: '0px' });   // the margin too: under the pixel header the line starts 6 px down (app.css)
+  NOTE.busy = true; const a = el.animate([from, to], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' });
+  a.finished.catch(() => { }).then(() => { NOTE.busy = false; then(); a.cancel(); });
+}
+function unfold(el) {
+  if (still() || !el.animate) return;
+  const h = el.getBoundingClientRect().height, m = getComputedStyle(el).marginTop;
+  el.animate([{ height: '0px', marginTop: '0px', opacity: 0 }, { height: h + 'px', marginTop: m, opacity: 1 }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
+}
+const redraw = () => { NOTE.v++; renderBanners(); };
+function clearNotice(key) {
+  const n = noticeOf(key); if (!n || n.tone === 'broken' || n.cleared) return;
+  NOTE.cleared.add(key); keepNotes('cleared');
+  const line = $('status-line'), chip = line.querySelector(`.notice-chip[data-key="${CSS.escape(key)}"]`);
+  const last = !S.notices.some((x) => x.tone !== 'broken' && !x.cleared && x.key !== key);
+  fold(last ? line : chip, last ? 'y' : 'x', redraw);
+}
+function clearAll() {
+  for (const n of S.notices || []) if (n.tone !== 'broken') NOTE.cleared.add(n.key);
+  keepNotes('cleared'); fold($('status-line'), 'y', redraw);
+}
+function restoreNotice(key) { if (NOTE.cleared.delete(key)) { keepNotes('cleared'); redraw(); } }
+function toggleThin(key) { if (!NOTE.thin.delete(key)) NOTE.thin.add(key); keepNotes('thin'); redraw(); }
+const openNotice = (n) => { if (!n) return; S.noticeOpen = n.id; fillNotice(n); openSheet('notice-sheet'); };
 $('status-line').addEventListener('click', (e) => {
-  const c = e.target.closest('[data-notice]'); const n = c && S.notices?.[Number(c.dataset.notice)]; if (!n) return;
-  S.noticeOpen = n.chip; fillNotice(n); openSheet('notice-sheet');
+  if (S.swiped) { S.swiped = false; return; }   // the tap that ended a swipe is not a tap
+  if (e.target.closest('[data-clear-all]')) return clearAll();
+  const c = e.target.closest('.notice-chip[data-key]'); if (c) openNotice(noticeOf(c.dataset.key));
 });
+$('banners').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-thin]'); if (t) return toggleThin(t.dataset.thin);
+  const b = e.target.closest('.redbar.thin[data-key]'); if (b) openNotice(noticeOf(b.dataset.key));
+});
+// a swipe up on a chip clears it (sideways stays the line's own scroll: the line is touch-action pan-x)
+(function chipSwipe() {
+  let p = null; const line = $('status-line');
+  line.addEventListener('pointerdown', (e) => { const c = e.target.closest('.notice-chip'); p = c ? { c, x: e.clientX, y: e.clientY, id: e.pointerId, dy: 0 } : null; });
+  line.addEventListener('pointermove', (e) => {
+    if (!p || e.pointerId !== p.id) return; const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    if (!p.on && Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) { p.on = true; try { p.c.setPointerCapture(e.pointerId); } catch { } }
+    if (p.on) { p.dy = Math.min(0, dy); p.c.style.setProperty('translate', `0 ${p.dy}px`); p.c.style.setProperty('opacity', String(1 + p.dy / 48)); }
+  });
+  const end = () => {
+    if (!p) return; const { c, on, dy } = p; p = null; if (!on) return;
+    S.swiped = true; setTimeout(() => { S.swiped = false; }, 400);
+    c.style.removeProperty('translate'); c.style.removeProperty('opacity');
+    if (dy <= -24) { buzz(); clearNotice(c.dataset.key); }
+  };
+  line.addEventListener('pointerup', end); line.addEventListener('pointercancel', end);
+})();
 // the notice's own action (Run now, Resume, Turn on, a link) runs through the page's usual handlers; the sheet steps aside for it
-$('notice-body').addEventListener('click', (e) => { if (e.target.closest('[data-set],a[href]')) closeSheet('notice-sheet'); });
+function noticeSheetClick(e, sheet) {
+  const t = e.target;
+  if (t.closest('[data-set],a[href]')) return closeSheet(sheet);
+  const c = t.closest('[data-clear-notice]'); if (c) { if (sheet === 'notice-sheet') closeSheet(sheet); return clearNotice(c.dataset.clearNotice); }
+  const r = t.closest('[data-restore]'); if (r) return restoreNotice(r.dataset.restore);
+  const th = t.closest('[data-thin-toggle]'); if (th) { if (sheet === 'notice-sheet') closeSheet(sheet); return toggleThin(th.dataset.thinToggle); }
+  if (t.closest('[data-restore-all]')) { NOTE.cleared.clear(); keepNotes('cleared'); redraw(); }
+}
+$('notice-body').addEventListener('click', (e) => noticeSheetClick(e, 'notice-sheet'));
+$('notices-body').addEventListener('click', (e) => noticeSheetClick(e, 'notices-sheet'));
+$('notices-btn').addEventListener('click', () => { fillNoticeList(); openSheet('notices-sheet'); });
 // TD-EH-04 "Sent or not", in Settings (D-10: never a banner while push alerts are off by choice): how many alerts did not reach the
 // phone (alerts.jsonl `sent`, counted by the server as alertsUnsent). Turning push on stays the Owner's own tap.
 function alertsOffLine(s) {
@@ -1748,7 +1845,7 @@ function renderIdeas(err) {
       <button class="btn" data-ap="${d.paused ? 'resume' : 'pause'}">${d.paused ? 'Resume' : 'Pause'}</button></div>
     <div class="ap-line"><span>Send a research team to look for new upgrades.</span><button class="btn" data-research>Research</button></div>
     <div class="filters"><div class="seg" role="radiogroup" aria-label="Show">${[['open', 'Open'], ['all', 'All']].map(([k, l]) => `<button role="radio" aria-checked="${S.ideas.filter === k}" data-if="${k}">${l}</button>`).join('')}</div></div>
-    ${items.length ? `<ul class="hunt-list">${items.map((x) => `<li class="hunt-row"><div class="hunt-main"><span class="hunt-title"><b>${esc(cap(unslug(String(x.title || ''))))}</b><span class="hunt-st${x.status === 'building' ? ' st-interview' : ''}">${esc(IDEA_WORD[x.status] || x.status)}</span></span>
+    ${items.length ? `<ul class="hunt-list">${items.map((x) => `<li class="hunt-row"><div class="hunt-main"><span class="hunt-title"><b>${esc(plainTitle(x.title))}</b><span class="hunt-st${x.status === 'building' ? ' st-interview' : ''}">${esc(IDEA_WORD[x.status] || x.status)}</span></span>
       <span class="hunt-sub">${esc(x.size === 'S' ? 'Small' : x.size === 'L' ? 'Large' : 'Medium')} · from ${esc(x.source || 'the Yard')}${x.at ? ' · ' + esc(ago(x.at)) : ''}</span>
       ${x.why ? `<span class="hunt-fit">${esc(x.why)}</span>` : ''}<details class="idea-goal"><summary>The goal</summary><p>${esc(x.goal)}</p>${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener noreferrer">Source</a>` : ''}</details></div>
       <div class="prop-actions">${x.job ? `<a class="btn" href="#/job/${esc(x.job)}">${ticket(x.job)}</a>` : ''}${['new', 'failed'].includes(x.status) ? `<button class="btn" data-idea-drop="${esc(x.id)}">Drop</button><button class="btn primary" data-idea-build="${esc(x.id)}">Build now</button>` : ''}</div></li>`).join('')}</ul>`
@@ -1802,7 +1899,7 @@ function renderLedger() {
     .map(([k, n, l]) => `<button class="lg-count${['you', 'lost', 'stuck'].includes(k) && n ? ' hot' : ''}" data-lg-f="${k}" aria-pressed="${S.ledger.filter === k}"><b>${Number(n) || 0}</b><span>${esc(l)}</span></button>`).join('');
   const progs = (d.programs || []).map((p) => `<div class="lg-prog">${esc(p.repo)}: ${Number(p.shipped)} of ${Number(p.total)} shipped${p.stuck ? `, ${Number(p.stuck)} stuck` : ''}<i><u data-css="width:${p.total ? Math.round(100 * p.shipped / p.total) : 0}%"></u></i></div>`).join('');
   const watchList = late.length ? `<details class="lg-prog"><summary>What the watchers found</summary><ul>${late.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></details>` : '';
-  const row = (x) => `<li class="lg-row"><div class="t"><b>${esc(cap(unslug(String(x.title || x.id))))}</b><span class="st${LG_HOT.has(x.state) ? ' hot' : ''}">${esc(LG_WORD[x.state] || x.state)}</span></div>
+  const row = (x) => `<li class="lg-row"><div class="t"><b>${esc(plainTitle(x.title || x.id))}</b><span class="st${LG_HOT.has(x.state) ? ' hot' : ''}">${esc(LG_WORD[x.state] || x.state)}</span></div>
     <div class="why">${esc(x.id)} · ${esc(x.kind)}${x.from ? ' · from ' + esc(x.from) : ''}${x.ageDays != null ? ' · ' + esc(String(x.ageDays)) + ' d' : ''}${x.why ? ' · ' + esc(x.why) : ''}</div>
     ${x.proof ? `<div class="why">Proof: ${esc(x.proof)}</div>` : ''}
     ${x.chain?.length ? `<details><summary>History (${x.chain.length})</summary><ol>${x.chain.map((s) => `<li><a href="#/job/${esc(s.id)}">${esc(s.id)}</a> ${esc(s.status)}${s.proof ? ' · ' + esc(s.proof) : ''}${s.note ? ' · ' + esc(s.note) : ''}${s.replacedBy ? ' → ' + esc(s.replacedBy) : ''}</li>`).join('')}</ol></details>` : ''}
@@ -1896,15 +1993,16 @@ function retryLabel(j) {
 }
 function briefSinceLines(b, lines) {
   if (b.since) lines.push(`<li><b>${esc(sinceText(b.since))}</b></li>`);
-  for (const x of b.stuck || []) lines.push(`<li class="bad"><a href="#/job/${esc(x.id)}">${esc(stuckText(x.id, x.stuck))}</a></li>`);
 }
+// D-11 a repeated failure is a row in the brief's Failed list (the same row as the others: its number, then what happened), not a bullet
+const stuckRow = (x) => `<li><a class="brief-row stuck-row" href="#/job/${esc(x.id)}"><span class="mono">${ticket(x.id)}</span><span class="t">${esc(cap(stuckText(x.id, x.stuck).slice(ticket(x.id).length + 1)))}</span></a></li>`;
 function renderBrief() {
   const b = S.brief; const el = $('brief'); const h = new Date().getHours();
   const seen = store.get('briefSeen', '') === new Date().toDateString();
   if (!b || (!S.briefOpen && (seen || h < 5 || h >= 13))) { el.innerHTML = ''; return; }
   // glanceable: count chips first, then at most 3 orders per group (plain names), then "and N more"
   const item = (x, extra = '') => `<li><a class="brief-row" href="#/job/${esc(x.id)}"><span class="mono">${ticket(x.id)}</span><span class="t">${esc(nameOf(x).text)}</span></a>${extra}</li>`;
-  const group = (cls, head, list, more, extra) => list.length ? `<div class="brief-group ${cls}"><h3>${head}</h3><ul>${list.slice(0, 3).map((x) => item(x, extra ? extra(x) : '')).join('')}</ul>${list.length > 3 ? `<a class="brief-more" href="#/pass" ${more}>and ${list.length - 3} more</a>` : ''}</div>` : '';
+  const group = (cls, head, list, more, extra, rows = '') => list.length || rows ? `<div class="brief-group ${cls}"><h3>${head}</h3><ul>${list.slice(0, 3).map((x) => item(x, extra ? extra(x) : '')).join('')}${rows}</ul>${list.length > 3 ? `<a class="brief-more" href="#/pass" ${more}>and ${list.length - 3} more</a>` : ''}</div>` : '';
   const am = new Set((b.autoMerged || []).map((x) => x.id));
   const chips = [
     b.needsYou.length ? `<a class="chip hot" href="#/pass" data-jump="needs"><b>${b.needsYou.length}</b> need sign-off</a>` : '',
@@ -1916,7 +2014,7 @@ function renderBrief() {
     group('hot', 'Waiting for your sign-off', b.needsYou, 'data-jump="needs"'),
     group('', 'Merged on their own', b.autoMerged || [], 'data-jump="plated"', (x) => `<button class="text-btn" data-undo="${esc(x.id)}">Undo</button>`),
     group('', STATUS_LABEL.done, b.plated.filter((x) => !am.has(x.id)), 'data-jump="plated"'),
-    group('bad', STATUS_LABEL.quarantined, b.setAside, 'data-jump="aside"'),
+    group('bad', STATUS_LABEL.quarantined, b.setAside, 'data-jump="aside"', null, (b.stuck || []).map(stuckRow).join('')),
   ].join('');
   const lines = [];
   briefSinceLines(b, lines);
@@ -2134,6 +2232,8 @@ daypart(); setInterval(daypart, 600000);
 import { sceneHtml, activityWord, mountScene, cookOf, COOK_COLORS, stepWord, applyCss, sceneLegend, frameStats, sceneApproved, sceneMeter, skyAt, sceneGl, sceneRenderer } from './scene.js';
 import { startLive, floorStep } from './live.js';
 import { mainStatusBanners } from './main-status.js';   // TD-EH-03a main-is-red banner
+import { markNotices, keysOf } from './notices.js';   // D-12 cleared notices and thin red bars, keyed so a change shows again
+import { titleOf, cleanTitle, splitName } from './titles.js';   // D-11 the one title helper (every list's titles)
 import { ciBudgetBanners } from './ci-budget.js';   // TD-11 CI budget per Site
 import { undoPushBanners, autoMergePauseBanner } from './undo-pause.js';   // TD-EH-10 undo not pushed, TD-EH-11 auto-merge paused
 import { siteStopBanners, siteStopRows } from './site-stop.js';   // TD-8: a Site stopped by you, a Site's own Stop-work order
