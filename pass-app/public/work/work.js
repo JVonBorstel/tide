@@ -27,8 +27,8 @@ export function mountWork(o) {
 /** Is the flag on? 404 = off; anything else unknown keeps what we knew (a blip never hides the tab). */
 function probe(o, sec) { return check(o, sec); }
 async function check(o, sec) {
-  let code = 0, error = "can't reach the Board";
-  try { const r = await fetch('/api/work?page=1', { headers: { Accept: 'application/json' }, cache: 'no-store' }); code = r.status; const j = await r.json().catch(() => null); error = j?.error || `the Board answered ${code}`; if (j?.ok) badge(j.queueTotal); } catch { }
+  let code = 0, error = "can't reach Tide";
+  try { const r = await fetch('/api/work?page=1', { headers: { Accept: 'application/json' }, cache: 'no-store' }); code = r.status; const j = await r.json().catch(() => null); error = j?.error || `Tide answered ${code}`; if (j?.ok) badge(j.queueTotal); } catch { }
   if (code === 200) setOn(true, o, sec); else if (code === 404) setOn(false, o, sec);
   return { code, error };
 }

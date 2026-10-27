@@ -117,8 +117,8 @@ async function tap(row, btn, ctx) {
     row.classList.remove('busy'); fold(row); ctx.refresh(); return;
   }
   undo();
-  if (!r) return tell('Not recorded: the Board could not be reached. Nothing was queued; tap again (it is safe: one tap counts once).', true);
+  if (!r) return tell('Not recorded: Tide could not be reached. Nothing was queued; tap again (it is safe: one tap counts once).', true);
   if (r.status === 409) { tell('Already answered.'); fold(row); ctx.refresh(); return; }
   if (r.status === 412 || r.status === 428) { ctx.V.heads.delete(d.wo); await headOf(d.wo, ctx); return tell(`${j?.error || 'The code moved after you looked.'} The row now shows the new code.`, true); }
-  tell(j?.error || `Not recorded: the Board answered ${r.status}.`, true);
+  tell(j?.error || `Not recorded: Tide answered ${r.status}.`, true);
 }
