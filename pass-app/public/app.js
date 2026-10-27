@@ -370,8 +370,9 @@ function renderPass() {
   // task 32 (failure care): the number counts the failures that need him now (open, not cleared, last 72 h); the Failures list groups
   // them by class (the Yard's failure policy) with Retry, Close and See why on each row; Older holds the older ones and every cleared order
   const hs = homeStats(jobs); const anyAside = hs.recent.length + hs.older.length;
-  const grouped = (list) => failureGroups(list).flatMap((g) => [{ id: 'grp-' + g.cls, grp: true, cls: g.cls, label: g.label, n: g.items.length }, ...g.items]);
-  const aside = [...grouped(hs.recent), ...(S.showOlder && hs.older.length ? [{ id: 'grp-older', grp: true, cls: 'older', label: 'Older and cleared', n: hs.older.length }, ...hs.older] : [])];
+  // the window counts failure rows only (D-11, the truth rule): each group's head goes in front of its first shown row, never last alone
+  const asideGroups = [...failureGroups(hs.recent).map((g) => ({ head: { id: 'grp-' + g.cls, grp: true, cls: g.cls, label: g.label, n: g.items.length }, items: g.items })),
+    ...(S.showOlder && hs.older.length ? [{ head: { id: 'grp-older', grp: true, cls: 'older', label: 'Older and cleared', n: hs.older.length }, items: hs.older }] : [])];
   // the headline says the state of the Yard in one sentence, with its one action under it (the sign-off); then one grid of equal stats
   // (each a jump), then one plain-words line of its own
   const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
@@ -389,7 +390,7 @@ function renderPass() {
   const note = [s.due ? `<a href="#/pass" data-hunt class="bad">${Number(s.due)} follow-up${s.due > 1 ? 's' : ''} due</a>` : '',
     platedToday ? `<a href="#/pass" data-jump="plated">${platedToday} ${low(L.done)} today</a>` : `Nothing ${low(L.done)} today`].filter(Boolean).join('<span class="sep" aria-hidden="true"> · </span>');
   setHtml($('summary'), `<p class="headline-text ${head[0]}">${head[1]}</p>${sign}<nav class="home-stats" aria-label="The Yard in numbers">${stats.join('')}</nav><p class="home-note">${note}</p>`);
-  const railW = windowed(rail, S.win.rail), asideW = windowed(aside, S.win.aside);
+  const railW = windowed(rail, S.win.rail), asideW = windowGroups(asideGroups, S.win.aside);
   const platedW = S.showPlated ? windowed(plated, S.win.plated) : { shown: plated.slice(0, 3), more: 0 };
   const quiet = !needs.length && !cooking.length && !rail.length;
   const nAsk = needs.filter((j) => j.approval?.id).length;
@@ -398,7 +399,7 @@ function renderPass() {
     cooking: cooking.length && { title: L.running, list: cooking, kind: 'cook' },
     rail: rail.length && { title: L.pending, list: railW.shown, count: rail.length, kind: 'rail', after: moreLine('rail', railW.shown.length, rail.length) },
     aside: anyAside && { title: 'Failures', list: asideW.shown, count: hs.recent.length, kind: 'aside', empty: 'No failures need you: nothing open from the last 3 days.',
-      after: moreLine('aside', asideW.shown.length, aside.length) + (hs.older.length ? `<button class="show-all" type="button" data-older aria-expanded="${!!S.showOlder}">${S.showOlder ? 'Hide' : 'Show'} older and cleared (${hs.older.length})${icon('chev')}</button>` : '')
+      after: moreLine('aside', asideW.rows, asideW.total) + (hs.older.length ? `<button class="show-all" type="button" data-older aria-expanded="${!!S.showOlder}">${S.showOlder ? 'Hide' : 'Show'} older and cleared (${hs.older.length})${icon('chev')}</button>` : '')
         + (S.showOlder && hs.older.some(OLD_ASIDE) ? `<button class="btn approve-all" id="clear-aside">Clear old (${hs.older.filter(OLD_ASIDE).length})</button>` : '') },
     plated: { title: L.done, list: platedW.shown, count: plated.length, kind: 'done', empty: `Nothing ${low(L.done)} yet.`,
       after: (S.showPlated ? moreLine('plated', platedW.shown.length, plated.length) : '') + (plated.length > 3 ? `<button class="show-all" id="toggle-plated">${S.showPlated ? 'Show fewer' : `Show all ${plated.length} ${low(L.done)}`}${icon('chev')}</button>` : '') },
@@ -2284,7 +2285,7 @@ import { startLive, floorStep } from './live.js';
 import { mainStatusBanners } from './main-status.js';   // TD-EH-03a main-is-red banner
 import { markNotices, keysOf } from './notices.js';   // D-12 cleared notices and thin red bars, keyed so a change shows again
 import { titleOf, cleanTitle, splitName, plainDetail } from './titles.js';   // D-11 the one title helper (every list's titles), and details in plain words
-import { homeStats, failureGroups, clearedWords, agoWords, exactTime } from './plain.js';   // task 30: what the home counts (recent failures only), times in words
+import { homeStats, failureGroups, windowGroups, clearedWords, agoWords, exactTime } from './plain.js';   // task 30: what the home counts (recent failures only), times in words
 import { ciBudgetBanners } from './ci-budget.js';   // TD-11 CI budget per Site
 import { undoPushBanners, autoMergePauseBanner } from './undo-pause.js';   // TD-EH-10 undo not pushed, TD-EH-11 auto-merge paused
 import { siteStopBanners, siteStopRows } from './site-stop.js';   // TD-8: a Site stopped by you, a Site's own Stop-work order

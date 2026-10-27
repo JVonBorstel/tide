@@ -32,6 +32,18 @@ export function failureGroups(list) {
   const rank = (c) => { const i = CLASS_ORDER.indexOf(c); return i < 0 ? CLASS_ORDER.length : i; };
   return [...by.values()].sort((a, b) => rank(a.cls) - rank(b.cls));
 }
+// The window over a grouped list (task 32 review): the first n ROWS, never counting the group heads, with each group's head put in front
+// of its first shown row, so "Showing N of M" counts rows only and no head ever stands last with none of its rows under it.
+// groups: [{ head, items }] -> { shown: [head, ...rows, head, ...rows], rows: the rows shown, total: every row }
+export function windowGroups(groups, n) {
+  const shown = []; let left = Math.max(0, n), rows = 0, total = 0;
+  for (const g of groups || []) {
+    const items = g?.items || []; total += items.length;
+    const take = items.slice(0, left); if (!take.length) continue;
+    shown.push(g.head, ...take); left -= take.length; rows += take.length;
+  }
+  return { shown, rows, total };
+}
 // "Cleared as stale: no human action for 4 days since it failed" (the reason is the Yard's own words)
 const CLEARED_WORD = { retried: 'Retried', superseded: 'Superseded', duplicate: 'Duplicate', stale: 'Cleared as stale', dropped: 'Dropped' };
 export const clearedWords = (c) => (c ? `${CLEARED_WORD[c.state] || 'Cleared'}${c.by && c.state !== 'stale' && c.state !== 'dropped' ? ` (${c.by})` : ''}: ${c.reason || 'no reason was recorded'}` : '');

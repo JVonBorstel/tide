@@ -109,6 +109,37 @@ try {
     /^Show older and cleared \(\d+\)$/.test(v1.older) && ['J64', 'J65', 'J66', 'J61'].every((id) => olderIds.includes(id)) && c65?.cleared && c65.say === 'Cleared as stale: no human action for 4 days since it failed'
       && c66?.say === 'Duplicate (J60): the same goal is open as J60 (quarantined)' && /^Dropped: closed by Jordan on the Board$/.test(c61?.say || '') && c65.btns.length === 0, JSON.stringify({ olderIds, c65, c66, c61 }));
 
+  // ---------- a long list: the window counts failure rows only (review round 3, D-11 and the truth rule) ----------
+  // 22 more recent failures in two more classes (11 Real failure, 11 Infrastructure), so 25 need Jordan in 5 classes and the window of 20
+  // cuts through a group; the old count took the group heads as rows ("Showing 20 of 29") and could leave a head last with no rows under it
+  for (let i = 0; i < 22; i++) {
+    const id = 'J' + (100 + i), at = now - (10 + i) * 60e3;
+    const f = i % 2 ? F('infra', 'Infrastructure', 'retry', 'The machine ran out of room at step 3 of 3 (tests); next: the Yard tries it once more; if it fails again, Retry or Close.', at) : real(at);
+    fs.writeFileSync(path.join(root, 'jobs', id + '.json'), JSON.stringify(job(id, `improve: Example long-list failure ${i + 1}`, 'quarantined', at, { failure: f })));
+  }
+  const winView = () => ev(`(() => { const t = (el) => (el?.textContent || '').replace(/\\s+/g, ' ').trim(); const sec = document.getElementById('sec-aside');
+    const lis = [...sec.querySelectorAll('.rows > li')]; const m = /Showing (\\d+) of (\\d+)/.exec(t(sec.querySelector('.win-more')));
+    return { stat: t([...document.querySelectorAll('#summary .home-stats a')].find((a) => a.dataset.jump === 'aside')), more: m ? [+m[1], +m[2]] : null,
+      rows: sec.querySelectorAll('.rows > li.row').length, heads: sec.querySelectorAll('.rows > li.fail-grp').length, lastIsHead: !!lis[lis.length - 1]?.classList.contains('fail-grp'),
+      headAlone: lis.some((li, i) => li.classList.contains('fail-grp') && !lis[i + 1]?.classList.contains('row')), older: t(sec.querySelector('[data-older]')) }; })()`);
+  await phone(412, 900); await open(); await until(`document.querySelectorAll('#sec-aside .rows > li.row').length >= 20`, 15000); await settle(400);
+  const w1 = await winView();
+  check('FailuresWindow_CountsRowsOnly: 25 failures in 5 classes show "Showing 20 of 25": both numbers are failure rows (li.row), never the group heads, and no group head is the last item or stands without a row under it',
+    w1.stat === '25 failures need you' && w1.more?.[0] === 20 && w1.more?.[1] === 25 && w1.rows === 20 && w1.heads === 4 && !w1.lastIsHead && !w1.headAlone, JSON.stringify(w1));
+  if (shotsDir) {   // the end of the window: the last shown rows and the "Showing 20 of 25" line (for the picture the line must not load
+    // more as it scrolls into view, so its data-more goes for the shot; the Older tap below draws the line again with it)
+    await ev(`(() => { const b = document.querySelector('#sec-aside .win-more'); b?.removeAttribute('data-more'); b?.scrollIntoView({ block: 'end' }); window.scrollBy(0, 160); })()`); await settle(300);
+    await shot(`failures-window-412-dark-${label}.png`); await ev(`window.scrollTo(0, 0)`); await settle(300);
+  }
+  await ev(`document.querySelector('#sec-aside [data-older]').click()`); await settle(500);
+  const w2 = await winView(); const nOlder = Number((/\((\d+)\)/.exec(w2.older) || [])[1]);
+  check('FailuresWindow_OlderOpen: with Older open the total is every failure row (25 recent plus the older and cleared ones), the shown number is the rows on screen, and no head stands last',
+    nOlder >= 4 && w2.more?.[0] === w2.rows && w2.rows === 20 && w2.more?.[1] === 25 + nOlder && !w2.lastIsHead && !w2.headAlone, JSON.stringify({ ...w2, nOlder }));
+  await ev(`document.querySelector('#sec-aside .win-more')?.click()`); await settle(600);
+  const w3 = await winView();
+  check('FailuresWindow_ShowMore: "show more" brings every row (25 recent plus Older), the line goes away, and every head (5 classes and Older) has its rows under it',
+    !w3.more && w3.rows === 25 + nOlder && w3.heads === 6 && !w3.lastIsHead && !w3.headAlone, JSON.stringify(w3));
+
   // ---------- no sideways scroll; speed budget not worse ----------
   await phone(360, 800); await open(); await toAside();
   const v5 = await view();

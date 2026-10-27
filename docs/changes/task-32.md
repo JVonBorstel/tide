@@ -92,7 +92,9 @@ Killed, quarantined and closed are working states: the doctor clears them. `doct
 - The job sheet leads with the same sentence and keeps the raw line under "The full detail".
 - No failure is a red bar: red bars stay for broken things (D-1).
 
-Pictures at 412 x 900 (`docs/changes/task-32/`, a throwaway Board with made-up orders, `node pass-app/test-failures.mjs --shots`): home, Failures list and Older, in dark, and the list in light, before and after, plus See why open.
+Pictures at 412 x 900 (`docs/changes/task-32/`, a throwaway Board with made-up orders, `node pass-app/test-failures.mjs --shots`): home, Failures list and Older, in dark, and the list in light, before and after, plus See why open, plus the end of a long list (`failures-window-412-dark-after.png`: 25 failures in 5 classes, "Showing 20 of 25").
+
+The long list shows its first 20 failure rows and the rest on "show more". The "Showing N of M" line counts failure rows only, never the group heads, and each group's head sits in front of its first shown row, so a head is never left last with none of its rows under it (`windowGroups` in `public/plain.js`). Before the review fix, the same 25 failures read "Showing 20 of 30" with 16 rows on screen, and with Older open "Showing 20 of 35".
 
 **Not in this change:**
 
@@ -116,11 +118,12 @@ One check per acceptance line, named after it:
   - add refuses a duplicate and the force flag works (a failed or stopped twin does not block a new attempt);
   - every failure has a plain sentence (a real failing run, a stopped order, an older order given words by the doctor);
   - plus the one action once (flaky back to freshen; a real failure left alone), and the stale reason naming files main changed (a real git repo).
-- `pass-app/test-failures.mjs` (new, run by `tests/Test-PassApp.ps1`), 12 checks:
+- `pass-app/test-failures.mjs` (new, run by `tests/Test-PassApp.ps1`), 15 checks:
   - `Home_CountIgnoresClearedAndOld`;
   - `FailuresList_GroupedByClass`, `FailuresList_PlainSentence`, `FailuresList_OneTapActions`;
   - `FailuresList_SeeWhy` (two checks), `FailuresList_Retry`, `FailuresList_Close` (the real `kitchen.ps1` on the throwaway folder);
   - `OlderList_HasCleared`, `RedBars_StayForBroken`, `NoHScroll360`;
+  - `FailuresWindow_CountsRowsOnly`, `FailuresWindow_OlderOpen`, `FailuresWindow_ShowMore` (22 more failures, 25 in 5 classes): both numbers in "Showing N of M" equal the failure rows (`li.row`), and no group head is last or stands without a row under it. The first two failed on the code before the fix ("Showing 20 of 30" with 16 rows);
   - `SpeedBudget_NotWorse`: no canvas, animation or frame loop added, a few nodes per row. The budget itself is measured by CI's report-only `speed` job on the pull request.
 - `pass-app/test-readable.mjs` (task 30): its home-count checks now expect the task 32 words and window.
 - `tests/Test-KitchenApi.ps1`: its second cook of the same question now asks another one, and a new check proves the duplicate is refused over the API.
@@ -140,7 +143,7 @@ One check per acceptance line, named after it:
   | `Test-KitchenMerge` | 59 passed, 0 failed |
   | `Test-KitchenRecipes` | 87 passed, 0 failed |
   | `Test-KitchenSupervisor` | 245 passed, 0 failed |
-  | `Test-PassApp` | 1384 passed, 0 failed |
+  | `Test-PassApp` | 1387 passed, 0 failed |
   | `Test-Standards` | 20 passed, 0 failed |
   | `Test-Work` | 118 passed, 0 failed |
 
