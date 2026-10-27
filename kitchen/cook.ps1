@@ -48,8 +48,10 @@ foreach ($v in @($r.vars.Keys)) {
 . (Join-Path $PSScriptRoot 'tracker-lib.ps1')
 $cf = Get-CareerFiles; $values.resume = $cf.resume; $values.claims = $cf.claims; $values.home = $homeDir
 # two order options every recipe takes: cook = which supplier its AI steps use (auto lets the sous chef pick), private = keep it on this PC
-$reserved = @{ cook = 'auto'; private = 'no'; size = ''; night = 'no'; priority = 'normal' }   # size L = a large order: the sous chef may use the strong tier for its plan and build (tide/08)
+$reserved = @{ cook = 'auto'; private = 'no'; size = ''; night = 'no'; priority = 'normal'; site = '' }   # size L = a large order: the sous chef may use the strong tier for its plan and build (tide/08)
 foreach ($v in $Vars.Keys) { if (-not $r.vars.ContainsKey($v) -and -not $reserved.ContainsKey($v)) { Fail "recipe $Recipe has no '$v'" } }
+# site: the order's Site for an order with no Tower (TD-3; kitchen.ps1 add sets it from the Tower otherwise, and a requeue passes it back)
+if ($Vars.site) { . (Join-Path $PSScriptRoot 'repo-config.ps1'); if ([string]$Vars.site -cnotin $script:RepoSiteCodes) { Fail "site must be one of $($script:RepoSiteCodes -join ', ')" } }
 if ($Vars.cook) { $reserved.cook = [string]$Vars.cook; if ($reserved.cook -notmatch '^[\w-]{1,30}$') { Fail "cook must be auto or a supplier name" } }
 if ($Vars.private) { $reserved.private = [string]$Vars.private; if ($reserved.private -notmatch '^(yes|no|true|false)$') { Fail 'private must be yes or no' } }
 if ($Vars.night) { $reserved.night = ([string]$Vars.night).ToLowerInvariant(); if ($reserved.night -notmatch '^(yes|no|true|false)$') { Fail 'night must be yes or no' } }

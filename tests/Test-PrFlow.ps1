@@ -379,6 +379,26 @@ try {
     $ti = -1; for ($i = 0; $i -lt $names.Count; $i++) { if ($rec.steps[$i].args.Role -eq 'check') { $ti = $i } }
     Check 'recipe: taster -> pr -> ci-wait -> merge -> verify -> deploy' ($ti -gt 0 -and (($names[($ti + 1)..($names.Count - 1)]) -join ',') -eq 'pr,ci-wait,merge,verify,deploy')
     Check 'recipe: a github var (empty = derived), passed to pr; merge keeps its yes' ($null -ne $rec.vars.github -and $rec.vars.github.default -eq '' -and $rec.steps[$ti + 1].args.GitHub -eq '{{github}}' -and $rec.steps[$ti + 3].approve -eq $true)
+
+    # ---- 14. TD-11 (Q8 = yes): a Site over its CI budget opens no NEW pull request; a raised budget or an unknown count lets it go
+    $month = [DateTime]::UtcNow.ToString('yyyy-MM'); $before = @(Prs).Count
+    $cbDoc = { param($at, $state) @{ month = $month; monthEnds = [DateTime]::UtcNow.AddDays(3).ToString('o'); sites = @(@{ code = 'TD'; state = $state; minutesAtLeast = $at; over = $true }) } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $kr 'ci-budget.json') }
+    $setBudget = { param($b) @{ sites = @{ TD = @{ ciMinutesPerMonth = $b } } } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $kr 'kitchen.json') }
+    $null = NewJob 'J90' 'cb.txt' $repo @{ goal = 'make change J90'; site = 'TD' }
+    & $cbDoc 1200 'ok'; & $setBudget 1000
+    $r = Station 'pr' 'J90'
+    Check 'ci budget: over budget -> no new PR, a 6-hour wait (11) with the reason' ($r.code -eq 11 -and $r.wait -eq '21600' -and $r.out -match 'Site TD is over its CI budget: at least 1200 of 1000' -and @(Prs).Count -eq $before)
+    & $cbDoc $null 'unknown'
+    $r = Station 'pr' 'J90'
+    Check 'ci budget: an unknown count never holds by itself (the PR opens)' ($r.code -eq 0 -and $r.out -match 'opened' -and @(Prs).Count -eq $before + 1)
+    $null = NewJob 'J91' 'cb2.txt' $repo @{ goal = 'make change J91'; site = 'TD' }
+    & $cbDoc 1200 'ok'; & $setBudget 'unlimited'
+    $r = Station 'pr' 'J91'
+    Check 'ci budget: a budget raised to "unlimited" lets the new PR open at once' ($r.code -eq 0 -and $r.out -match 'opened' -and @(Prs).Count -eq $before + 2)
+    & $setBudget 1000
+    $r = Station 'pr' 'J91'
+    Check 'ci budget: an open PR is still pushed to while over budget (only new PRs wait)' ($r.code -eq 0 -and $r.out -match 'reused')
+    Remove-Item (Join-Path $kr 'kitchen.json'), (Join-Path $kr 'ci-budget.json') -ErrorAction SilentlyContinue
 }
 finally {
     foreach ($v in $saved.Keys) { [Environment]::SetEnvironmentVariable($v, $saved[$v]) }

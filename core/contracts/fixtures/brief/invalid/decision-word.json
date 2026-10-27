@@ -1,0 +1,17 @@
+{
+  "why": "decision is D-<n> or none",
+  "expect": "/decision: anyOf",
+  "doc": {
+    "v": "1.0",
+    "wo": "WO-2001",
+    "stream": "DEMO",
+    "plan": "plans/example-plan.md#slice-2",
+    "decision": "later",
+    "repo": "example-owner/example-repo",
+    "branch": "wo/2001-sunrise",
+    "base": "main",
+    "worktree": "wt/wo-2001-sunrise",
+    "budget": "40 turns",
+    "depth": 1
+  }
+}

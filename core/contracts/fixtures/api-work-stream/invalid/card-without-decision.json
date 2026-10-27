@@ -1,0 +1,14 @@
+{
+  "why": "a card message carries the decision",
+  "expect": "/data/decision: required",
+  "doc": {
+    "type": "card",
+    "at": "2030-01-07T12:05:00Z",
+    "seq": 5,
+    "data": {
+      "goal": "Example: show a sunrise colour in the sky of the demo scene",
+      "stream": "DEMO",
+      "ageH": 0.2
+    }
+  }
+}

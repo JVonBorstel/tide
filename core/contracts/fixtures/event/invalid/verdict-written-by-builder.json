@@ -1,0 +1,21 @@
+{
+  "why": "CREED 6: a verdict is never written by the builder",
+  "expect": "/actor: creed6",
+  "doc": {
+    "v": "1.0",
+    "seq": 9,
+    "at": "2030-01-07T09:09:00Z",
+    "actor": "crew:builder-1",
+    "kind": "review.verdict",
+    "wo": "WO-2001",
+    "data": {
+      "verdict": "ship",
+      "reasons": "Every acceptance line has a passing test; the empty and error states are drawn.",
+      "head": "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
+      "reviewer": "crew:verifier-2",
+      "builder": "crew:builder-1",
+      "findings": 0
+    },
+    "proof": null
+  }
+}

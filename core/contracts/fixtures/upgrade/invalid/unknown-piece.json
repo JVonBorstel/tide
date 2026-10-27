@@ -1,0 +1,25 @@
+{
+  "why": "new pieces are added to the schema first",
+  "expect": "/rocket: additionalProperties",
+  "doc": {
+    "v": "1.0",
+    "_about": "Example block.",
+    "ledger": "old",
+    "engine": {
+      "adopted": "old",
+      "improve": "old"
+    },
+    "crews": "old",
+    "ship": {
+      "gates": "old",
+      "queue": "old"
+    },
+    "board": {
+      "work": "old"
+    },
+    "continuity": {
+      "boot": "old"
+    },
+    "rocket": "old"
+  }
+}

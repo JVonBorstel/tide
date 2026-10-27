@@ -1,0 +1,21 @@
+{
+  "v": "1.0",
+  "_about": "Example block.",
+  "ledger": "new",
+  "engine": {
+    "adopted": "old",
+    "improve": "old"
+  },
+  "crews": "old",
+  "ship": {
+    "gates": "shadow",
+    "queue": "old",
+    "_note": "gates report-only"
+  },
+  "board": {
+    "work": "old"
+  },
+  "continuity": {
+    "boot": "old"
+  }
+}

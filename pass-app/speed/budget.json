@@ -1,0 +1,20 @@
+{
+  "about": "The Board's phone speed budget (pass-app/SPEED.md). target = the goal (over it: a warning); hard = the limit (over it: fails the check once enforce is true). Frame numbers are JS work per frame on the throttled profile.",
+  "enforce": false,
+  "runs": 3,
+  "metrics": {
+    "frameP95Ms": { "label": "Scene frame work p95 (busy Yard)", "unit": "ms", "target": 8.3, "hard": 16.7 },
+    "frameP99Ms": { "label": "Scene frame work p99 (busy Yard)", "unit": "ms", "target": 16.7, "hard": 33.3 },
+    "longFrames33": { "label": "Scene frames over 33 ms (8 s busy)", "unit": "", "target": 0, "hard": 3 },
+    "zoomP95Ms": { "label": "Frame work p95 during a pinch zoom", "unit": "ms", "target": 8.3, "hard": 16.7 },
+    "flightP95Ms": { "label": "Frame work p95 during a view change", "unit": "ms", "target": 8.3, "hard": 16.7 },
+    "inpMs": { "label": "INP (slowest tap: legend, crew, tabs)", "unit": "ms", "target": 100, "hard": 200 },
+    "firstUsefulPaintMs": { "label": "First useful paint (status line, scene, first number)", "unit": "ms", "target": 1500, "hard": 2000 },
+    "lcpMs": { "label": "Largest paint (LCP)", "unit": "ms", "target": 2000, "hard": 2500 },
+    "cls": { "label": "Cumulative layout shift", "unit": "", "target": 0.02, "hard": 0.05 },
+    "heapMB": { "label": "JS heap after the session (after a GC)", "unit": "MB", "target": 15, "hard": 25 },
+    "idleRafPerSec": { "label": "Frame callbacks per second, calm Yard", "unit": "/s", "target": 1, "hard": 12 },
+    "idleScriptPct": { "label": "Scripting, calm Yard (% of one core)", "unit": "%", "target": 0.5, "hard": 1 }
+  },
+  "size": { "warnBrotliKB": 300 }
+}

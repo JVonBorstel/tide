@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "event": {
+    "v": "1.0",
+    "seq": 11,
+    "at": "2030-01-07T09:11:00Z",
+    "actor": "jordan",
+    "kind": "decision.answered",
+    "wo": "WO-2001",
+    "data": {
+      "decision": "D-7",
+      "answer": "Yes",
+      "note": null,
+      "via": "board",
+      "requestId": "req-0001-example"
+    },
+    "proof": null
+  },
+  "duplicate": true
+}

@@ -1,0 +1,13 @@
+{
+  "name": "tide-board-speed",
+  "private": true,
+  "description": "The Board's phone speed budget (pass-app/SPEED.md). One pinned dev tool: playwright-core (Apache-2.0), no browser download.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "speed": "node run.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.64.0"
+  }
+}

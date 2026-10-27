@@ -1,0 +1,13 @@
+{
+  "v": "1.0",
+  "wo": "WO-2001",
+  "name": "freshen",
+  "args": {
+    "pr": "example#41",
+    "base": "main",
+    "dryRun": false
+  },
+  "idempotencyKey": "WO-2001:freshen:1",
+  "timeoutSec": 600,
+  "maxMB": 1500
+}

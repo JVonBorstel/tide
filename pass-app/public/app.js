@@ -165,7 +165,7 @@ async function clearAside(btn) {
   const list = (S.state?.jobs || []).filter(OLD_ASIDE);
   if (!list.length) return;
   const html = `<ol class="batch-list">${list.map((j) => `<li><b>${ticket(j.id)}</b> ${esc(nameOf(j).text)}<small>${esc(ago(j.updated))} ago</small></li>`).join('')}</ol><p>They are closed, not deleted. Their history stays.</p>`;
-  if (!await confirmBox({ title: `Clear ${list.length} old ${list.length === 1 ? 'ticket' : 'tickets'}?`, html, yes: `Clear ${list.length}`, danger: true })) return;
+  if (!await confirmBox({ title: `Clear ${list.length} old ${list.length === 1 ? 'work order' : 'work orders'}?`, html, yes: `Clear ${list.length}`, danger: true })) return;
   buzz();
   const ids = list.map((j) => j.id);
   const r = await act({ op: 'clear-aside', ids }, { btn });
@@ -224,7 +224,7 @@ document.addEventListener('click', (e) => {
 });
 function rowMenu(id) {
   const j = jobOf(id); $('row-menu-title').textContent = ticket(id);
-  const items = [['open', 'Open ticket'], ['logs', 'Logs']];
+  const items = [['open', 'Open work order'], ['logs', 'Logs']];
   if (NEEDS(j)) items.unshift(['approve', 'Approve'], ['reject', 'Reject']);
   if (j.status === 'running' || j.status === 'pending') items.push(['stop', 'Cancel work order']);
   if (ASIDE(j)) items.unshift(['retry', retryLabel(j)]);
@@ -280,7 +280,7 @@ window.addEventListener('hashchange', route);
 
 // ---------- the pass (job board) ----------
 function row(j, kind) {
-  const meta = [`<span class="mono">${ticket(j.id)}</span>`, stuckChip(j)];
+  const meta = [siteChip(j) + withFloor(`<span class="mono">${ticket(j.id)}</span>`, j), stuckChip(j)];
   let glyph = 'g-queue', side = '', extra = '', swipe = '', cls = 'row';
   if (kind === 'need') {
     glyph = 'g-need'; meta.push(esc(who(j)), `waiting <span data-ago="${esc(j.updated || '')}">${ago(j.updated)}</span>`);
@@ -322,13 +322,14 @@ function cookCard(j, stable = false) {
       <div class="cook-step"><span class="strip" aria-hidden="true">${strip}</span><span class="step-word">Step ${at} of ${n} · ${esc(stepWord(j))}</span></div>
       <div class="cook-now">${act ? `<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>${esc(act)}</span>` : `<span class="faint">${esc(cap(cookName))} is on it</span>`}</div>
       ${j.limit ? `<div class="hair${pct > 75 ? ' warn' : ''}" aria-hidden="true"><i data-pct="${esc(j.since)}" data-limit="${Number(j.limit)}" data-css="width:${pct}%"></i></div>` : ''}</div>
-    <div class="row-side cook-side"><span class="mono ticket-no">${ticket(j.id)}</span><span class="clock" aria-hidden="true" data-since="${esc(j.since || '')}">${stable ? '' : mmss(since(j.since))}</span><span class="cook-name">${esc(cookName)}</span>
+    <div class="row-side cook-side">${siteChip(j)}<span class="mono ticket-no">${ticket(j.id)}</span><span class="clock" aria-hidden="true" data-since="${esc(j.since || '')}">${stable ? '' : mmss(since(j.since))}</span><span class="cook-name">${esc(cookName)}</span>
       <button class="icon-btn row-more" data-do="menu" data-id="${j.id}" aria-label="Actions for ${ticket(j.id)}">${icon('more')}</button></div></div></li>`;
 }
 // The board is keyed (public/rows.js): each block (the stuck alarm, a section, the quiet card) and each row inside a section is kept
 // between renders and made again only when its own markup changed, so one job's change touches one row. Long lists (On the rail, Set
 // aside, and Plated after "Show all") show their first 20 rows and 50 more each time the "showing N of M" line scrolls into view.
 S.win = { rail: WINDOW_FIRST, aside: WINDOW_FIRST, plated: WINDOW_FIRST };
+S.siteFilter = store.get('siteFilter', 'all');   // TD-4: the Site filter, remembered on this phone
 const newest = (a, b) => (String(a.updated) < String(b.updated) ? 1 : String(a.updated) > String(b.updated) ? -1 : 0);   // ISO times: plain order (localeCompare cost ms at 10x)
 const secShell = (id, title, hot) => `<section class="sec${hot ? ' hot' : ''}" id="sec-${id}" aria-labelledby="h-${id}"><h2 class="sec-head" id="h-${id}"><span>${title}<span class="n"></span></span></h2><ul class="rows"></ul><p class="empty-line" hidden></p><div class="sec-after"></div></section>`;
 const setHtml = (el, html) => { if (el && el._html !== html) { el.innerHTML = html; el._html = html; } };
@@ -345,7 +346,8 @@ const moreSeen = typeof IntersectionObserver === 'function' ? new IntersectionOb
 function showMore(key) { if (!(key in S.win)) return; S.win[key] += WINDOW_STEP; S.sig.pass = ''; renderAll(); }
 function renderPass() {
   const s = S.state; if (!s) { $('board').innerHTML = offlineCard() || '<div class="skeleton" aria-label="Opening the Board"><i></i><i></i><i></i></div>'; $('board')._keyed = null; return; }
-  const jobs = s.jobs; const byId = (a, b) => parseInt(a.id.slice(1)) - parseInt(b.id.slice(1));
+  const siteF = siteFilterOf(S.siteFilter, s.jobs), sites = siteBar(s.jobs, siteF);   // TD-4: the lanes of one Site, or all
+  const jobs = bySite(s.jobs, siteF); const byId = (a, b) => parseInt(a.id.slice(1)) - parseInt(b.id.slice(1));
   const needs = jobs.filter(NEEDS).sort(byId), cooking = jobs.filter((j) => j.status === 'running').sort(byId);
   const rail = jobs.filter((j) => j.status === 'pending').sort(byId).map((j, i) => ({ ...j, pos: i + 1 }));
   const aside = jobs.filter(ASIDE).sort(newest);
@@ -377,8 +379,8 @@ function renderPass() {
       after: (S.showPlated ? moreLine('plated', platedW.shown.length, plated.length) : '') + (plated.length > 3 ? `<button class="show-all" id="toggle-plated">${S.showPlated ? 'Show fewer' : `Show all ${plated.length} ${low(L.done)}`}${icon('chev')}</button>` : '') },
   };
   const stuck = stuckAlarm(jobs);
-  const blocks = [stuck && { k: 'stuck', h: stuck }, ...['needs', 'cooking', 'rail'].filter((k) => secs[k]).map((k) => ({ k, h: secShell(k, secs[k].title, secs[k].hot) })),
-    quiet && { k: 'quiet', h: `<div class="quiet"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#i-cloche"/></svg><p>Nothing on the stove.</p><button class="btn" data-quiet-order>New work order</button></div>` },
+  const blocks = [sites && { k: 'sites', h: sites }, stuck && { k: 'stuck', h: stuck }, ...['needs', 'cooking', 'rail'].filter((k) => secs[k]).map((k) => ({ k, h: secShell(k, secs[k].title, secs[k].hot) })),
+    quiet && { k: 'quiet', h: `<div class="quiet"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#i-cloche"/></svg><p>Nothing building.</p><button class="btn" data-quiet-order>New work order</button></div>` },
     ...['aside', 'plated'].filter((k) => secs[k]).map((k) => ({ k, h: secShell(k, secs[k].title, secs[k].hot) }))].filter(Boolean);
   const board = $('board'); if (!board._keyed) board.innerHTML = '';   // from the skeleton or the offline card to the board
   syncList(board, blocks, { key: (b) => b.k, html: (b) => b.h });
@@ -399,6 +401,7 @@ S.firstPaint = true;
 $('board').addEventListener('click', (e) => {
   if (e.target.closest('#approve-all')) approveAll(e.target.closest('#approve-all'));
   if (e.target.closest('#clear-aside')) clearAside(e.target.closest('#clear-aside'));
+  const sf = e.target.closest('[data-site-filter]'); if (sf) { S.siteFilter = sf.dataset.siteFilter; store.set('siteFilter', S.siteFilter); S.win.rail = S.win.aside = S.win.plated = WINDOW_FIRST; S.sig.pass = ''; renderAll(); }
   if (e.target.closest('#toggle-plated')) { S.showPlated = !S.showPlated; S.win.plated = WINDOW_FIRST; S.sig.pass = ''; renderAll(); }
   if (e.target.closest('[data-more]')) showMore(e.target.closest('[data-more]').dataset.more);
   if (e.target.closest('[data-quiet-order]')) openOrder();
@@ -535,7 +538,7 @@ function dishHtml(d) {
   const sp = splitPlain(d.text);
   if (sp) return `<section class="dish" aria-labelledby="dish-h"><div class="dish-head"><h3 id="dish-h">In plain words</h3><span class="muted">${esc(d.by || '')}${d.at ? ' · ' + clock(d.at) : ''}</span>
     <button class="text-btn" data-copy-dish>Copy</button></div><div class="md plain">${md(sp.plain)}</div>${sp.rest ? `<details class="more"><summary>Technical details</summary><div class="md">${md(sp.rest)}</div></details>` : ''}</section>`;
-  return `<section class="dish" aria-labelledby="dish-h"><div class="dish-head"><h3 id="dish-h">The dish</h3><span class="muted">${esc(d.by || '')}${d.at ? ' · ' + clock(d.at) : ''}</span>
+  return `<section class="dish" aria-labelledby="dish-h"><div class="dish-head"><h3 id="dish-h">The report</h3><span class="muted">${esc(d.by || '')}${d.at ? ' · ' + clock(d.at) : ''}</span>
     <button class="text-btn" data-copy-dish>Copy</button></div><div class="md">${md(d.text)}</div>${d.cut ? '<p class="note faint">Long answer: the rest is in the log.</p>' : ''}</section>`;
 }
 
@@ -634,7 +637,7 @@ $('job-listen').addEventListener('click', () => { if (S.jobSpeech) speaker.toggl
 // ---------- job detail ----------
 async function openJob(id) {
   S.openJob = id; S.openSig = ''; $('job-ticket').textContent = ticket(id);
-  if (!$('job-sheet').open) { $('job-body').innerHTML = '<div class="skeleton" aria-label="Loading the ticket"><i></i><i></i><i></i></div>'; $('job-actions').innerHTML = ''; openSheet('job-sheet'); }
+  if (!$('job-sheet').open) { $('job-body').innerHTML = '<div class="skeleton" aria-label="Loading the work order"><i></i><i></i><i></i></div>'; $('job-actions').innerHTML = ''; openSheet('job-sheet'); }
   await loadJob(id);
 }
 const isImprove = (j) => j.recipe === 'improve' || /^improve:/i.test(j.name || '');
@@ -656,7 +659,7 @@ async function fillPhoneDiff(id) {
 }
 async function loadJob(id) {
   const r = await api('/api/job/' + id); if (S.openJob !== id) return;
-  if (!r.ok) { $('job-body').innerHTML = `<p class="empty-line fault">${esc(r.error || 'Could not load this ticket.')}</p>`; return; }
+  if (!r.ok) { $('job-body').innerHTML = `<p class="empty-line fault">${esc(r.error || 'Could not load this work order.')}</p>`; return; }
   const j = r.data; const [cls, sentence] = stateSentence(j);
   S.jobSpeech = jobSpeech(j, nameOf(j).text, sentence); syncListen();
   const created = j.created ? `${clock(j.created)}${isToday(j.created) ? '' : ' ' + new Date(j.created).toLocaleDateString()}` : '';
@@ -960,10 +963,10 @@ async function openCook(name) {
       <div><dt>Models</dt><dd class="mono">${[].concat(c.models || []).map(esc).join(', ')}</dd></div></dl>
     ${planBlock(name, c.planUse)}
     <h3 class="group-label">Last 7 days</h3>
-    <svg class="spark" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="Dishes per day: ${esc(vals.join(', '))}"><line x1="0" y1="38" x2="100" y2="38"/><polyline points="${pts}"/></svg>
-    <div class="spark-axis"><span>${days[0] ? new Date(days[0]).toLocaleDateString(undefined, { weekday: 'short' }) : ''}</span><span>${vals.reduce((a, b) => a + b, 0)} dishes · ${h ? h.passed.reduce((a, b) => a + b, 0) : 0} passed</span><span>today</span></div>
+    <svg class="spark" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="Steps per day: ${esc(vals.join(', '))}"><line x1="0" y1="38" x2="100" y2="38"/><polyline points="${pts}"/></svg>
+    <div class="spark-axis"><span>${days[0] ? new Date(days[0]).toLocaleDateString(undefined, { weekday: 'short' }) : ''}</span><span>${vals.reduce((a, b) => a + b, 0)} steps · ${h ? h.passed.reduce((a, b) => a + b, 0) : 0} passed</span><span>today</span></div>
     <h3 class="group-label">Track record</h3>
-    <dl class="kv">${Object.entries(c.track || {}).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd class="mono">${esc(v)} passed</dd></div>`).join('') || '<div><dt>No dishes yet</dt><dd></dd></div>'}</dl>
+    <dl class="kv">${Object.entries(c.track || {}).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd class="mono">${esc(v)} passed</dd></div>`).join('') || '<div><dt>No steps yet</dt><dd></dd></div>'}</dl>
     ${h?.recent?.length ? `<h3 class="group-label">Recent</h3><ul class="rows">${h.recent.slice().reverse().map((x) => `<li class="row compact"><div class="row-inner"><a class="row-link" href="#/job/${esc(x.job)}" aria-label="${esc(ticket(x.job))}"></a><span class="glyph ${x.ok ? 'g-done' : 'g-fail'}" aria-hidden="true"></span><div class="row-main"><div class="row-meta"><span class="mono">${ticket(x.job)}</span> · ${esc(x.kind || '')} · ${esc(x.model || '')} · ${x.ok ? 'passed' : 'did not pass'}</div></div><div class="row-side"><span class="pos">${clock(x.ts)}</span></div></div></li>`).join('')}</ul>` : ''}
     ${act_ ? `<div data-css="padding:24px var(--gutter) 0">${act_}</div>` : ''}`;
 }
@@ -1007,13 +1010,16 @@ function renderBanners() {
   if (s?.paused) b.push(`<div class="banner calm">Paused by you: nothing new starts until you resume it. Running work and the watchers are still watched.<button class="btn" data-set="kitchen-resume">Resume</button></div>`);
   else if (s && tickAge() !== null && tickAge() > 600) b.push(`<div class="banner">The Yard stopped ticking ${words(tickAge())} ago. Its scheduled task may not be starting (scripts/install-tasks.ps1 fixes it).<button class="btn" data-set="tick">Run now</button></div>`);
   else if (s && tickAge() !== null && tickAge() > 150) b.push(`<div class="banner">Supervisor quiet for ${words(tickAge())}.<button class="btn" data-set="tick">Run now</button></div>`);
-  // merge freeze windows (kitchen.repo.json "freeze"): a calm read-only line; the window itself is the switch, nothing to tap here
+  b.push(...siteStopBanners(s?.siteStops));   // TD-8: per Site (public/site-stop.js); the global pause above still wins
+  // merge freeze windows (kitchen.repo.json "freeze", and a Site's "closed" windows in the Sites registry, TD-9, which name the Site):
+  // a calm read-only line; the window itself is the switch, nothing to tap here
   for (const r of s?.freeze?.repos || []) for (const w of r.windows) {
-    const now = Date.now(); const from = new Date(w.from).getTime(); const to = new Date(w.to).getTime();
-    if (from <= now && now < to) b.push(`<div class="banner calm">Site closed: ${esc(r.name)} takes no merges until ${esc(w.toText)}: ${esc(w.why)}. Building, testing and pull requests go on.</div>`);
-    else if (from > now && from - now < 7 * 86400000) b.push(`<div class="banner calm">Site closing ahead for ${esc(r.name)}: no merges ${esc(w.fromText)} to ${esc(w.toText)} (${esc(w.why)}).</div>`);
+    const now = Date.now(); const from = new Date(w.from).getTime(); const to = new Date(w.to).getTime(); const st = w.site ? `Site ${esc(w.site)}` : 'Site';
+    if (from <= now && now < to) b.push(`<div class="banner calm">${st} closed: ${esc(r.name)} takes no merges until ${esc(w.toText)}: ${esc(w.why)}. Building, testing and pull requests go on.</div>`);
+    else if (from > now && from - now < 7 * 86400000) b.push(`<div class="banner calm">${st} closing ahead for ${esc(r.name)}: no merges ${esc(w.fromText)} to ${esc(w.toText)} (${esc(w.why)}).</div>`);
   }
-  for (const e of s?.freeze?.errors || []) b.push(`<div class="banner">${esc(e.name)}: its kitchen.repo.json cannot be read, so the site stays closed and nothing merges into it: ${esc(e.error)}</div>`);
+  b.push(...ciBudgetBanners(s?.ciBudget));   // TD-11: CI runs and minutes per Site this month; over budget = new PRs wait (public/ci-budget.js)
+  for (const e of s?.freeze?.errors || []) b.push(`<div class="banner">${esc(e.name)}: ${e.source === 'kitchen.json' ? `Site ${esc(e.site)}'s closed windows in kitchen.json cannot be read` : 'its kitchen.repo.json cannot be read'}, so the site stays closed and nothing merges into it: ${esc(e.error)}</div>`);
   if (s?.breaker) b.push(`<div class="banner">Stop-work order: most recent steps failed, so new work waits${s.breakerUntil && new Date(s.breakerUntil) > Date.now() ? ` ${minWords(-since(s.breakerUntil))} more` : '; one trial step runs first'}.</div>`);
   if (s?.lead?.mode === 'away' && S.view === 'talk') b.push(`<div class="banner calm moon">Claude is resting until ${s.lead.resetsAt ? esc(dayTime(s.lead.resetsAt)) : 'the weekly reset'}. Gemini and the Home crew answer here.</div>`);
   const ao = alertsOffBanner(s); if (ao) b.push(ao);   // TD-EH-04
@@ -1049,7 +1055,7 @@ function renderAll() {
   const s = S.state; const jobsSig = () => (s ? [s.ideas, s.due].concat(s.jobs.map((j) => [j.id, j.status, j.step, j.attempt, j.cost, j.last, j.cook, j.approval?.id, j.notBefore])) : null);
   renderChrome();
   const noBoard = s ? '' : [S.conn, S.unauth];   // with no board yet, a change of connection redraws the placeholder
-  if (S.view === 'pass' && changed('pass', [S.v ?? null, S.stale, S.recv, S.showPlated, S.win, noBoard])) { renderPass(); for (const j of s?.jobs.filter(NEEDS) || []) S.seenNeeds.add(j.id); }
+  if (S.view === 'pass' && changed('pass', [S.v ?? null, S.stale, S.recv, S.showPlated, S.win, noBoard, S.siteFilter])) { renderPass(); for (const j of s?.jobs.filter(NEEDS) || []) S.seenNeeds.add(j.id); }
   if (S.view === 'pass' && changed('brief', [S.brief, S.briefOpen])) renderBrief();
   if (S.view === 'pass' && changed('lead', [s?.lead, S.leadOpen, Math.floor(Date.now() / 60000)])) renderLead();
   if (S.view === 'activity' && changed('act', [S.events.length, S.feedFilter, S.feedQuery, S.state?.lobeGlass?.events])) renderActivity();
@@ -1923,12 +1929,14 @@ async function openSettings() {
       ${s.push ? '<button class="set-row" data-set="push-test"><span>Send a test push</span></button>' : ''}
       <button class="set-row" data-set="notify"><i class="set-ic" aria-hidden="true">◔</i><span>Phone alerts<small>${perm === 'granted' ? 'On while the Board is open in the background (only the work-order number, never the words). Push alerts reach you when the Board is closed.' : perm === 'denied' ? 'Blocked in your browser settings.' : perm === 'unsupported' ? 'Not supported here.' : 'Get an alert when a work order needs your sign-off.'}</small></span></button>
     </div>
+    ${siteStopRows(s.siteStops)}
     <h3 class="set-label">Audit trail</h3><ol class="audit" id="audit"><li>Loading…</li></ol>
     <h3 class="set-label">About</h3>
     <dl class="kv"><div><dt>Signed in as</dt><dd id="whoami">…</dd></div><div><dt>The Board</dt><dd class="mono">${esc(s.version || '')} · ${esc(S.build || '')}</dd></div>
       <div><dt>Updates</dt><dd>${S.updateReady ? 'New version ready, loads when you leave the app' : 'Automatic, when you are not using it'}</dd></div>
-      ${(() => { const f = frameStats(); return f ? `<div><dt>Kitchen frame</dt><dd class="mono">p95 ${f.p95} ms · p50 ${f.p50} ms · ${f.n} frames</dd></div>` : ''; })()}
+      ${(() => { const f = frameStats(); return f ? `<div><dt>Scene frame</dt><dd class="mono">p95 ${f.p95} ms · p50 ${f.p50} ms · ${f.n} frames</dd></div>` : ''; })()}
       <div><dt>Supervisor</dt><dd>${tickAge() == null ? 'never ran' : 'last pass ' + words(tickAge()) + ' ago'}</dd></div></dl>
+    <div class="set-group"><label class="switch-row" data-css="margin:0;border-top:0"><span><b>Frame meter</b><small>Frames a second and frame time over the page, to check the scene runs at your screen's rate</small></span><input type="checkbox" role="switch" id="meter-switch" ${sceneMeter() ? 'checked' : ''}><i aria-hidden="true"></i></label></div>
     <div class="set-group" data-css="margin-top:24px"><button class="set-row danger" data-set="stop-all"><i class="set-ic" aria-hidden="true">■</i><span>Stop everything<small>Every running and waiting work order stops now</small></span></button></div>`;
   openSheet('menu-sheet');
   const [a, w] = await Promise.all([api('/api/audit'), api('/api/whoami')]);
@@ -1946,12 +1954,15 @@ document.addEventListener('click', async (e) => {
   else if (a === 'reconnect') { reconnect(); return; }
   else if (a === 'tick') await act({ op: 'tick' }, { btn: b, ok: 'Supervisor pass done' });
   else if (a === 'kitchen-resume') await act({ op: 'kitchen-resume' }, { btn: b, ok: 'Yard resumed' });
+  else if (a === 'site-pause') { const c = b.dataset.site; if (await confirmBox({ title: `Stop work on Site ${esc(c)}?`, html: `<p>None of ${esc(c)}'s new work starts until you resume it. Its running work, the watchers and the other Sites carry on.</p>`, yes: 'Stop this Site', danger: true })) { const r = await act({ op: 'site-pause', site: c }, { btn: b, ok: `Site ${c} stopped` }); if (r.ok) closeSheet('menu-sheet'); } }   // TD-8
+  else if (a === 'site-resume') { const r = await act({ op: 'site-resume', site: b.dataset.site }, { btn: b, ok: `Site ${b.dataset.site} resumed` }); if (r.ok) closeSheet('menu-sheet', false); }
   else if (a === 'undo-push-check') { const r = await act({ op: 'undo-push-check' }, { btn: b }); if (r.ok) toast(r.data?.left?.length ? `Not on GitHub yet: ${r.data.left.map((x) => x.why).join('; ')}` : r.data?.cleared?.length ? 'The undo is on GitHub now' : 'Nothing is waiting to be pushed', { bad: !!r.data?.left?.length }); }   // TD-EH-10
   else if (a === 'lead-toggle') { const out = S.state?.lead?.mode !== 'away'; const r = await api('/api/lead', { method: 'POST', body: JSON.stringify({ op: 'away', on: out }) }); if (r.ok) { buzz(); toast(out ? 'Claude is out until the reset' : 'Welcome back, Claude'); closeSheet('menu-sheet'); } else toast(r.error || 'Could not change that', { bad: true }); }
   else if (a === 'live-on') { if (await confirmLive()) await act({ op: 'live-on' }, { btn: b, ok: 'AI crews are on' }); }
   else if (a === 'notify' && 'Notification' in window) { const p = await Notification.requestPermission(); toast(p === 'granted' ? 'Alerts are on' : 'Alerts are off'); openSettings(); }
 });
 $('menu-body').addEventListener('change', async (e) => {
+  if (e.target.id === 'meter-switch') return void sceneMeter(e.target.checked);   // the scene's frame meter (scene.js), this phone only
   if (e.target.id !== 'live-switch') return; const on = e.target.checked;
   if (on && !await confirmLive()) { e.target.checked = false; return; }
   const r = await act({ op: on ? 'live-on' : 'live-off' }, { ok: on ? 'AI crews are on' : 'AI crews are off' }); if (!r.ok) e.target.checked = !on;
@@ -2050,7 +2061,7 @@ $('lead')?.addEventListener('click', async (e) => {
   buzz(); toast(op === 'kitchen' ? `With the Yard${r.data?.idea ? ' as ' + r.data.idea : ''}` : op === 'out' ? 'Marked: Claude is out until the reset' : op === 'back' ? 'Welcome back, Claude' : 'Removed');
   S.sig.lead = '';
 });
-// "order up": a little burst of sparks and a buzz when an order is plated while you watch
+// handed over: a little burst of sparks and a buzz when a work order is handed over while you watch
 function celebrate(e) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches || document.hidden) return;
   const at = document.querySelector('.headline-text')?.getBoundingClientRect(); const x = at ? at.left + Math.min(at.width, 220) / 2 : innerWidth / 2, y = at ? at.top + at.height / 2 : 120;
@@ -2058,7 +2069,7 @@ function celebrate(e) {
   const colors = ['#FFB04D', '#FF7A3D', '#F0452B', '#FFE08A', '#7FD8A6'];
   burst.innerHTML = Array.from({ length: 18 }, (_, i) => { const a = (i / 18) * Math.PI * 2 + Math.random() * .4, d = 50 + Math.random() * 70; return `<i data-css="--c:${colors[i % colors.length]};--dx:${Math.cos(a) * d}px;--dy:${Math.sin(a) * d - 20}px;--r:${Math.round(Math.random() * 540)}deg"></i>`; }).join('');
   document.body.appendChild(burst); setTimeout(() => burst.remove(), 1100);
-  buzz([10, 40, 14]); toast(`Order up! ${ticket(e.job)} is ${STATUS_LABEL.done.toLowerCase()}.`);
+  buzz([10, 40, 14]); toast(`${STATUS_LABEL.done}: ${ticket(e.job)}.`);
 }
 // the time of day tints the room (the glow at the top of the screen, the brief's sky)
 function daypart() { const h = new Date().getHours(); document.documentElement.dataset.daypart = h < 5 ? 'night' : h < 11 ? 'morning' : h < 17 ? 'day' : h < 21 ? 'evening' : 'night'; }
@@ -2075,17 +2086,20 @@ daypart(); setInterval(daypart, 600000);
   window.addEventListener('online', () => { if (!es || es.readyState === 2) connect(); });
 })();
 
-// ---------- the animated kitchen at the top of Pass and Live (scene.js) ----------
-import { sceneHtml, activityWord, mountScene, cookOf, COOK_COLORS, stepWord, applyCss, sceneLegend, frameStats, sceneApproved } from './scene.js';
+// ---------- the animated building site at the top of the Board and Live tabs (scene.js) ----------
+import { sceneHtml, activityWord, mountScene, cookOf, COOK_COLORS, stepWord, applyCss, sceneLegend, frameStats, sceneApproved, sceneMeter } from './scene.js';
 import { startLive, floorStep } from './live.js';
 import { mainStatusBanners } from './main-status.js';   // TD-EH-03a main-is-red banner
+import { ciBudgetBanners } from './ci-budget.js';   // TD-11 CI budget per Site
 import { undoPushBanners, autoMergePauseBanner } from './undo-pause.js';   // TD-EH-10 undo not pushed, TD-EH-11 auto-merge paused
+import { siteStopBanners, siteStopRows } from './site-stop.js';   // TD-8: a Site stopped by you, a Site's own Stop-work order
 import { makeFeed } from './patch.js';
 import { worldHtml, paintWorld } from './lobe.js';   // ZG-09 World view
 import { wireWorld, worldEditing, briefLobeLine } from './lobe.js';   // ZG-13 the Owner's taps and the brief's lobe line
 import { lobeSentence, lobeEventKey } from './lobe.js';   // ZG-30 the lobe's lines in the Activity feed
 import { selfCount } from './lobe-self.js';   // ZG-45 the World tab's badge: shadow Pours plus post-mortems waiting for the Owner
 import { worldLine } from './world-line.js';   // ZG-17 the brief's World line (counts only)
+import { siteChip, withFloor, siteBar, siteFilterOf, bySite } from './sites.js';   // TD-4 the Site chip, filter and count line
 wireWorld($('world-body'), { post: (b) => api('/api/lobe', { method: 'POST', body: JSON.stringify(b) }), toast: (m, o) => toast(m, o), confirm: confirmBox, after: () => { S.sig.world = ''; if (S.view === 'world') renderWorld(); } });
 paintWorld(document.documentElement);   // the World tab's pixel icon, before the view is first opened
 import { syncList, windowed, WINDOW_FIRST, WINDOW_STEP } from './rows.js';

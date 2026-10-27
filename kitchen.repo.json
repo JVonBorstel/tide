@@ -1,8 +1,14 @@
 {
   "github": "JVonBorstel/tide",
+  "site": "TD",
   "commitBudget": {
     "files": 8,
     "lines": 400,
     "_why": "interim 10-22 until J246 budget-by-size; the station default 4/150 refused most size-M orders"
+  },
+  "inspector": {
+    "local": "full",
+    "ci": "quick",
+    "_why": "tide is a public Tower, but keeps this plan for now: every suite runs sandboxed on this PC before a PR, and CI is ci.yml's quick checks (the full Windows suite is windows-suite.yml, weekly). The design's public default (TD-12: local impacted, ci full) is the Owner's call"
   }
 }

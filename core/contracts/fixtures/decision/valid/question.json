@@ -1,0 +1,19 @@
+{
+  "v": "1.0",
+  "id": "D-7",
+  "wo": "WO-2001",
+  "kind": "question",
+  "ask": "Should old cards expire after 7 days?",
+  "options": [
+    "7 days",
+    "14 days",
+    "Never"
+  ],
+  "recommended": "7 days",
+  "why": "The tests and the review are green.",
+  "answer": null,
+  "note": null,
+  "at": "2030-01-07T10:00:00Z",
+  "answeredAt": null,
+  "via": null
+}

@@ -1,0 +1,38 @@
+{
+  "why": "ages are hours since, never negative",
+  "expect": "/ageH: minimum",
+  "doc": {
+    "v": "1.0",
+    "id": "WO-2001",
+    "alias": null,
+    "goal": "Example: show a sunrise colour in the sky of the demo scene",
+    "stream": "DEMO",
+    "owner": "crew",
+    "plan": "plans/example-plan.md#slice-2",
+    "decision": "D-8",
+    "repo": "example-owner/example-repo",
+    "branch": "wo/2001-sunrise",
+    "base": "main",
+    "pr": null,
+    "stackParent": null,
+    "stage": "build",
+    "state": "moving",
+    "blockedOn": null,
+    "next": "Build from the brief (crew:builder-1).",
+    "ageH": -1,
+    "stageAgeH": 3,
+    "attempts": 0,
+    "dod": {
+      "change-note": "no",
+      "tests": "yes",
+      "names": "yes",
+      "glossary": "n/a",
+      "docs": "no",
+      "map": "no"
+    },
+    "brief": "work/WO-2001/BRIEF.md",
+    "report": null,
+    "proof": null,
+    "lastSeq": 9
+  }
+}

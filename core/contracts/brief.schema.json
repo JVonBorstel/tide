@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tide.example/contracts/v1/brief.schema.json",
+  "title": "Brief: the front matter of a work order's BRIEF.md",
+  "description": "What a crew is given (build-way 3.7). The file is markdown with a front matter block, one 'key: value' per line; frontmatter.mjs turns it into this object. The body (goal, why, owned files, done-means, proof, stop-when) is for people.",
+  "type": "object",
+  "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
+    "wo": { "$ref": "common.schema.json#/$defs/woId" },
+    "stream": { "$ref": "common.schema.json#/$defs/stream" },
+    "plan": { "$ref": "common.schema.json#/$defs/planRef" },
+    "decision": {
+      "description": "The answered decision for art and Board work (decide before build), or none for other work.",
+      "anyOf": [{ "$ref": "common.schema.json#/$defs/decisionId" }, { "const": "none" }]
+    },
+    "repo": { "$ref": "common.schema.json#/$defs/repo" },
+    "branch": { "$ref": "common.schema.json#/$defs/branch" },
+    "base": { "description": "main, or a parent branch (stack depth at most 2; 0 for Board and art work).", "$ref": "common.schema.json#/$defs/branch" },
+    "worktree": { "$ref": "common.schema.json#/$defs/relPath" },
+    "budget": { "description": "The crew's cap, in plain words (40 turns; 90 min).", "type": "string", "minLength": 1, "maxLength": 80 },
+    "depth": { "description": "BRAIN_AGENT_DEPTH for the crew: how many levels of helpers it may start.", "type": "integer", "minimum": 0, "maximum": 3 }
+  },
+  "required": ["v", "wo", "stream", "plan", "decision", "repo", "branch", "base", "worktree", "budget", "depth"],
+  "additionalProperties": false
+}

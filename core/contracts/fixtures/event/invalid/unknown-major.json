@@ -1,0 +1,19 @@
+{
+  "why": "a record of an unknown major version is named, not guessed",
+  "expect": "/v: version",
+  "doc": {
+    "v": "2.0",
+    "seq": 4,
+    "at": "2030-01-07T09:04:00Z",
+    "actor": "engine",
+    "kind": "step.done",
+    "wo": "WO-2001",
+    "data": {
+      "step": "freshen",
+      "attempt": 1,
+      "exit": 0,
+      "sec": 41.5
+    },
+    "proof": "merge commit 0f1e2d3 on the PR branch"
+  }
+}

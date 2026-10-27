@@ -116,6 +116,27 @@ exit 7
     Check 'sandboxMedium folder entry: a file anywhere under it changed (any case, any slash) -> Low' ($o -match 'IL=low')
     $o = Invoke-KitchenSuite $g $il $d $k1 60 1000 '' @('.claude/hooks/lib.ps1')
     Check 'sandboxMedium folder entry written with a backslash still matches' ($o -match 'IL=low')
+    # TD-10: sandboxMedium keyed by Tower (the command only, nothing run: does the suite get --medium?)
+    function Test-MedArg($Sbx, [string]$Name, [string]$Dir, [string[]]$Changed, [string]$Tower) { (Get-KitchenSuiteCommand $Sbx (Join-Path $Dir "tests\$Name.ps1") $Dir (Join-Path $d 'k2') 60 1000 $Changed $Tower).args -contains '--medium' }
+    Set-Content -LiteralPath (Join-Path $fs 'kitchen.json') -Value '{"sandbox":"low","sandboxMedium":{"Test-Il":["scripts/il.ps1"],"Test-Dir":["scripts/"]}}'
+    $g = Get-KitchenSandbox (Join-Path $built 'kitchen') $fs; $same = $g.towers.Count -eq 0
+    foreach ($nm in 'Test-Il', 'Test-Dir', 'Test-Other') { foreach ($chg in @(@()), @('scripts/il.ps1'), @('scripts/x/y.ps1'), @("tests/$nm.ps1")) { foreach ($tow in 'demo-project', 'C:\r\brain-monitor\') {
+        $c0 = Get-KitchenSuiteCommand $g (Join-Path $d "tests\$nm.ps1") $d (Join-Path $d 'k2') 60 1000 $chg
+        $c1 = Get-KitchenSuiteCommand $g (Join-Path $d "tests\$nm.ps1") $d (Join-Path $d 'k2') 60 1000 $chg $tow
+        if (($c0.args -join '|') -ne ($c1.args -join '|')) { $same = $false } } } }
+    Check 'NoTowerBlocks_SameAsBefore: 24 suite commands are byte-for-byte the same with a Tower and without' $same
+    Set-Content -LiteralPath (Join-Path $fs 'kitchen.json') -Value '{"sandbox":"low","sandboxMedium":{"Test-Rgb":["scripts/rgb.ps1"],"Test-X":["a.ps1"],"Demo-Project":{"Test-Phase0":["scripts/"],"Test-X":["b.ps1"],"Test-Bad":[7]}}}'
+    $g = Get-KitchenSandbox (Join-Path $built 'kitchen') $fs
+    Check 'a Tower block: its suite runs Medium in that Tower (name in any case)' (Test-MedArg $g 'Test-Phase0' $d @('docs/a.md') 'C:\Users\j\demo-project')
+    Check 'a Tower block never reaches another Tower: Test-Phase0 in brain-monitor runs Low' (-not (Test-MedArg $g 'Test-Phase0' $d @() 'brain-monitor'))
+    Check 'a Tower block with no Tower known (not a git folder) runs Low' (-not (Test-MedArg $g 'Test-Phase0' $d @() ''))
+    Check 'a Tower block still sends a job that touched its files to Low' (-not (Test-MedArg $g 'Test-Phase0' $d @('Scripts\deep\x.ps1') 'demo-project'))
+    Check 'a Tower block: the suite file itself changed by the job still runs Low' (-not (Test-MedArg $g 'Test-Phase0' $d @('tests/Test-Phase0.ps1') 'demo-project'))
+    Check 'a global entry still holds in every Tower next to a Tower block' ((Test-MedArg $g 'Test-Rgb' $d @() 'demo-project') -and (Test-MedArg $g 'Test-Rgb' $d @() 'brain-monitor'))
+    Check 'the Tower block wins over a global entry of the same name (its files decide)' ((Test-MedArg $g 'Test-X' $d @('a.ps1') 'demo-project') -and -not (Test-MedArg $g 'Test-X' $d @('b.ps1') 'demo-project') -and -not (Test-MedArg $g 'Test-X' $d @('a.ps1') 'brain-monitor'))
+    Check 'a Tower block entry that is not a list of file names is dropped (Low)' (-not (Test-MedArg $g 'Test-Bad' $d @() 'demo-project'))
+    $gwr = Join-Path $d 'demo-project'; New-Item -ItemType Directory -Force -Path $gwr | Out-Null; & git -C $gwr init -q 2>&1 | Out-Null
+    Check 'no Tower passed: worked out from the folder git calls home (the mutate station path)' (Test-MedArg $g 'Test-Phase0' $gwr @() '')
     # the stations themselves: a copy of the layout with no exe and a state kitchen.json asking for low -> exit 10, no suite run
     $fr = Join-Path $d 'layout'; New-Item -ItemType Directory -Force -Path "$fr\kitchen\stations", "$fr\rust\kitchen-sandbox", "$fr\scripts", "$fr\wt\tests" | Out-Null
     foreach ($f in 'tests.ps1', 'mutate.ps1', 'verify.ps1') { Copy-Item (Join-Path $repo "kitchen\stations\$f") "$fr\kitchen\stations\$f" }

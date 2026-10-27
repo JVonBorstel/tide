@@ -13,6 +13,7 @@
 // one still frame under prefers-reduced-motion. Pure parts (track, agentsOf, screenOf, treeOf, the markup) are tested in node by
 // pass-app/test-live.mjs; startLive is the page glue.
 import { COOK_COLORS, cookOf, lookOf, hashId, applyCss, makeKit, makeLoop } from './scene.js';
+import { at as step, CLOCK } from './frame.js';
 
 export const LIVE = { stuckSec: 60, quietSec: 180, leaveSec: 120, fadeMs: 1400, pinSec: 25, teamQuietSec: 60, fps: 8, maxDraws: 8, recent: 30, lines: 14 };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -35,7 +36,7 @@ export const cookName = (j) => { const c = cookOf(j); return c === 'hand' ? 'han
 const colorOf = (n) => COOK_COLORS[n === 'hands' ? 'hand' : n] || COOK_COLORS.sous;
 // a step in plain words (also the job sheet's step list in app.js)
 export const STEP_TAG = { plan: 'Planning', build: 'Building', do: 'Building', review: 'Reviewing the change', map: 'Mapping the code', repair: 'Fixing failing tests', mutate: 'Testing the tests',
-  lint: 'Checking house rules', verify: 'Checking main after the merge', edit: 'Building', check: 'Inspection', research: 'Researching', talk: 'Answering you', diagnose: 'Finding the fix',
+  lint: 'Checking house rules', verify: 'Checking main after the merge', edit: 'Building', check: 'Inspecting', research: 'Researching', talk: 'Answering you', diagnose: 'Finding the fix',
   tests: 'Running the tests', commit: 'Saving the change', freshen: 'Pulling in the latest code', merge: 'Handing it over', worktree: 'Setting up a safe copy', ideas: 'Filing ideas' };
 const human = (s) => String(s || '').replace(/[-_]+/g, ' ');
 export function floorStep(j) { const k = j?.station === 'agent' ? String(j.role || '').toLowerCase() : String(j?.station || ''); return STEP_TAG[k] || cap(human(j?.station)) || 'Working'; }
@@ -312,7 +313,7 @@ export function callHtml(agents, mem, s, prefs = {}, now = Date.now()) {
 export function drawDesk(ctx, kit, a, t = 0) {
   let n = 0; const o = { skin: a.look?.skin, cook: a.color, hair: a.hair || 0, sky: 'day' };
   const d = (name, f, x, y, pal = o) => { const s = kit.get(name, pal); ctx.drawImage(s.img, (f % s.n) * s.w, 0, s.w, s.h, x, y, s.w, s.h); n++; };
-  const at = (k, ms) => Math.floor((t + (a.look?.delay || 0) * 1000) / ms) % k;
+  const at = (k, ms) => step(k, ms, t, (a.look?.delay || 0) * 1000);   // on the frame clock: the desk loop sleeps until the next step
   d('desk-wall', 0, 0, 0);
   const asleep = a.quiet || a.sleep, typing = a.working && !a.stuck && !a.quiet;
   d(asleep ? 'chef-sleep' : 'chef-idle', at(2, asleep ? 900 : 450), 16, asleep ? 6 : 4);
@@ -327,7 +328,7 @@ export function drawDesk(ctx, kit, a, t = 0) {
 export function drawCam(ctx, kit, a, t = 0) {
   const o = { skin: a.look?.skin, cook: a.color, hair: a.hair || 0, sky: 'day' };
   const w = kit.get('desk-wall', o); ctx.drawImage(w.img, 0, 0, 16, 14, 0, 0, 16, 14);
-  const s = kit.get('chef-idle', o); const f = Math.floor(t / 450) % 2; ctx.drawImage(s.img, f * s.w, 0, s.w, 14, 0, 1, s.w, 14);
+  const s = kit.get('chef-idle', o); const f = step(2, 450, t); ctx.drawImage(s.img, f * s.w, 0, s.w, 14, 0, 1, s.w, 14);
   return 2;
 }
 
@@ -342,15 +343,20 @@ export function startLive(o) {
   const H = root.querySelector('.lv-h'), SC = root.querySelector('.lv-s'), D = root.querySelector('.lv-desks'), T = root.querySelector('.lv-t'), LV = root.querySelector('.lv');
   // the clocks (data-since) tick in place (app.js), so a change of their text alone never rebuilds anything (a spinner never restarts)
   const still = (html) => html.replace(/(data-since="[^"]*">)[^<]*/g, '$1');
-  const set = (el, k, html) => { const v = still(html); if (sig[k] !== v) { sig[k] = v; el.innerHTML = html; applyCss(el); } };
+  const set = (el, k, html) => { const v = still(html); if (sig[k] !== v) { sig[k] = v; sig.n = (sig.n || 0) + 1; el.innerHTML = html; applyCss(el); } };   // sig.n: a rebuilt part (a new presenter camera canvas)
   const all = () => [...model.agents, ...model.bench];
+  // the desks draw only for a new picture: a changed desk (render) or a due animation step (the frame clock, frame.js); between steps
+  // the loop sleeps on a timer, and it stops when no desk moves
+  let next = Infinity, deskSig = '';
   function drawAll() {
     if (!KIT) return;
-    for (const li of D.children) { const a = all().find((x) => x.key === li.dataset.key); const cv = li._cv; if (a && cv) { cv.ctx.clearRect(0, 0, 48, 32); drawDesk(cv.ctx, KIT, a, t); } }
+    CLOCK.next = Infinity; const list = all();
+    for (const li of D.children) { const a = list.find((x) => x.key === li.dataset.key); const cv = li._cv; if (a && cv) { cv.ctx.clearRect(0, 0, 48, 32); drawDesk(cv.ctx, KIT, a, t); } }
     const pc = SC.querySelector('.lv-pc'); const sp = model.agents.find((a) => a.key === spotKey);
     if (pc && sp) { const c = pc.getContext('2d'); c.imageSmoothingEnabled = false; drawCam(c, KIT, sp, t); }
+    next = CLOCK.next;
   }
-  const loop = makeLoop({ raf: (f) => win.requestAnimationFrame(f), fps: LIVE.fps, ok: () => !win.document.hidden && !reduced() && LV.isConnected && !!LV.offsetParent, frame: (dt) => { t += dt; drawAll(); } });
+  const loop = makeLoop({ raf: (f) => win.requestAnimationFrame(f), fps: LIVE.fps, ok: () => !win.document.hidden && !reduced() && LV.isConnected && !!LV.offsetParent, frame: (dt) => { t += dt; if (t >= next) drawAll(); return Math.max(0, next - t); } });
   function render(now) {
     const s = o.getState(); const p = prefs();
     const spot = spotOf(model.agents, mem, now); spotKey = spot?.key || '';
@@ -368,7 +374,8 @@ export function startLive(o) {
     }
     for (const li of have.values()) li.remove();
     LV.classList.toggle('paused', !!win.document.hidden);
-    drawAll();
+    const ds = want.map((a) => [a.key, a.quiet, a.sleep, a.working, a.stuck, a.color, a.hair].join()).join('|') + '|' + spotKey + '|' + sig.n;   // what the desk art shows
+    if (ds !== deskSig) { deskSig = ds; drawAll(); }   // the 1 s clock alone redraws nothing
     if (sheetKey && o.sheetOpen()) { const a = model.agents.find((x) => x.key === sheetKey); const h = sheetHtml(a, sheetDetail); if (o.sheetBody._h !== h) { o.sheetBody._h = h; const open = [...o.sheetBody.querySelectorAll('details[open]')].map((x) => x.querySelector('summary')?.textContent); o.sheetBody.innerHTML = h; for (const x of o.sheetBody.querySelectorAll('details')) if (open.includes(x.querySelector('summary')?.textContent)) x.open = true; } }
   }
   let sheetDetail = null;

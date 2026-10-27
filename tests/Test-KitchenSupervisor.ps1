@@ -114,6 +114,18 @@ try {
     $bmeta = Get-Content "$root-b\supervisor.json" -Raw | ConvertFrom-Json
     Check 'stop-work: the open event and supervisor.json carry the episode and its cool-down' ([int]$bop.coolSec -eq 300 -and [int]$bop.episode -eq 1 -and $bop.note -eq 'new work waits 5 min' -and $bmeta.breakerTripped -and $bmeta.breakerEpisode.tripped -and [int]$bmeta.breakerEpisode.n -eq 1 -and [int]$bmeta.breakerEpisode.alerted -eq 1)
     Check 'stop-work: status says it is on and for how long' ((& $k status | Out-String) -match 'STOP-WORK ORDER on: no new work for \d+ min more')
+    # TD-8: no Sites registry = exactly the old behaviour: one Yard-wide order, no Site keys anywhere, and a stray PAUSED-<code> is not read
+    Check 'TD-8: with no Sites the Stop-work order is Yard-wide, as before' (-not $bmeta.siteBreakers -and @($ev | Where-Object { $_.type -match '^breaker\.' -and $null -ne $_.site }).Count -eq 0)
+    Set-Content "$root-b\PAUSED-TD" 'test'
+    $nsp = & $k pause -Site TD | Out-String
+    Check 'TD-8: with no Sites, pause -Site refuses and says how to stop the whole Yard' ($nsp -match 'ERROR' -and $nsp -match 'no Sites are registered' -and -not (Test-Path "$root-b\PAUSED")) { $nsp }
+    $env:BRAIN_KITCHEN = "$root-nosite"; New-Item -ItemType Directory -Force "$root-nosite" | Out-Null; Set-Content "$root-nosite\PAUSED-TD" 'test'
+    Add 'no sites' 'ok' @{ Retries = 0 } | Out-Null
+    $nsj = Get-Content "$root-nosite\jobs\J1.json" -Raw | ConvertFrom-Json -AsHashtable; $nsj.vars = @{ site = 'TD' }; $nsj | ConvertTo-Json -Depth 20 | Set-Content "$root-nosite\jobs\J1.json" -Encoding utf8
+    & $k watch -Seconds 10 -BreakerMin 99 -Quiet | Out-Null
+    $nsm = Get-Content "$root-nosite\supervisor.json" -Raw | ConvertFrom-Json
+    Check "TD-8: with no Sites a TD order starts despite a stray PAUSED-TD, and no Site state is kept" ((Get-Content "$root-nosite\jobs\J1.json" -Raw | ConvertFrom-Json).status -eq 'done' -and -not $nsm.siteBreakers) { Show-Jobs "$root-nosite" }
+    $env:BRAIN_KITCHEN = "$root-b"
     & $k kill -All | Out-Null
 
     # 7a. TD-EH-08: a failed step really waits before its retry (30 s for a code failure, +-20 %), and says so in plain words
@@ -440,6 +452,72 @@ if ($Supplier -eq $restWho) { Set-Content -LiteralPath "$($env:KITCHEN_RUN).wait
     $env:KITCHEN_WATCH_IN_TEST = $null; $env:KITCHEN_DOCTOR_WATCHERS = $null
     Check 'TD-EH-26: after resume the full doctor cleans up what the pause left' ($pfull.findOnly -eq $false -and -not (Test-Path $pold))
     & $k kill -All | Out-Null
+
+    # TD-8: pause per Site. With a Sites registry, kitchen.ps1 pause -Site GW holds only GW's new starts: GW's running order finishes,
+    # TD's orders start, and the watchers are not touched (no global PAUSED). The global pause still wins over a Site's resume.
+    $env:BRAIN_KITCHEN = "$root-sitep"; New-Item -ItemType Directory -Force "$root-sitep" | Out-Null
+    Set-Content "$root-sitep\kitchen.json" '{"sites":{"GW":{},"TD":{}}}' -Encoding utf8
+    function SpJob($id) { Get-Content "$root-sitep\jobs\$id.json" -Raw | ConvertFrom-Json }
+    function Set-TestSite([string]$r, [string]$id, [string]$code) { $p = "$r\jobs\$id.json"; $h = Get-Content $p -Raw | ConvertFrom-Json -AsHashtable; if ($h.vars -isnot [hashtable]) { $h.vars = @{} }; $h.vars.site = $code; $h | ConvertTo-Json -Depth 20 | Set-Content $p -Encoding utf8 }
+    Add 'gw running' 'ok' @{ Retries = 0 } | Out-Null; Set-TestSite "$root-sitep" J1 GW
+    & $k tick -Quiet -BreakerMin 99 | Out-Null
+    $spo = & $k pause -Site gw | Out-String
+    Add 'gw new' 'ok' @{ Retries = 0 } | Out-Null; Set-TestSite "$root-sitep" J2 GW
+    Add 'td new' 'ok' @{ Retries = 0 } | Out-Null; Set-TestSite "$root-sitep" J3 TD
+    $spBad = & $k pause -Site XX | Out-String
+    & $k watch -Seconds 12 -BreakerMin 99 -Quiet | Out-Null
+    Check 'TD-8: pause -Site writes PAUSED-<code> only and says the rest carries on' ((Test-Path "$root-sitep\PAUSED-GW") -and -not (Test-Path "$root-sitep\PAUSED") -and $spo -match 'Site GW stopped' -and $spo -match 'other Sites carry on') { $spo }
+    Check 'TD-8: pause -Site refuses a Site not in the registry' ($spBad -match 'ERROR' -and $spBad -match 'not in the Sites registry' -and -not (Test-Path "$root-sitep\PAUSED-XX")) { $spBad }
+    $sps = & $k status | Out-String; $spj = & $k status -Json | Out-String | ConvertFrom-Json -AsHashtable
+    Check 'TD-8 in status: the stopped Site is listed with how to resume it; -Json siteStops says the same' ($sps -match "SITE GW: stopped by you: none of its new work starts until 'kitchen.ps1 resume -Site GW'" -and $sps -notmatch 'SITE TD: stopped' -and @($spj.siteStops).Count -eq 1 -and $spj.siteStops[0].site -eq 'GW' -and $spj.siteStops[0].paused -and -not $spj.siteStops[0].stopWork) { $sps }
+    Check "TD-8: a stopped Site's running order still finishes" ((SpJob J1).status -eq 'done') { Show-Jobs "$root-sitep" }
+    Check "TD-8: a stopped Site's new order waits; another Site's starts" ((SpJob J2).status -eq 'pending' -and -not (SpJob J2).run -and (SpJob J3).status -eq 'done') { Show-Jobs "$root-sitep" }
+    Set-Content "$root-sitep\PAUSED" 'test'
+    $sro = & $k resume -Site GW | Out-String; & $k tick -Quiet -BreakerMin 99 | Out-Null
+    Check 'TD-8: the global pause still wins after a Site resumes' (-not (Test-Path "$root-sitep\PAUSED-GW") -and $sro -match 'Site GW resumed' -and $sro -match 'still paused' -and (SpJob J2).status -eq 'pending') { $sro; Show-Jobs "$root-sitep" }
+    & $k resume | Out-Null; & $k watch -Seconds 12 -BreakerMin 99 -Quiet | Out-Null
+    $spev = @(Get-Content "$root-sitep\events.jsonl" | ForEach-Object { $_ | ConvertFrom-Json })
+    Check 'TD-8: after both resumes the Site starts again; both taps are logged' ((SpJob J2).status -eq 'done' -and @($spev | Where-Object { $_.type -eq 'site.paused' -and $_.site -eq 'GW' }).Count -eq 1 -and @($spev | Where-Object { $_.type -eq 'site.resumed' -and $_.site -eq 'GW' }).Count -eq 1) { Show-Jobs "$root-sitep" }
+
+    # TD-8: the Stop-work order per Site. GW's failures open GW's order only (same episode rules, TD-EH-07); TD's work still starts.
+    $env:BRAIN_KITCHEN = "$root-siteb"; New-Item -ItemType Directory -Force "$root-siteb" | Out-Null
+    Set-Content "$root-siteb\kitchen.json" '{"sites":{"GW":{},"TD":{}}}' -Encoding utf8
+    for ($i = 1; $i -le 6; $i++) { Add "gw f$i" 'fail' @{ Retries = 0 } | Out-Null; Set-TestSite "$root-siteb" "J$i" GW }
+    Add 'gw after' 'ok' | Out-Null; Set-TestSite "$root-siteb" J7 GW
+    Add 'td after' 'ok' | Out-Null; Set-TestSite "$root-siteb" J8 TD
+    & $k watch -Seconds 20 -MaxConcurrent 2 -BreakerMin 4 -BreakerWindow 4 -BreakerCoolSec 300 -Quiet | Out-Null
+    $sbev = @(Get-Content "$root-siteb\events.jsonl" | ForEach-Object { $_ | ConvertFrom-Json })
+    $sbm = Get-Content "$root-siteb\supervisor.json" -Raw | ConvertFrom-Json -AsHashtable
+    $sbal = @(Get-Content "$root-siteb\alerts.jsonl" | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.text -match 'Stop-work order' })
+    function SbJob($id) { Get-Content "$root-siteb\jobs\$id.json" -Raw | ConvertFrom-Json }
+    Check "TD-8: one Site's failures open that Site's Stop-work order only" (@($sbev | Where-Object type -eq 'breaker.open').Count -eq 1 -and @($sbev | Where-Object type -eq 'breaker.open')[0].site -eq 'GW' -and $sbm.siteBreakers.GW.tripped -and -not $sbm.siteBreakers.TD -and -not $sbm.breakerTripped) { $sbev | Where-Object type -match 'breaker' | ConvertTo-Json -Compress }
+    Check "TD-8: the stopped Site's next order waits; the other Site's order starts" ((SbJob J7).status -eq 'pending' -and (SbJob J8).status -eq 'done') { Show-Jobs "$root-siteb" }
+    Check 'TD-8: the alert names the Site and says the other Sites carry on' ($sbal.Count -eq 1 -and $sbal[0].level -eq 'HIGH' -and $sbal[0].text -match 'Stop-work order on GW' -and $sbal[0].text -match 'No new work of GW starts for 5 min' -and $sbal[0].text -match 'Other Sites carry on') { $sbal | ConvertTo-Json -Compress }
+    $sbs = & $k status | Out-String
+    Check 'TD-8 in status: the Site under its own Stop-work order is listed, the other Site is not' ($sbs -match 'SITE GW: Stop-work order on: no new work for' -and $sbs -notmatch 'SITE TD: (Stop-work|stopped)') { $sbs }
+    & $k kill -All | Out-Null
+
+    # review #11 F2: the CI-count chore (TD-11, Invoke-ChoreCiBudget) counts only with a Sites registry. KITCHEN_CI_COUNT=1 opts this test
+    # Yard in (as the real Yard is by default), so only the registry gate can stop it; the fake gh notes every call it gets.
+    $env:BRAIN_KITCHEN = "$root-cic"; New-Item -ItemType Directory -Force "$root-cic" | Out-Null
+    $cicGh = "$root-cic\fake-gh.ps1"; $cicLog = "$root-cic\gh-calls.log"
+    Set-Content $cicGh "Add-Content -LiteralPath '$cicLog' -Value (`$args -join ' '); exit 1" -Encoding utf8
+    $cicSaved = @{}; foreach ($v in 'KITCHEN_GH', 'KITCHEN_CI_COUNT', 'KITCHEN_CI_COUNT_EVERY_MIN') { $cicSaved[$v] = [Environment]::GetEnvironmentVariable($v) }
+    $env:KITCHEN_GH = $cicGh; $env:KITCHEN_CI_COUNT = '1'; $env:KITCHEN_CI_COUNT_EVERY_MIN = '0'
+    try {
+        & $k chores -Quiet | Out-Null
+        $cicMeta = Get-Content "$root-cic\supervisor.json" -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json -AsHashtable
+        Check 'CiCount_NoRegistry: no Sites registry = no ci-budget.json, no cache, no GitHub call, no lastCiCount stamp (even with KITCHEN_CI_COUNT=1)' (-not (Test-Path "$root-cic\ci-budget.json") -and -not (Test-Path "$root-cic\ci-budget-cache.json") -and -not (Test-Path $cicLog) -and -not ($cicMeta -and $cicMeta.lastCiCount))
+        Set-Content "$root-cic\kitchen.json" '{"sites":{}}' -Encoding utf8
+        & $k chores -Quiet | Out-Null
+        Check 'CiCount_EmptyRegistry: an empty "sites" is no registry: still nothing written' (-not (Test-Path "$root-cic\ci-budget.json") -and -not (Test-Path $cicLog))
+        Set-Content "$root-cic\kitchen.json" '{"sites":{"TD":{"ciMinutesPerMonth":100}}}' -Encoding utf8
+        & $k chores -Quiet | Out-Null
+        $cicDoc = Get-Content "$root-cic\ci-budget.json" -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json
+        Check 'CiCount_Registry: with a registry the chore writes ci-budget.json (Site TD with its budget)' ($cicDoc -and @($cicDoc.sites | Where-Object { $_.code -eq 'TD' -and $_.budget -eq 100 }).Count -eq 1) { Get-Content "$root-cic\ci-budget.json" -Raw -ErrorAction SilentlyContinue }
+        $cicSrc = Get-Content $k -Raw
+        Check 'CiCount_Gate: Invoke-ChoreCiBudget asks Test-CiCountOn before it stamps lastCiCount' ($cicSrc -match '(?s)function Invoke-ChoreCiBudget \{.{0,400}if \(-not \(Test-CiCountOn\)\) \{ return \}.{0,400}lastCiCount = Iso')
+    } finally { foreach ($v in $cicSaved.Keys) { [Environment]::SetEnvironmentVariable($v, $cicSaved[$v]) } }
 
     # TD-EH-06: a hold's reason is whole. kitchen-step.ps1 keeps the held step's last line in <run>.hold; a step may write its own;
     # an empty one falls back to the log line, cut on a word boundary. The Sign-off text fits 300 characters and is never cut mid-word.
@@ -981,10 +1059,35 @@ if ($Supplier -eq $restWho) { Set-Content -LiteralPath "$($env:KITCHEN_RUN).wait
         $env:BRAIN_NTFY_TOPIC = $null; $env:KITCHEN_NOTIFY_LOG = $null; $env:KITCHEN_SCRATCH_DIR = $null; & $k kill -All | Out-Null
         Remove-Item -Recurse -Force $ehLog, "$root-eh-scratch", "$eh-repo", "$eh-wt8" -ErrorAction SilentlyContinue
     }
+    # ---- TD-5: kitchen.ps1 status groups work orders by Site; with no Site its output is exactly as before ----
+    function SiteJob([string]$dir, [string]$jid, [hashtable]$vars) {
+        @{ id = $jid; name = "n$jid"; recipe = 'improve'; status = 'done'; cursor = 1; attempt = 0; history = @(); vars = $vars; steps = @(@{ script = $w; args = @{} }) } | ConvertTo-Json -Depth 6 | Set-Content "$dir\jobs\$jid.json" -Encoding utf8
+    }
+    $ns = "$root-nosite"; New-Item -ItemType Directory -Force -Path "$ns\jobs" | Out-Null; $env:BRAIN_KITCHEN = $ns
+    SiteJob $ns 'J1' @{ goal = 'g' }; SiteJob $ns 'J2' @{ goal = 'g' }
+    $nsOut = @((& $k status -DailyBudgetUsd 5 | Out-String).TrimEnd() -split "`r?`n")
+    $golden = @('KITCHEN  2 jobs  running 0  done 2  attention 0  recent fail rate 0%  spent today $0.00 of $5.00', ('  {0,-4} {1,-16} {2,-16} step {3}/{4}  {5}' -f 'J1', 'done', 'nJ1', 1, 1, ''), ('  {0,-4} {1,-16} {2,-16} step {3}/{4}  {5}' -f 'J2', 'done', 'nJ2', 1, 1, ''), '  FREEZE: merge freeze windows not checked yet (the next supervisor tick writes freeze.json)')
+    Check "TD5 status with no Site: exactly the lines from before Sites, no header ($($nsOut -join ' | '))" (($nsOut -join "`n") -ceq ($golden -join "`n"))
+    $nsJson = & $k status -Json | Out-String | ConvertFrom-Json -AsHashtable
+    Check 'TD5 status -Json with no Site: the same keys as before (no "sites", no "sitesError")' ((@($nsJson.Keys | Sort-Object) -join ',') -ceq 'alerts,breaker,failRate,freeze,jobs')
+    # Sites: J1 carries TD, J2 GW, J3's Tower names ZG in kitchen.repo.json, J4's Tower is listed by the registry as JH, J5 has none
+    $st = "$root-site"; $zgT = "$st-zg"; $jhT = "$st-jh"
+    New-Item -ItemType Directory -Force -Path "$st\jobs", $zgT, $jhT | Out-Null; $env:BRAIN_KITCHEN = $st
+    Set-Content "$zgT\kitchen.repo.json" '{ "site": "ZG" }'
+    Set-Content "$st\kitchen.json" (@{ sites = @{ JH = @{ name = 'Job hunt'; towers = @($jhT) } } } | ConvertTo-Json -Depth 5)
+    SiteJob $st 'J1' @{ site = 'TD' }; SiteJob $st 'J2' @{ site = 'GW' }; SiteJob $st 'J3' @{ repo = $zgT }; SiteJob $st 'J4' @{ repo = $jhT }; SiteJob $st 'J5' @{ goal = 'g' }; SiteJob $st 'J6' @{ site = 'TD' }
+    $sOut = @((& $k status | Out-String).TrimEnd() -split "`r?`n" | Select-Object -Skip 1 | Where-Object { $_ -notmatch '^\s+FREEZE:' } | ForEach-Object { if ($_ -match '^\s+(J\d+)\s') { $Matches[1] } else { $_.Trim() } })
+    Check "TD5 status grouped by Site: Sites by code with their counts, registry names, Unassigned last ($($sOut -join ' | '))" (($sOut -join '|') -ceq 'SITE GW: 1 work order|J2|SITE JH Job hunt: 1 work order|J4|SITE TD: 2 work orders|J1|J6|SITE ZG: 1 work order|J3|UNASSIGNED: 1 work order|J5')
+    $sJson = & $k status -Json | Out-String | ConvertFrom-Json -AsHashtable
+    Check 'TD5 status -Json carries the groups (site, name, order ids), the jobs list unchanged' (@($sJson.jobs).Count -eq 6 -and (@($sJson.sites | ForEach-Object { "$($_.site)=$(@($_.jobs) -join '+')" }) -join ' ') -ceq 'GW=J2 JH=J4 TD=J1+J6 ZG=J3 =J5' -and @($sJson.sites)[1].name -eq 'Job hunt')
+    Set-Content "$st\kitchen.json" '{ "sites": "nope" }'
+    $bOut = & $k status | Out-String
+    Check 'TD5 a malformed registry: status still works, names it, groups by the orders and Towers alone' ($bOut -match 'SITES REGISTRY unreadable[^\r\n]*''sites'' must be an object' -and $bOut -match 'SITE TD: 2 work orders' -and $bOut -match 'UNASSIGNED: 2 work orders')
+    Remove-Item -Recurse -Force $ns, $st, $zgT, $jhT -ErrorAction SilentlyContinue; $env:BRAIN_KITCHEN = $root
 } finally {
     $env:BRAIN_KITCHEN = $null; $env:KITCHEN_TICK_FROM = $null; $env:KITCHEN_HUNG_DEFAULT_SEC = $null; $env:KITCHEN_AGY_EXE = $null; $env:KITCHEN_CHEF_UPDATE_SCRIPT = $null; $env:KITCHEN_CHEF_UPDATE_DRYRUN = $null
     Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" | ? { $_.CommandLine -and $_.CommandLine.Contains($root) } | % { & taskkill.exe /T /F /PID $_.ProcessId 2>&1 | Out-Null }
-    Remove-Item -Recurse -Force $root, "$root-b", "$root-sa", "$root-sb", "$root-sc", "$root-sd", "$root-se", "$root-sf", "$root-sg", "$root-rot", "$root-t", "$root-cap", "$root-scr", "$root-meta", "$root-busy", "$root-sleep", "$root-slow", "$root-hung", "$root-appr", "$root-ver", "$root-so", "$root-tl", "$root-rw", "$root-ah", "$root-rf", "$root-ap2", "$root-sp", "$root-q150", "$root-live", "$root-sent", "$root-eh", "$root-r", "$root-pause", "$root-hold", "$root-wd" -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $root, "$root-b", "$root-sa", "$root-sb", "$root-sc", "$root-sd", "$root-se", "$root-sf", "$root-sg", "$root-rot", "$root-t", "$root-cap", "$root-scr", "$root-meta", "$root-busy", "$root-sleep", "$root-slow", "$root-hung", "$root-appr", "$root-ver", "$root-so", "$root-tl", "$root-rw", "$root-ah", "$root-rf", "$root-ap2", "$root-sp", "$root-q150", "$root-live", "$root-sent", "$root-eh", "$root-r", "$root-pause", "$root-hold", "$root-wd", "$root-sitep", "$root-siteb", "$root-nosite" -ErrorAction SilentlyContinue
     Remove-Item -Force -LiteralPath $fake -ErrorAction SilentlyContinue  # only this run's fake cook; a wildcard deleted a concurrent run's
     $env:FAKE_REST = $null; $env:FAKE_REST_WHO = $null
 }
