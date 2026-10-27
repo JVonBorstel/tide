@@ -782,7 +782,7 @@ setTimeout(() => console.log(JSON.stringify(mode === 'submit' ? { result: 'appli
     $po = Act @{ op = 'push-on' }
     Check 'push: on makes a random private topic' ($po.ok -and $po.data.topic -match '^chef-[0-9a-f]{24}$' -and (Invoke-RestMethod "$base/api/state" -Headers $auth).push)
     $null = Act @{ op = 'push-test' }; for ($i = 0; $i -lt 30 -and -not (Test-Path "$root-notify.txt"); $i++) { Start-Sleep -Milliseconds 300 }
-    Check 'push: a test goes to that topic' ((Get-Content "$root-notify.txt" -Raw -ErrorAction SilentlyContinue) -match [regex]::Escape("|$($po.data.topic)|Test from the Board"))
+    Check 'push: a test goes to that topic' ((Get-Content "$root-notify.txt" -Raw -ErrorAction SilentlyContinue) -match [regex]::Escape("|$($po.data.topic)|Test from Tide"))
     & (Join-Path $repo 'kitchen\notify.ps1') -Level HIGH -Text 'J12 tailor: my secret resume words: needs your yes' | Out-Null
     $last = (Get-Content "$root-notify.txt" | Select-Object -Last 1)
     Check 'push: only the ticket and the kind of news leave the PC' ($last -eq "HIGH|$($po.data.topic)|J12 needs your sign-off")

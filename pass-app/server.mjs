@@ -470,7 +470,7 @@ async function shaRefusalOf(j, sha) {
   const cur = await diffSha(j.id);
   if (cur === null) return `${j.id}: the change can't be read right now, so this yes is refused; try again`;   // fail closed
   if (cur === '') return '';   // empty diff: nothing to look at
-  if (!/^[0-9a-f]{64}$/.test(String(sha || ''))) return 'reload the Board: this yes does not say which change it covers';
+  if (!/^[0-9a-f]{64}$/.test(String(sha || ''))) return 'reload Tide: this yes does not say which change it covers';
   return sha === cur ? '' : `${j.id} changed since you looked; look again`;
 }
 // a gate Approve all may sign off: a merge gate whose change, measured now (never the cached one), is known and touches nothing
@@ -906,7 +906,7 @@ async function act(body) {
     // id again under its state lock, so the check and the grant can't be split by a tick.
     case 'approve': {
       if (!jobId(body.id)) return { ok: false, error: 'bad job id' };
-      if (!approvalId(body.approval)) return { ok: false, error: 'reload the Board: this yes does not say which ask it answers' };
+      if (!approvalId(body.approval)) return { ok: false, error: 'reload Tide: this yes does not say which ask it answers' };
       const j = readJson(path.join(root, 'jobs', body.id + '.json'));
       if (!j || !j.approval || j.approval.granted || String(j.approval.id) !== body.approval) return { ok: false, error: `${body.id} now asks something else (or nothing); look again` };
       const refused = await shaRefusal(j, body.diffSha); if (refused) return { ok: false, error: refused };
@@ -994,7 +994,7 @@ async function act(body) {
     }
     case 'push-off': try { fs.unlinkSync(pushOnPath); } catch {} return { ok: true };
     case 'push-automerge': return pushAutoMerged(true);   // same as the 8pm check, without waiting for the clock
-    case 'push-test': if (!pushOn()) return { ok: false, error: 'push alerts are off' }; push('INFO', 'Test from the Board: push alerts work.'); return { ok: true };
+    case 'push-test': if (!pushOn()) return { ok: false, error: 'push alerts are off' }; push('INFO', 'Test from Tide: push alerts work.'); return { ok: true };
     case 'live-on': fs.writeFileSync(path.join(root, 'LIVE'), `on since ${new Date().toISOString()} (from the Chef app)`); return { ok: true };
     case 'kitchen-resume': try { fs.unlinkSync(path.join(root, 'PAUSED')); } catch {} kick(); return { ok: true };   // Jordan's tap: same as kitchen.ps1 resume
     case 'site-pause': case 'site-resume': {   // TD-8: stop or resume one Site; kitchen.ps1 checks the registry and logs the tap
@@ -2374,7 +2374,7 @@ async function handle(req, res) {
       if (tooBig) return send(res, 413, loginForm('Too long.'), html);
       k = String(body?.key ?? '').trim();
     }
-    if (k === null) return send(res, 200, loginForm(url.searchParams.has('key') ? 'For safety the Board never takes the key from a link: paste it below, or open the Board with your Tailscale login.' : 'Sign in with the pass key, or open the Board with your Tailscale login.'), html);
+    if (k === null) return send(res, 200, loginForm(url.searchParams.has('key') ? 'For safety Tide never takes the key from a link: paste it below, or open Tide with your Tailscale login.' : 'Sign in with the pass key, or open Tide with your Tailscale login.'), html);
     if (loginLocked()) return send(res, 429, loginForm('Too many wrong keys: sign-in is paused for 15 minutes.'), html);
     if (keyOk(k)) { res.writeHead(303, { ...sec, Location: '/', 'Set-Cookie': `pass=${newSession()}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_SEC}` }); return res.end(); }
     loginFails.push(Date.now());
@@ -2541,7 +2541,7 @@ async function handle(req, res) {
   res.writeHead(200, head); return res.end(body);
 }
 const server = http.createServer((req, res) => {
-  handle(req, res).catch((e) => { console.error('request failed:', String(req.url).split('?')[0], e?.message); send(res, 500, { ok: false, error: 'the Board server hit an error; it is still running' }); });   // path only: a query can carry a key
+  handle(req, res).catch((e) => { console.error('request failed:', String(req.url).split('?')[0], e?.message); send(res, 500, { ok: false, error: 'the Tide server hit an error; it is still running' }); });   // path only: a query can carry a key
 });
 process.on('uncaughtException', (e) => console.error('uncaught:', e?.message));
 // A planned restart (update.ps1 asks with Ctrl+Break or a signal) tells every phone first, so it reconnects quietly instead of

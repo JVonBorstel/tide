@@ -2,7 +2,7 @@
 // written out as public/icon.svg (16 px a pixel, crisp edges) and as the PNGs Android and iOS want (icon-192.png, icon-512.png:
 // whole-pixel scales of the same grid, encoded here with zlib, no browser and no dependency).
 //   node pass-app/icon-art.mjs            writes all three files
-// Full bleed for "maskable"; the skyline and the wave crest sit inside the 80% safe circle.
+// Full bleed for "maskable"; the skyline sits inside the 80% safe circle (the sky and the water are full-bleed background).
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
@@ -55,7 +55,7 @@ ${layer(g, true, '  ')}
   </g>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" shape-rendering="crispEdges">
   <!-- Tide's app icon (D-13), drawn by pass-app/icon-art.mjs: a night skyline over an ember dusk with the tide rolling in. 32x32 at 16 px a pixel,
-       sprites.js palette only. Full bleed for "maskable"; the skyline and the wave crest sit inside the 80% safe circle. -->
+       sprites.js palette only. Full bleed for "maskable"; the skyline sits inside the 80% safe circle (the sky and the water are full-bleed background). -->
 ${paths}
 </svg>
 `;
