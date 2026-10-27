@@ -23,7 +23,8 @@ const WIP = 4 // build streams open at once (tools/task.mjs WIP_LIMIT; build-way
 const DEF = {
   lanes: 1, max: 40, gateEvery: 3, rounds: 3, planBatch: 5, planRounds: 10, task: 0, plan: true,
   repo: 'JVonBorstel/tide', checkout: '', wtRoot: '',
-  privacyScan: '%USERPROFILE%\\gemini-brain\\projects\\tide\\audits\\public-tide-scan.ps1',
+  // scan-diff.ps1 runs public-tide-scan.ps1 on a change's files and keeps only hits on lines the change adds
+  privacyScan: '%USERPROFILE%\\gemini-brain\\projects\\tide\\audits\\scan-diff.ps1',
   gitName: 'JVonBorstel', gitEmail: '204934145+JVonBorstel@users.noreply.github.com',
 }
 function options(a) {
@@ -76,8 +77,9 @@ const MERGE = { type: 'object', properties: {
 const GATE = { type: 'object', properties: {
   base: str, privacyRan: bool, privacyHits: int, testsOk: bool, tests: str, tidyTask: int, problems: strs, paused: bool,
 }, required: ['base', 'privacyRan', 'privacyHits', 'testsOk', 'tests', 'tidyTask', 'problems', 'paused'] }
-// The privacy scan's JSON has "live" (how many private values it LOADED per class: never zero, not hits) and "hits" (the findings).
-const HITS = 'privacy hits = the number of entries in the JSON\'s "hits" array (its "live" object only counts the private values the scan loaded; it is never a hit count)'
+// The scan prints {"files","hits","oldHits"}: "hits" are findings on lines the change adds; "oldHits" are on lines already on the base,
+// which were scanned when they landed, so they never block (an old form label once stopped every change to app.js).
+const HITS = 'privacy hits = the number of entries in the JSON\'s "hits" array ("oldHits" counts lines already on main; they do not block)'
 const sameHead = (a, b) => !!a && !!b && a.length >= 7 && b.length >= 7 && (a.startsWith(b) || b.startsWith(a))
 // text that goes into a CLI argument inside a prompt: no quotes, $, backticks or backslashes for a shell to read
 const shellSafe = (s, n) => String(s).replace(/["'`$\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n)
@@ -146,9 +148,8 @@ ${PRIVATE}
 ${keepAlive()}
 Before every push, in this order:
 a. Run the suites the change touches (and their counts go in "tests").
-b. Privacy: copy the files changed against origin/main (\`git -C ${wt} diff --name-only origin/main...HEAD\` plus uncommitted ones) into a
-   fresh temp folder with their relative paths, run \`pwsh -NoProfile -File "${O.privacyScan}" -Root <temp> -Json -Patterns ${wt}\\scripts\\secret-patterns.ps1\`
-   (expand %USERPROFILE%), delete the temp folder. ${HITS}. Any hit: do not push; set blocked="privacy scan: <classes and files, never the values>".
+b. Privacy: run \`pwsh -NoProfile -File "${O.privacyScan}" -Repo ${wt}\` (expand %USERPROFILE%; it scans the worktree's changes
+   against origin/main, uncommitted and untracked files included). ${HITS}. Any hit: do not push; set blocked="privacy scan: <classes and files, never the values>".
    If the scan script is missing: do not push; blocked="privacy scan not found at <path>". Put the counts line in privacyScan.
    Also read your own commit messages and PR text against the task file: no task text beyond the public title.
 c. Commit: \`git -C ${wt} -c user.name=${O.gitName} -c user.email=${O.gitEmail} commit\` with a plain message about the code, ending with a
@@ -287,9 +288,8 @@ async function gate(base, merged, final) {
   const g = await agent(`Workspace gate${final ? ' (end of run)' : ''} for ${O.repo}. Checkout ${ctx.checkout}. Merged since the last gate: ${merged.map((m) => `#${m.pr}`).join(', ') || 'none'}.
 First run ${beat()}.
 1. \`git -C ${ctx.checkout} fetch origin main\`; base = ${base || 'origin/main~' + Math.max(1, merged.length)}; head = origin/main. Return base = the head sha (the next gate starts there).
-2. Privacy: export the files changed in base..head (\`git -C ${ctx.checkout} diff --name-only <base> origin/main\`, as they are at origin/main via
-   \`git show origin/main:<path>\`) into a fresh temp folder, run \`pwsh -NoProfile -File "${O.privacyScan}" -Root <temp> -Json -Patterns <temp-or-checkout>\\scripts\\secret-patterns.ps1\`
-   (expand %USERPROFILE%; use the checkout's patterns file), delete the temp folder. ${HITS}; privacyHits = that number. If it is not 0:
+2. Privacy: run \`pwsh -NoProfile -File "${O.privacyScan}" -Repo ${ctx.checkout} -Base <base> -Head origin/main\` (expand %USERPROFILE%;
+   it scans the lines base..head adds). ${HITS}; privacyHits = that number. If it is not 0:
    run \`${cli()} pause --reason "privacy scan: hits after merges ${merged.map((m) => `#${m.pr}`).join(' ')}"\` and set paused=true. Never print a hit's text.
 3. Suites: ${final ? `run the repo's whole suite through verify-all with a one-repo config: write a temp JSON {"suites":[{"name":"tide","dir":"<checkout>","glob":"tests\\\\Test-*.ps1","timeoutSeconds":600,"maxMB":2000}]}
    and run \`pwsh -NoProfile -File ${ctx.checkout}\\scripts\\verify-all.ps1 -ConfigPath <temp json>\`; delete the temp file.` : `in a fresh worktree of origin/main (\`git -C ${ctx.checkout} worktree add --detach <temp folder> origin/main\`) run

@@ -338,7 +338,8 @@ try {
     check('wf work: own worktree and branch, noreply identity, trailer, PR title from the public title only, PR body ending',
       w.includes('X:\\wt\\task-5') && w.includes('-b task/5 origin/main') && w.includes('user.email=204934145+JVonBorstel@users.noreply.github.com')
       && w.includes('Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>') && w.includes('--title "WO-TASK-5: Public 5"') && w.includes('🤖 Generated with [Claude Code](https://claude.com/claude-code)'));
-    check('wf work: privacy scan before every push counts "hits", never "live"; never force', /Before every push/.test(w) && w.includes('public-tide-scan.ps1') && /"hits" array/.test(w) && /never a hit count/.test(w) && /never --force/.test(w));
+    check('wf work: privacy scan before every push counts "hits" on added lines, never "oldHits"; never force', /Before every push/.test(w) && w.includes('scan-diff.ps1') && /"hits" array/.test(w) && /"oldHits" counts lines already on main; they do not block/.test(w) && /never --force/.test(w));
+    check('wf gate: privacy scans only the lines base..head adds', /scan-diff\.ps1" -Repo .* -Base <base> -Head origin\/main/.test(byLabel('gate (final)').prompt));
     check('wf rules: never close, reopen or approve a PR (builder, checks, reviewer, merge)', /never close, reopen, approve/.test(w) && /close, approve or merge/.test(byLabel('checks 5').prompt)
       && /close, approve or merge/.test(byLabel('review 5').prompt) && /never close or reopen a PR/.test(byLabel('merge 5').prompt));
     check('wf review: independent reviewer, read-only, records the head it reviews first', /INDEPENDENT REVIEWER/.test(byLabel('review 5').prompt) && /did not build it/.test(byLabel('review 5').prompt) && /FIRST record the commit you review/.test(byLabel('review 5').prompt));
