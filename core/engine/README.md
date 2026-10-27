@@ -16,6 +16,7 @@ The engine carries each work order (WO) from build to closed. It retries, waits 
 | `fake.mjs` | The in-process engine. It needs no install and keeps everything in files in its own folder. It is used by the tests and as the stand-in until Temporal runs. |
 | `temporal/` | The Temporal engine: the workflow, the activities, the worker and the client. It needs Jordan's two installs (`temporal/INSTALL.md`). |
 | `cli.mjs` | Read-only looks (see below). |
+| `converge/` | The convergence workflows (build-way 3.6): freshen-pr, re-review, retry (a fresh crew, at most 2, then a card), re-cook from intent, the PICKUP archive, worktree tidy, close-superseded, the contradiction finder and the morning card. Each is a pure plan over a snapshot; `run.mjs` carries the actions out or only prints them (dry run). An action that needs Jordan's yes only creates a card, unless a standing yes is in the log. `schedule.mjs` says when each one runs. |
 
 ## Safety lines (each one has a named test)
 
@@ -33,6 +34,7 @@ The engine carries each work order (WO) from build to closed. It retries, waits 
 node core/engine/cli.mjs governor [--state <folder>]      # may a crew start now? exit 0 run, 1 hold/stop
 node core/engine/cli.mjs show <WO-id> [--state <folder>]  # stage, state and the next command, from <state>\engine\events.jsonl
 node core/engine/cli.mjs temporal                         # is Temporal installed? names what is missing
+node core/engine/converge/run.mjs <workflow> --snapshot <json> [--events <log>]   # dry run of one convergence workflow; does nothing
 node core/engine/temporal/worker.mjs --state <folder>     # the Temporal worker (after INSTALL.md); 127.0.0.1 only
 ```
 
@@ -42,10 +44,14 @@ node core/engine/temporal/worker.mjs --state <folder>     # the Temporal worker 
 
 `pwsh -File scripts/run-bounded.ps1 -Script tests/Test-Engine.ps1 -TimeoutSeconds 600 -MaxMB 3000`
 
-This runs `tests/core/engine/test-engine.mjs`. The suites are wo, activity, runner, governor and temporal. Each test is named after an acceptance line. The Temporal suite skips its three live tests, saying why, until the installs are done.
+This runs `tests/core/engine/test-engine.mjs`. The suites are wo, activity, runner, governor, converge and temporal. Each test is named after an acceptance line. The Temporal suite skips its three live tests, saying why, until the installs are done.
 
 ## Not here yet (later slices, each its own PR)
 
-- `adopt`: turn a pushed branch or PR plus its BRIEF into a WO.
-- The convergence workflows: freshen-pr, re-review, retry, re-cook from intent, the archive and tidy cards, the morning card.
+- `adopt` turns a pushed branch or PR plus its BRIEF into a WO. It is in its own PR (WO-UPG-L2-2).
+- The actions the convergence workflows call. Today each one is an activity name the engine does not have yet:
+  - `freshen-pr` and the merge queue (lane L4);
+  - `review`, `retry`, `recook` and `pick` (lane L3 crews);
+  - `pickup-archive`, `worktree-remove`, `pr-close` and `contradiction-finder`.
+- The snapshots the convergence workflows read: open PRs, rows, worktrees and PICKUP entries. They come from lane L1's ledger once it lands.
 - The build and review crews (lane L3) and the docs station (lane L4). Until they land, the steps that need them wait with exit 127 ("not built yet"). They do not use up retries.
