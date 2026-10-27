@@ -450,12 +450,12 @@ function mountPixel(el, L) {
   paint(sc);
   sc.loop.start();
 }
-// the WebGL2 renderer (gl.js, SCENE.md "Renderer"): ?gl in the address or Settings > About (kept on this phone); ?gl=0 turns it off
-export const glWanted = (q, kept) => !/[?&]gl=0\b/.test(q) && (/[?&]gl\b/.test(q) || kept === '1');
+// the WebGL2 renderer (gl.js, SCENE.md "Renderer"): on unless Settings > About turned it off here (kept '0') or ?gl=0; ?gl wins for the visit
+export const glWanted = (q, kept) => !/[?&]gl=0\b/.test(q) && (/[?&]gl\b/.test(q) || kept !== '0');
 export const sceneRenderer = () => GLM?.INFO || null;
 export function sceneGl(on) {
   let kept = null; try { if (on !== undefined) localStorage.setItem('board.webgl2', on ? '1' : '0'); kept = localStorage.getItem('board.webgl2'); } catch { /* private mode: this visit */ }
-  if (on === undefined) return kept === '1';
+  if (on === undefined) return kept !== '0';
   (on ? import('./gl.js') : Promise.resolve(null)).then((m) => { GLM = m; remount(); }).catch(() => {});
   return on;
 }
@@ -478,8 +478,8 @@ function installChrome(P) {
   root.classList.add('px');
 }
 if (typeof document !== 'undefined' && typeof window !== 'undefined') {
-  let keep = false, glk = null; try { keep = localStorage.getItem('board.frameMeter') === '1'; glk = localStorage.getItem('board.webgl2'); } catch { /* no storage: off */ }
-  const glm = glWanted(location.search, glk) ? import('./gl.js').catch(() => null) : null;   // loaded with the sprites, never without the flag
+  let keep = false, glk = null; try { keep = localStorage.getItem('board.frameMeter') === '1'; glk = localStorage.getItem('board.webgl2'); } catch { /* no storage: defaults */ }
+  const glm = glWanted(location.search, glk) ? import('./gl.js').catch(() => null) : null;   // loaded with the sprites when on
   METER.wake = () => { for (const el of mounted) el._px?.loop.start(); };
   if (keep || /[?&](hud|fps=hud)\b/.test(location.search)) (document.body ? meter(true) : addEventListener('DOMContentLoaded', () => meter(true), { once: true }));
   else if (/[?&]fps\b/.test(location.search)) import('./frame-meter.js').catch(() => {});
