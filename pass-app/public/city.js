@@ -55,7 +55,7 @@ function towerOf(T, s, ev, now, k, opts) {
   const skip = (T.floors || []).filter((f) => f.undone && now - t(f.undone) < MS.day).map((f) => ({ pr: f.pr || null, job: f.job || null, unknown: !!(f.job && unpushed.has(f.job)) }));
   const lastSeen = t(opts.lastSeen);
   const m = {
-    key: T.key, kind: T.kind, name: T.name, floors: floors.length, rows: Math.ceil(floors.length / k),
+    key: T.key, kind: T.kind, name: T.name, private: !!T.private, floors: floors.length, rows: Math.ceil(floors.length / k),
     lit: floors.filter((f) => t(f.at) <= now && now - t(f.at) < MS.day).length,
     fresh: lastSeen === null ? 0 : floors.filter((f) => t(f.at) > lastSeen).length,
     plinth: T.plinth && Number(T.plinth.commits) > 0 ? Number(T.plinth.commits) : 0,
@@ -75,7 +75,7 @@ function towerOf(T, s, ev, now, k, opts) {
 }
 // the gate, the cabin and the GitHub sign (by the gate)
 function gateOf(s, towers, ev, now) {
-  const g = { paused: typeof s?.paused === 'boolean' ? s.paused : null, live: !!s?.live, breaker: !!s?.breaker, stalled: !!s?.stalled, budget: null, github: null };
+  const g = { paused: typeof s?.paused === 'boolean' ? s.paused : null, live: !!s?.live, breaker: !!s?.breaker, stalled: typeof s?.stalled === 'boolean' ? s.stalled : null, budget: null, github: null };
   const b = Number(s?.budget); const sp = Number(s?.spent);
   if (b > 0 && Number.isFinite(sp)) g.budget = { level: Math.max(0, Math.min(8, Math.floor(8 * sp / b))), stop: ev.some((e) => e?.type === 'budget.stop' && new Date(e.ts).toDateString() === new Date(now).toDateString()) };
   const at = t(s?.githubAt ?? towers?.githubAt); const err = towers?.githubError || null; const age = at === null ? null : Math.max(0, now - at);
@@ -120,15 +120,16 @@ export const needsYou = (c) => !!(c && (c.gate.paused || c.yard.waiting || c.lot
 // the text twin of the canvas: one sentence per building, numbers only (a screen reader reads these; the canvas is aria-hidden)
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 export function sentence(l) {
-  if (l.kind === 'office') return `${l.name}: the Office${l.lit ? ', a commit in the last day' : ''}`;
-  if (l.kind === 'lot') return `${l.name}: a lot${l.plinth ? ' of ' + plural(l.plinth, 'commit') : ''}, no floors yet`;
+  const name = l.name + (l.private ? ' (private)' : '');
+  if (l.kind === 'office') return `${name}: the Office${l.lit ? ', a commit in the last day' : ''}`;
+  if (l.kind === 'lot') return `${name}: a lot${l.plinth ? ' of ' + plural(l.plinth, 'commit') : ''}, no floors yet`;
   const bits = [plural(l.floors, 'floor')];
   const crane = l.cranes.length + l.craneMore; if (crane) bits.push(`${crane} under construction`);
   if (l.lit) bits.push(`${l.lit} new today`);
   const crew = l.crews.length + l.crewMore + l.cranes.filter((c) => c.crew).length; if (crew) bits.push(plural(crew, 'crew') + ' at work');
   if (l.waiting) bits.push(plural(l.waiting, 'sign-off') + ' waiting');
   if (l.scaffold === 'red') bits.push('main is red'); if (l.tape) bits.push('site closed'); else if (l.closes) bits.push('closes ' + l.closes);
-  return `${l.name}: ${bits.join(', ')}`;
+  return `${name}: ${bits.join(', ')}`;
 }
 
 // ---- drawing: one pixel buffer per frame, put on the canvas with one drawImage (far under the stage's 120 draws) ----
@@ -232,7 +233,7 @@ function gate(g, it, c, ph) {
   if (gt.budget) { R(x + 10, cy + 2, 10, 7, 'a'); for (let s = 0; s < 8; s++) R(x + 11 + s, cy + 3, 1, 5, s >= gt.budget.level ? 'j' : s < 4 ? 'v' : s < 6 ? 's' : 'B'); if (gt.budget.stop) R(x + 13, cy + 5, 4, 4, 't'); }
   if (gt.paused !== null) { const word = gt.paused ? 'PAUSED' : 'OPEN'; R(x, cy - 13, 28, 9, 'a'); R(x + 1, cy - 12, 26, 7, 'D'); T(word, x + 1 + ((26 - g.tw(word)) >> 1), cy - 11, gt.paused ? 'B' : gt.live ? 't' : 'n'); }
   if (gt.breaker) { R(x + 2, cy + 8, 7, 3, 'B'); P(x + 4, cy + 9, 'p'); P(x + 6, cy + 9, 'p'); }
-  R(x + 4, cy + 2, 5, 5, 'p'); R(x + 6, cy + 3, 1, 2, 'a'); if (!gt.stalled) R(x + 6, cy + 4, 2, 1, 'a');   // the site clock (stopped: one hand)
+  if (gt.stalled !== null) { R(x + 4, cy + 2, 5, 5, 'p'); R(x + 6, cy + 3, 1, 2, 'a'); if (!gt.stalled) R(x + 6, cy + 4, 2, 1, 'a'); }   // the site clock (stopped: one hand; no state: none)
   if (gt.github) { const s = gt.github.err ? 'GH!' : 'GH'; const bw = g.tw(s) + 4, by = G - 34; R(x + 3, by + 8, 1, 4, 'f'); R(x + 1, by, bw, 8, 'a'); R(x + 2, by + 1, bw - 2, 6, gt.github.err ? 'B' : 't'); T(s, x + 3, by + 2, gt.github.err ? 'p' : 'a'); }
 }
 function yard(g, it, c, ph) {
@@ -250,6 +251,7 @@ export function paintCity(c, W, hour, ph = { blink: 1, step: 0 }, pal = palettes
   for (const it of items) {
     if (it.kind === 'gate') gate(g, it, c, ph); else if (it.kind === 'yard') yard(g, it, c, ph);
     else if (it.kind === 'tower') boxes[it.key] = tower(g, it, it.l, i++, c, ph); else if (it.kind === 'lot') lot(g, it, it.l); else if (it.kind === 'office') office(g, it, it.l);
+    if (it.l?.private) g.S(LOCK, it.x + (it.w >> 1) - 2, 2);   // a private repo: a padlock over it
   }
   street(g);
   const f = items.find((it) => it.key === ph.focus);
@@ -287,12 +289,13 @@ export function legendRows(c) {
     ['Pallets at the base: queued work orders', any((l) => l.pallets)], ['Beacon: a sign-off waiting (amber after 1 h, red after 4 h)', any((l) => l.beacon || l.cranes.some((x) => x.beacon)) || c.yard.beacon],
     ['Scaffolding and tape: main is red ("?": its record cannot be read)', any((l) => l.scaffold)], ['Striped barrier: site closed now; red flag: it closes soon', any((l) => l.tape || l.closes)],
     ['Skip: a floor taken down in the last day', any((l) => l.skip.length)], ['Flag on a roof: new floors since you last looked', any((l) => l.fresh)],
+    ['Padlock over a building: a private repo (no name, no PR titles)', any((l) => l.private)],
     ['Gate sign: PAUSED or OPEN (lit: AI crews on)', c.gate.paused !== null], ['Meter on the cabin: today\'s spend against the cap', !!c.gate.budget],
     ['GH sign: GitHub was last read a while ago, or the read failed', !!c.gate.github], ['Workshop by the gate: work orders with no Tower', c.yard.running + c.yard.queued + c.yard.waiting > 0]];
   return rows.filter((r) => r[1]).map((r) => r[0]);
 }
 export function mountCity(o) {
-  const M = { towers: null, v: null, busy: false, c: null, key: '', canvas: null, visible: true, failed: null, r: routeOf(''), items: [], W: 1, depth: 0, moving: false };
+  const M = { towers: null, v: null, busy: false, c: null, key: '', canvas: null, visible: true, failed: null, tries: 0, after: 0, r: routeOf(''), items: [], W: 1, depth: 0, moving: false };
   const ctx2d = (cv) => { const x = cv.getContext('2d'); x.imageSmoothingEnabled = false; return x; };
   function blit(cv, g, scale, dpr) {
     if (cv.width !== g.W * scale || cv.height !== g.H * scale) { cv.width = g.W * scale; cv.height = g.H * scale; cv.style.width = g.W * scale / dpr + 'px'; cv.style.height = g.H * scale / dpr + 'px'; }
@@ -301,23 +304,30 @@ export function mountCity(o) {
   }
   function fetchTowers() {
     M.busy = true;
-    o.api('/api/towers').then((r) => { if (r?.ok) { M.towers = r; M.failed = null; } else M.failed = r?.error || 'the City could not be read'; }).finally(() => { M.busy = false; M.key = ''; update(); });
+    // a failed read: again after 30 s, 1, 2, 4 min (at most 5)
+    o.api('/api/towers').then((r) => {
+      if (r?.ok) { M.towers = r; M.failed = null; M.tries = 0; return; }
+      M.failed = r?.error || 'the City could not be read'; M.v = null; const ms = Math.min(3e5, 3e4 * 2 ** M.tries++); M.after = Date.now() + ms - 50; setTimeout(update, ms);
+    }).finally(() => { M.busy = false; M.key = ''; update(); });
   }
+  // frame() returns the wait (frame.js): to the next blink or step while a beacon blinks or a crew works (PAUSED alone is still), else Infinity
+  const moving = (c) => !!c && !!(c.yard.beacon || c.lots.some((l) => l.beacon || l.crews.length || l.cranes.some((x) => x.crew || x.beacon)));
   function frame() {
-    if (M.moving) return;
-    const { s, ev, view, lastSeen } = o.get(); const now = Date.now(); const rm = reducedMotion(); const rt = M.r;
-    const c = M.c = cityOf(M.towers, s, ev || [], now, { lastSeen }); const ph = { blink: rm ? 1 : Math.floor(now / 500) % 2, step: rm ? 0 : Math.floor(now / 260) % 2 };
+    if (M.moving) return Infinity;   // the camera's done() draws and starts the loop again
+    const { s, ev, view, lastSeen } = o.get(); const now = Date.now(); const rt = M.r;
+    const c = M.c = cityOf(M.towers, s, ev || [], now, { lastSeen }); const anim = !reducedMotion() && moving(c);
+    const ph = anim ? { blink: Math.floor(now / 500) % 2, step: Math.floor(now / 260) % 2 } : { blink: 1, step: 0 }; const wait = anim ? Math.min(500 - now % 500, 260 - now % 260) : Infinity;
     const dpr = globalThis.devicePixelRatio || 1; const home = view === 'pass';
     const key = [home, hashOf(rt), M.v, M.towers?.at && M.c.k, JSON.stringify(c.lots), JSON.stringify(c.gate), JSON.stringify(c.yard), ph.blink, ph.step, Math.floor(now / 6e4), o.home.clientWidth, o.strip.clientWidth].join('|');
-    if (key === M.key) return; M.key = key;
-    o.strip.hidden = home || !s; o.home.hidden = !home;
+    if (key === M.key) return wait; M.key = key;
+    o.strip.hidden = home || !s || c.loading; o.home.hidden = !home;
     if (home) {
       const box = o.home.clientWidth || 343; const dev = Math.max(200, Math.floor(box * dpr)); const scale = Math.max(1, Math.floor(dev / minWidth(c))); const W = Math.floor(dev / scale);
       const cv = o.home.querySelector('canvas') || o.home.insertBefore(Object.assign(document.createElement('canvas'), { className: 'city-canvas' }), o.home.firstChild); cv.setAttribute('aria-hidden', 'true');
       const p = paintCity(c, W, new Date(now).getHours() + new Date(now).getMinutes() / 60, { ...ph, focus: rt.key }); M.items = p.items; M.W = W; blit(cv, p.g, scale, dpr);
       const cap = c.loading ? (M.failed ? 'The City could not be read: ' + M.failed : 'Reading the City…') : M.failed ? `Showing the last read: ${M.failed}` : c.gate.github ? c.gate.github.text : '';
       const nameOf = (k) => c.lots.find((l) => l.key === k)?.name || (k === 'yard' ? 'Yard lot' : k); const on = c.lots.find((l) => l.key === rt.key);
-      const html = crumbsHtml(rt, nameOf, esc) + (on ? `<p class="city-cap">${esc(sentence(on))}</p>` : '') + `<ul class="city-names">${c.lots.map((l) => `<li data-kind="${l.kind}"><a href="#/city/${esc(l.key)}"${l.key === rt.key ? ' aria-current="page"' : ''} aria-label="${esc(sentence(l))}"><b>${esc(l.name)}</b><span aria-hidden="true">${l.kind === 'tower' ? l.floors : l.kind === 'lot' ? 'lot' : 'office'}</span></a></li>`).join('')}</ul>`
+      const html = crumbsHtml(rt, nameOf, esc) + (on ? `<p class="city-cap">${esc(sentence(on))}</p>` : '') + `<ul class="city-names">${c.lots.map((l) => `<li data-kind="${esc(l.kind)}"><a href="#/city/${esc(l.key)}"${l.key === rt.key ? ' aria-current="page"' : ''} aria-label="${esc(sentence(l))}"><b>${esc(l.name)}</b><span aria-hidden="true">${l.kind === 'tower' ? l.floors : l.kind === 'lot' ? 'lot' : 'office'}</span></a></li>`).join('')}</ul>`
         + `<p class="city-cap"${cap ? '' : ' hidden'} role="status">${esc(cap)}</p>` + (!c.loading && !c.lots.length ? '<p class="city-cap">No projects yet: the City fills in as work merges.</p>' : '');
       if (o.names.innerHTML !== html) o.names.innerHTML = html;
     } else if (s && !c.loading) {
@@ -325,21 +335,21 @@ export function mountCity(o) {
       const W0 = Math.floor((o.strip.clientWidth || 343) * dpr); const scale = Math.max(1, Math.floor(40 * dpr / 20)); blit(cv, paintStrip(c, Math.floor(W0 / scale), ph), scale, dpr);
       o.strip.classList.toggle('needs', needsYou(c)); o.strip.setAttribute('aria-label', needsYou(c) ? 'The City: something needs you. Open the Board' : 'The City: all quiet. Open the Board');
     }
+    return wait;
   }
-  const loop = makeLoop({ raf: (f) => requestAnimationFrame(f), fps: () => (M.c && (needsYou(M.c) || M.c.lots.some((l) => l.crews.length || l.cranes.some((x) => x.crew || x.beacon)) || M.c.yard.beacon) ? 10 : 1),
-    ok: () => !document.hidden && !reducedMotion() && M.visible, frame });
+  const loop = makeLoop({ raf: (f) => requestAnimationFrame(f), ok: () => !document.hidden && !reducedMotion() && M.visible, frame });
   // a new route: the camera moves toward the building (in) or away from it (out), then the new level is drawn crisp
   function follow() {
     const r = routeOf(location.hash); const was = M.r; if (hashOf(r) === hashOf(was)) return;
     if (r.level !== was.level) M.depth = r.level > was.level ? M.depth + 1 : Math.max(0, M.depth - 1); M.r = r;
     const it = M.items.find((x) => x.key === (r.key || was.key)); const cv = o.home.querySelector('canvas');
     if (o.get().view !== 'pass' || !it || !cv || r.level === was.level) { M.key = ''; return; }
-    M.moving = true; cameraMove(cv, (it.x + it.w / 2) / M.W, r.level > was.level, reducedMotion(), () => { M.moving = false; M.key = ''; frame(); });
+    M.moving = true; cameraMove(cv, (it.x + it.w / 2) / M.W, r.level > was.level, reducedMotion(), () => { M.moving = false; M.key = ''; frame(); loop.start(); });
   }
   // one level up: Back where the City put the level above in the history, else that level in its place
   const up = () => { const u = hashOf(upOf(M.r)); if (M.depth > 0) history.back(); else location.replace(u); };
   function update() {
-    follow(); const s = o.get().s; const v = s?.towersV ?? null; if (v && v !== M.v && !M.busy) { M.v = v; fetchTowers(); }
+    follow(); const s = o.get().s; const v = s?.towersV ?? null; if (v && v !== M.v && !M.busy && Date.now() >= M.after) { M.v = v; fetchTowers(); }
     frame(); loop.start();
   }
   o.strip.addEventListener('click', () => o.go('#/pass'));
@@ -348,7 +358,7 @@ export function mountCity(o) {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && M.r.level && o.get().view === 'pass' && !document.querySelector('dialog[open]')) up(); });
   o.cap?.addEventListener('click', () => o.legend(`<ul class="city-legend">${legendRows(M.c).map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`));
   if (typeof IntersectionObserver === 'function') new IntersectionObserver((es) => { M.visible = es.some((e) => e.isIntersecting); if (M.visible) loop.start(); }).observe(o.home);
-  if (typeof ResizeObserver === 'function') new ResizeObserver(() => { M.key = ''; frame(); }).observe(o.home);
-  setInterval(() => { if (reducedMotion()) { M.key = ''; frame(); } }, 60000);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => { M.key = ''; frame(); loop.start(); }).observe(o.home);
+  setInterval(() => { if (!document.hidden) frame(); }, 6e4);   // a still City again each minute (the sun moves)
   return { update, model: () => M.c, route: () => M.r };
 }
