@@ -110,7 +110,7 @@ try {
   check('with board.work on, the Ledger tab becomes Work and opens the Work screen', shown && onState.label === 'Work' && onState.cur === 'page' && onState.title === 'Work' && onState.visible, JSON.stringify(onState) + ' ' + (shown ? '' : await ev(`(document.getElementById('view-work').textContent || '').slice(0, 300)`)));
   const badge = await ev(`({ work: document.getElementById('count-work')?.textContent, hidden: document.getElementById('count-work')?.hidden, ledger: getComputedStyle(document.getElementById('count-ledger')).display })`);
   check('the tab counts the cards waiting on Jordan (not the Ledger count)', badge.work === '8' && badge.hidden === false && badge.ledger === 'none', JSON.stringify(badge));
-  check('the Board still runs beside it (the Board view and its scene are in the page)', await ev(`!!document.getElementById('view-pass') && !!document.getElementById('scene-pass')`));
+  check('the Board still runs beside it (its home view is in the page and the bar keeps its tabs)', await ev(`!!document.getElementById('view-pass') && document.querySelectorAll('.bar a[data-view]').length >= 6`));
 
   // ---- the queue, real data ----
   const q = await ev(`[...document.querySelectorAll('#wk-queue .wk-card')].map((n) => n.dataset.card)`);
