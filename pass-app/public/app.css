@@ -22,7 +22,7 @@
   --tape:#FFD36B; --tape-ink:#0D0A09; --steel:#93A3B4; --blueprint:#9FD3F0; --focus:#9FD3F0;
   color-scheme:dark}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html{-webkit-text-size-adjust:100%;scroll-padding-top:calc(var(--top) + 84px);scroll-padding-bottom:calc(var(--barh) + var(--bottom) + 16px)}
+html{-webkit-text-size-adjust:100%;scroll-padding-top:calc(var(--top) + 84px);scroll-padding-bottom:calc(var(--nav-cover,calc(var(--barh) + var(--bottom))) + 16px)}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/22px var(--sans);min-height:100dvh;-webkit-font-smoothing:antialiased}
 svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
 h1,h2,p{margin:0}
@@ -54,7 +54,7 @@ a{color:inherit}
 .banner.calm::before{background:var(--ink-3)}
 .banner .btn{margin-left:auto;min-height:36px;padding:0 12px;font-size:14px;white-space:nowrap}
 
-main{padding-bottom:calc(var(--barh) + var(--bottom) + 24px);max-width:720px;margin:0 auto;outline:none}
+main{padding-bottom:calc(var(--nav-cover,calc(var(--barh) + var(--bottom))) + 16px);max-width:720px;margin:0 auto;outline:none}
 
 /* the pulse under the title: live (a slow breathing dot), reconnecting (an open ring), offline (fault). Shape + word. */
 .top-title{min-width:0}

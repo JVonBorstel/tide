@@ -39,7 +39,7 @@ const jobLink = (id) => /^J\d{1,6}$/.test(String(id || '')) ? `<a href="#/job/${
 const NEEDS = (j) => j.status === 'waiting-approval' || j.status === 'needs-human';
 const ASIDE = (j) => ['quarantined', 'killed', 'failed'].includes(j.status);
 const OLD_ASIDE = (j) => ASIDE(j) && since(j.updated) > 86400;
-const isOldRecipe = (j) => ASIDE(j) && !!j.created && ((Date.now() - new Date(j.created).getTime()) >= 12 * 3600 * 1000) && !!(j.recipe || title(j.name).kind);
+const isOldRecipe = (j) => ASIDE(j) && !!j.created && ((Date.now() - new Date(j.created).getTime()) >= 12 * 3600 * 1000) && !!(j.recipe || splitName(j.name).kind);
 const money = (x) => '$' + (Number(x) || 0).toFixed(2);
 const fmtTokens = (n) => { n = Number(n) || 0; if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'k'; return String(Math.round(n)); };
 const isToday = (ts) => ts && new Date(ts).toDateString() === new Date().toDateString();
@@ -56,20 +56,12 @@ const since = (ts) => (Date.now() - new Date(ts).getTime()) / 1000;
 const human = (s) => String(s || '').replace(/[-_]+/g, ' ');
 const cap = (s) => { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); };
 const who = (j) => j.station === 'agent' ? (j.cook || j.supplier || 'Dispatcher picks') : human(j.station);
-// "improve: split kitchen.ps1" reads as a kind (small label) and a title
-function title(name) { const m = /^([a-z][\w-]{1,15}):\s+(.+)$/i.exec(String(name || '')); return m ? { kind: cap(human(m[1]).toLowerCase()), text: cap(m[2]) } : { kind: '', text: cap(name) }; }
-const titleHtml = (name) => { const t = title(name); return `${t.kind ? `<span class="kind">${esc(t.kind)}</span>` : ''}${esc(t.text)}`; };
-// plain words for an order on a phone: the idea's short title when the server has one (j.label), else the goal's first clause
-// without file paths ("kitchen/stations/lint.ps1" reads as "lint"), at most ~60 characters
-function plain(text) {
-  let s = String(text || '').replace(/\s*\(Idea I\d+:[\s\S]*$/, '').replace(/\.{3}$|…$/, '');
-  s = s.replace(/(?:[\w.-]+[\\/])+([\w-]+)\.(?:ps1|psm1|mjs|js|json|md|css|html)\b/g, '$1').replace(/\b([\w-]+)\.(?:ps1|psm1|mjs|json|md)\b/g, '$1');
-  s = s.split(/(?<=[a-z0-9)])[.;:]\s|\s\(?\d\)\s/)[0].trim();
-  if (s.length > 60) s = s.slice(0, 58).replace(/\s+\S*$/, '') + '…';
-  return cap(s);
-}
+// D-11 every title comes from public/titles.js titleOf (the one helper): the idea's short title, else the name's first heading or line in
+// plain words, markdown stripped, never a bare id alone ("diagnose: J357" reads as "Why WO-0357 failed"). A kind (small label) and a text.
 const unslug = (s) => /^[\w]+(-[\w]+)+$/.test(s) ? s.replace(/-/g, ' ') : s;   // "fix-budget-spend-rotation" reads as words
-const nameOf = (j) => { const t = title(j?.name); return { kind: t.kind, text: j?.label ? cap(unslug(j.label)) : plain(t.text) }; };
+const nameOf = (j) => titleOf(j);
+// any other title on the Board (an idea, a Ledger row): a slug as words, markdown out, capitalised
+const plainTitle = (s) => cap(cleanTitle(unslug(String(s || ''))));
 const nameHtml = (j) => { const t = nameOf(j); return `${t.kind ? `<span class="kind">${esc(t.kind)}</span>` : ''}${esc(t.text)}`; };
 // an approval text that starts by repeating the job's name says only the new part
 function askText(j) {
@@ -188,29 +180,29 @@ async function doJob(kind, id, btn) {
     const sha = pd?.sha || det?.diffSha || null; const dc = det?.change; const tc = testCounts(dc?.tests);
     const nFiles = pd ? pd.files.length : (dc?.files || []).length;
     const check = sha ? `<ul class="inspect"><li class="${tc && !tc.fail ? 'ok' : 'warn'}">Tests: ${tc ? (tc.all ? 'all passed' : `${Number(tc.pass)} passed, ${Number(tc.fail)} failed`) : 'unknown'}</li><li>Files modified: ${pd || dc ? Number(nFiles) : esc(changeLine(j) || 'unknown')}</li><li class="warn" data-diffstate>${pd?.private ? 'Private work order: file names only' : 'Diff not opened'}</li></ul>${pd ? phoneDiffHtml(pd) : '<p class="note">The file list could not be read right now.</p>'}` : '';
-    const ask = confirmBox({ title: `Approve ${ticket(id)}?`, html: `<p>${esc(title(j.name).text)}</p><div class="quote">${esc(askText(j) || j.name)}</div>${change}${ciLookText(j) ? `<p>${esc(ciLookText(j))}</p>` : ''}${check}${hold}`, yes: sha && !pd?.private ? 'Approve without reading' : 'Approve' });
+    const ask = confirmBox({ title: `Approve ${ticket(id)}?`, html: `<p>${esc(nameOf(j).text)}</p><div class="quote">${esc(askText(j) || j.name)}</div>${change}${ciLookText(j) ? `<p>${esc(ciLookText(j))}</p>` : ''}${check}${hold}`, yes: sha && !pd?.private ? 'Approve without reading' : 'Approve' });
     $('confirm-text')._onPd = () => { const st = $('confirm-text').querySelector('[data-diffstate]'); if (!st) return; const n = $('confirm-text').querySelectorAll('.pd-file.read').length; st.textContent = `Diff opened: ${n} of ${Number(nFiles)} file${nFiles === 1 ? '' : 's'} read`; st.className = 'ok'; $('confirm-yes').textContent = 'Approve'; };
     if (!await ask) return;
     buzz(); sceneApproved(); await act({ op: 'approve', id, approval: asked, ...(sha ? { diffSha: sha } : {}) }, { btn, ok: `${ticket(id)} approved. Starting now.` });
   } else if (kind === 'reject' || kind === 'stop') {
     const reject = kind === 'reject';
-    if (!await confirmBox({ title: `${reject ? 'Reject' : 'Cancel'} ${ticket(id)}?`, html: `<p>${esc(title(j.name).text)}</p><p>${reject ? "It won't run." : 'The crew stops now, with everything it started.'} You can retry it later.</p>`, yes: reject ? 'Reject' : 'Cancel work order', danger: true })) return;
+    if (!await confirmBox({ title: `${reject ? 'Reject' : 'Cancel'} ${ticket(id)}?`, html: `<p>${esc(nameOf(j).text)}</p><p>${reject ? "It won't run." : 'The crew stops now, with everything it started.'} You can retry it later.</p>`, yes: reject ? 'Reject' : 'Cancel work order', danger: true })) return;
     await act({ op: 'kill', id }, { btn, ok: `${ticket(id)} ${reject ? 'rejected' : 'cancelled'}` });
   } else if (kind === 'retry') {
     if (isOldRecipe(j)) {
-      if (!await confirmBox({ title: `Order ${ticket(id)} again?`, html: `<p>${esc(title(j.name).text)}</p><p>Today's spec will be built again as a new work order and this one closed out.</p>`, yes: 'Order it again' })) return;
+      if (!await confirmBox({ title: `Order ${ticket(id)} again?`, html: `<p>${esc(nameOf(j).text)}</p><p>Today's spec will be built again as a new work order and this one closed out.</p>`, yes: 'Order it again' })) return;
       const r = await act({ op: 'requeue', id }, { btn });
       if (r.ok && r.data?.job) toast(`${ticket(r.data.job)} is queued`, { action: { label: 'Open', fn: () => go('#/job/' + r.data.job) } });
       else if (r.ok) toast(`${ticket(id)} is back in the queue`);
     } else {
-      if (!await confirmBox({ title: `Retry ${ticket(id)}?`, html: `<p>${esc(title(j.name).text)}</p><p>It goes back in the queue at step ${Number(j.step)} of ${Number(j.steps)}, which runs again from its start.</p>`, yes: 'Retry' })) return;
+      if (!await confirmBox({ title: `Retry ${ticket(id)}?`, html: `<p>${esc(nameOf(j).text)}</p><p>It goes back in the queue at step ${Number(j.step)} of ${Number(j.steps)}, which runs again from its start.</p>`, yes: 'Retry' })) return;
       await act({ op: 'requeue', id }, { btn, ok: `${ticket(id)} is back in the queue` });
     }
   } else if (kind === 'diagnose') {
     if (!await confirmBox({ title: `Find the fix for ${ticket(id)}?`, html: `<p>A crew reads why it failed (its record, its log and the Yard's code) and explains the fix. It only reads; nothing is changed.${j.private ? '' : ''}</p>`, yes: 'Find the fix' })) return;
     const r = await act({ op: 'diagnose', id }, { btn }); if (r.ok && r.data?.job) toast(`${ticket(r.data.job)} is looking into it`, { action: { label: 'Open', fn: () => go('#/job/' + r.data.job) } });
   } else if (kind === 'undo-merge') {
-    if (!await confirmBox({ title: `Undo ${ticket(id)}?`, html: `<p>${esc(title(j.name).text)}</p><p>This adds a change that reverses the merge. Nothing is deleted; you can order it again.</p>`, yes: 'Undo merge', danger: true })) return;
+    if (!await confirmBox({ title: `Undo ${ticket(id)}?`, html: `<p>${esc(nameOf(j).text)}</p><p>This adds a change that reverses the merge. Nothing is deleted; you can order it again.</p>`, yes: 'Undo merge', danger: true })) return;
     await act({ op: 'undo-merge', id }, { btn, ok: `Undid ${ticket(id)}` });
   } else if (kind === 'logs') return openLog(id, null);
   else if (kind === 'open') return go('#/job/' + id);
@@ -750,7 +742,7 @@ function replayStats(j, runs) {
 }
 function recapMarkdown(j, st) {
   const n = (x) => Number(x).toLocaleString('en-US');
-  return [`# Standup Recap: ${ticket(j.id)} (${title(j.name).text})`,
+  return [`# Standup Recap: ${ticket(j.id)} (${nameOf(j).text})`,
     `- **Verdict**: ${st.verdict}`, `- **Duration**: ${st.minutes.toFixed(1)} min`, `- **Tokens**: ${n(st.tokens)} tokens`,
     `- **Crews**: ${st.cooks.join(', ') || 'none'}`, `- **Busiest crew**: ${st.busiest ? `${st.busiest.name} (${st.busiest.calls} tool calls)` : 'none'}`,
     `- **Tool calls**: ${st.tools}`, `- **Commands**: ${st.commands}`,
@@ -851,7 +843,7 @@ function sentence(e) {
   const t = String(e.type || ''); const tk = e.job ? jobLink(e.job) : ''; const d = esc(e.detail || e.text || e.reason || '');
   const step = e.step != null ? ` step ${(Number(e.step) || 0) + 1}` : '';   // numbers coerced: a string field never lands in the markup
   const map = {
-    'job.added': ['', `<b>New work order</b> ${tk} ${esc(title(e.name).text)}`], 'job.done': ['', `${tk} <b>${STATUS_LABEL.done.toLowerCase()}</b>`],
+    'job.added': ['', `<b>New work order</b> ${tk} ${esc(titleOf({ id: e.job, name: e.name }).text)}`], 'job.done': ['', `${tk} <b>${STATUS_LABEL.done.toLowerCase()}</b>`],
     'step.started': ['', `${tk} started${step}${e.attempt ? `, try ${(Number(e.attempt) || 0) + 1}` : ''}`], 'step.done': ['', `${tk} finished${step}`],
     'step.retry': ['', `${tk} failed${step}; waiting ${minWords(Number(e.inSec) || 0)} before retry`], 'job.quarantined': ['fail', `${tk} <b>${STATUS_LABEL.quarantined.toLowerCase()}</b>${(() => { const m = /^(\w+) x(\d+)$/.exec(e.reason || ''); return m ? ` after ${m[2]} ${m[2] === '1' ? 'try' : 'tries'} (${esc((FAIL_WORD[m[1]] || m[1]).toLowerCase())})` : e.reason ? ': ' + esc(e.reason) : ''; })()}`],
     'approval.requested': ['ask', `${tk} <b>needs your sign-off</b>: ${esc(e.text || '')}`], 'approval.granted': ['', `<b>You</b> approved ${tk}`],
@@ -994,6 +986,13 @@ $('cook-body').addEventListener('click', async (e) => {
 });
 $('cook-body').addEventListener('click', (e) => { if (e.target.closest('.row-link')) closeSheet('cook-sheet'); });
 
+// D-11 nothing sits under the bottom nav: the page's bottom room (--nav-cover, app.css main) is what the nav covers, measured from the nav
+// element itself (its height, its offset from the bottom and the safe-area inset inside it), again whenever the nav or the window changes
+(function navRoom() {
+  const nav = document.querySelector('nav.bar'); if (!nav) return;
+  const set = () => { if (!nav.getClientRects().length) return; const v = Math.max(0, Math.ceil(innerHeight - nav.getBoundingClientRect().top)) + 'px'; if (document.documentElement.style.getPropertyValue('--nav-cover') !== v) document.documentElement.style.setProperty('--nav-cover', v); };
+  set(); if (typeof ResizeObserver === 'function') new ResizeObserver(set).observe(nav); addEventListener('resize', set);
+})();
 // ---------- banners and chrome ----------
 // no board ever arrived and the kitchen can't be reached: say so plainly instead of a skeleton that never resolves
 function offlineCard() {
@@ -1845,7 +1844,7 @@ function renderIdeas(err) {
       <button class="btn" data-ap="${d.paused ? 'resume' : 'pause'}">${d.paused ? 'Resume' : 'Pause'}</button></div>
     <div class="ap-line"><span>Send a research team to look for new upgrades.</span><button class="btn" data-research>Research</button></div>
     <div class="filters"><div class="seg" role="radiogroup" aria-label="Show">${[['open', 'Open'], ['all', 'All']].map(([k, l]) => `<button role="radio" aria-checked="${S.ideas.filter === k}" data-if="${k}">${l}</button>`).join('')}</div></div>
-    ${items.length ? `<ul class="hunt-list">${items.map((x) => `<li class="hunt-row"><div class="hunt-main"><span class="hunt-title"><b>${esc(cap(unslug(String(x.title || ''))))}</b><span class="hunt-st${x.status === 'building' ? ' st-interview' : ''}">${esc(IDEA_WORD[x.status] || x.status)}</span></span>
+    ${items.length ? `<ul class="hunt-list">${items.map((x) => `<li class="hunt-row"><div class="hunt-main"><span class="hunt-title"><b>${esc(plainTitle(x.title))}</b><span class="hunt-st${x.status === 'building' ? ' st-interview' : ''}">${esc(IDEA_WORD[x.status] || x.status)}</span></span>
       <span class="hunt-sub">${esc(x.size === 'S' ? 'Small' : x.size === 'L' ? 'Large' : 'Medium')} · from ${esc(x.source || 'the Yard')}${x.at ? ' · ' + esc(ago(x.at)) : ''}</span>
       ${x.why ? `<span class="hunt-fit">${esc(x.why)}</span>` : ''}<details class="idea-goal"><summary>The goal</summary><p>${esc(x.goal)}</p>${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener noreferrer">Source</a>` : ''}</details></div>
       <div class="prop-actions">${x.job ? `<a class="btn" href="#/job/${esc(x.job)}">${ticket(x.job)}</a>` : ''}${['new', 'failed'].includes(x.status) ? `<button class="btn" data-idea-drop="${esc(x.id)}">Drop</button><button class="btn primary" data-idea-build="${esc(x.id)}">Build now</button>` : ''}</div></li>`).join('')}</ul>`
@@ -1899,7 +1898,7 @@ function renderLedger() {
     .map(([k, n, l]) => `<button class="lg-count${['you', 'lost', 'stuck'].includes(k) && n ? ' hot' : ''}" data-lg-f="${k}" aria-pressed="${S.ledger.filter === k}"><b>${Number(n) || 0}</b><span>${esc(l)}</span></button>`).join('');
   const progs = (d.programs || []).map((p) => `<div class="lg-prog">${esc(p.repo)}: ${Number(p.shipped)} of ${Number(p.total)} shipped${p.stuck ? `, ${Number(p.stuck)} stuck` : ''}<i><u data-css="width:${p.total ? Math.round(100 * p.shipped / p.total) : 0}%"></u></i></div>`).join('');
   const watchList = late.length ? `<details class="lg-prog"><summary>What the watchers found</summary><ul>${late.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></details>` : '';
-  const row = (x) => `<li class="lg-row"><div class="t"><b>${esc(cap(unslug(String(x.title || x.id))))}</b><span class="st${LG_HOT.has(x.state) ? ' hot' : ''}">${esc(LG_WORD[x.state] || x.state)}</span></div>
+  const row = (x) => `<li class="lg-row"><div class="t"><b>${esc(plainTitle(x.title || x.id))}</b><span class="st${LG_HOT.has(x.state) ? ' hot' : ''}">${esc(LG_WORD[x.state] || x.state)}</span></div>
     <div class="why">${esc(x.id)} · ${esc(x.kind)}${x.from ? ' · from ' + esc(x.from) : ''}${x.ageDays != null ? ' · ' + esc(String(x.ageDays)) + ' d' : ''}${x.why ? ' · ' + esc(x.why) : ''}</div>
     ${x.proof ? `<div class="why">Proof: ${esc(x.proof)}</div>` : ''}
     ${x.chain?.length ? `<details><summary>History (${x.chain.length})</summary><ol>${x.chain.map((s) => `<li><a href="#/job/${esc(s.id)}">${esc(s.id)}</a> ${esc(s.status)}${s.proof ? ' · ' + esc(s.proof) : ''}${s.note ? ' · ' + esc(s.note) : ''}${s.replacedBy ? ' → ' + esc(s.replacedBy) : ''}</li>`).join('')}</ol></details>` : ''}
@@ -1993,15 +1992,16 @@ function retryLabel(j) {
 }
 function briefSinceLines(b, lines) {
   if (b.since) lines.push(`<li><b>${esc(sinceText(b.since))}</b></li>`);
-  for (const x of b.stuck || []) lines.push(`<li class="bad"><a href="#/job/${esc(x.id)}">${esc(stuckText(x.id, x.stuck))}</a></li>`);
 }
+// D-11 a repeated failure is a row in the brief's Failed list (the same row as the others: its number, then what happened), not a bullet
+const stuckRow = (x) => `<li><a class="brief-row stuck-row" href="#/job/${esc(x.id)}"><span class="mono">${ticket(x.id)}</span><span class="t">${esc(cap(stuckText(x.id, x.stuck).slice(ticket(x.id).length + 1)))}</span></a></li>`;
 function renderBrief() {
   const b = S.brief; const el = $('brief'); const h = new Date().getHours();
   const seen = store.get('briefSeen', '') === new Date().toDateString();
   if (!b || (!S.briefOpen && (seen || h < 5 || h >= 13))) { el.innerHTML = ''; return; }
   // glanceable: count chips first, then at most 3 orders per group (plain names), then "and N more"
   const item = (x, extra = '') => `<li><a class="brief-row" href="#/job/${esc(x.id)}"><span class="mono">${ticket(x.id)}</span><span class="t">${esc(nameOf(x).text)}</span></a>${extra}</li>`;
-  const group = (cls, head, list, more, extra) => list.length ? `<div class="brief-group ${cls}"><h3>${head}</h3><ul>${list.slice(0, 3).map((x) => item(x, extra ? extra(x) : '')).join('')}</ul>${list.length > 3 ? `<a class="brief-more" href="#/pass" ${more}>and ${list.length - 3} more</a>` : ''}</div>` : '';
+  const group = (cls, head, list, more, extra, rows = '') => list.length || rows ? `<div class="brief-group ${cls}"><h3>${head}</h3><ul>${list.slice(0, 3).map((x) => item(x, extra ? extra(x) : '')).join('')}${rows}</ul>${list.length > 3 ? `<a class="brief-more" href="#/pass" ${more}>and ${list.length - 3} more</a>` : ''}</div>` : '';
   const am = new Set((b.autoMerged || []).map((x) => x.id));
   const chips = [
     b.needsYou.length ? `<a class="chip hot" href="#/pass" data-jump="needs"><b>${b.needsYou.length}</b> need sign-off</a>` : '',
@@ -2013,7 +2013,7 @@ function renderBrief() {
     group('hot', 'Waiting for your sign-off', b.needsYou, 'data-jump="needs"'),
     group('', 'Merged on their own', b.autoMerged || [], 'data-jump="plated"', (x) => `<button class="text-btn" data-undo="${esc(x.id)}">Undo</button>`),
     group('', STATUS_LABEL.done, b.plated.filter((x) => !am.has(x.id)), 'data-jump="plated"'),
-    group('bad', STATUS_LABEL.quarantined, b.setAside, 'data-jump="aside"'),
+    group('bad', STATUS_LABEL.quarantined, b.setAside, 'data-jump="aside"', null, (b.stuck || []).map(stuckRow).join('')),
   ].join('');
   const lines = [];
   briefSinceLines(b, lines);
@@ -2229,6 +2229,7 @@ import { sceneHtml, activityWord, mountScene, cookOf, COOK_COLORS, stepWord, app
 import { startLive, floorStep } from './live.js';
 import { mainStatusBanners } from './main-status.js';   // TD-EH-03a main-is-red banner
 import { markNotices, keysOf } from './notices.js';   // D-12 cleared notices and thin red bars, keyed so a change shows again
+import { titleOf, cleanTitle, splitName } from './titles.js';   // D-11 the one title helper (every list's titles)
 import { ciBudgetBanners } from './ci-budget.js';   // TD-11 CI budget per Site
 import { undoPushBanners, autoMergePauseBanner } from './undo-pause.js';   // TD-EH-10 undo not pushed, TD-EH-11 auto-merge paused
 import { siteStopBanners, siteStopRows } from './site-stop.js';   // TD-8: a Site stopped by you, a Site's own Stop-work order

@@ -1136,6 +1136,11 @@ console.log(JSON.stringify({ banners: siteStopBanners(items, { when }), rows: si
     try { $slTest = ($slOut -join "`n") | ConvertFrom-Json } catch { $slTest = $null }
     Check 'status line: test-status-line.mjs exits 0 and reported at least 40 checks' ($slExit -eq 0 -and @($slTest).Count -ge 40)
     foreach ($t in @($slTest)) { if ($t) { Check "status line: $($t.name)" ($t.pass -eq $true) } }
+    # D-11 the Board home's lists: human titles from the one helper (public/titles.js), stuck notes as rows, nothing under the nav (pass-app/test-board-rows.mjs)
+    $brOut = & node (Join-Path $repo 'pass-app\test-board-rows.mjs') 2>$null; $brExit = $LASTEXITCODE; $brTest = $null
+    try { $brTest = ($brOut -join "`n") | ConvertFrom-Json } catch { $brTest = $null }
+    Check 'board rows: test-board-rows.mjs exits 0 and reported at least 10 checks' ($brExit -eq 0 -and @($brTest).Count -ge 10)
+    foreach ($t in @($brTest)) { if ($t) { Check "board rows: $($t.name)" ($t.pass -eq $true) } }
     Check 'City_TowersNeedsKey: /api/towers needs the key' ((Get-Code "$base/api/towers") -eq 401)
     $twRaw = (Invoke-WebRequest "$base/api/towers" -Headers $auth).Content; $tw = $twRaw | ConvertFrom-Json
     Check 'City_TowersRoute: ok, this repo as its one building (no bootRepos here), with a 12-hex version' ($tw.ok -and @($tw.towers).Count -eq 1 -and $tw.v -match '^[0-9a-f]{12}$' -and @($tw.towers)[0].kind -in @('tower', 'lot'))
