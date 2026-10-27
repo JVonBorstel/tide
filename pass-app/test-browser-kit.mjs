@@ -1,6 +1,7 @@
 // The screen tests' browser: headless Chrome or Edge over the DevTools protocol (Node's own WebSocket; no package). Shared by
 // pass-app/test-work-ui.mjs and pass-app/test-status-line.mjs. cdpConnect(profileDir) starts the browser on a throwaway profile and
-// returns { send(method, params), on(listener), close(), proc } for its first page; the caller kills proc when done.
+// returns { send(method, params), on(listener), close(), proc } for its first page; the caller kills proc when done. A cold start on a CI
+// runner can take over 10 s, so it waits up to 30 s for the DevTools port.
 import fs from 'node:fs'; import path from 'node:path'; import { spawn } from 'node:child_process';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -14,8 +15,8 @@ export function chromePath() {
 export async function cdpConnect(profileDir) {
   const exe = chromePath(); if (!exe) throw new Error('no Chrome or Edge found (set CHROME_PATH)');
   const proc = spawn(exe, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profileDir}`, '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--no-sandbox', '--hide-scrollbars', 'about:blank'], { stdio: 'ignore', windowsHide: true });
-  let dport = 0; for (let i = 0; i < 150 && !dport; i++) { try { dport = Number(fs.readFileSync(path.join(profileDir, 'DevToolsActivePort'), 'utf8').split('\n')[0]); } catch { } if (!dport) await sleep(100); }
-  if (!dport) { proc.kill(); throw new Error('the browser did not open its DevTools port'); }
+  let dport = 0; for (let i = 0; i < 300 && !dport && proc.exitCode === null; i++) { try { dport = Number(fs.readFileSync(path.join(profileDir, 'DevToolsActivePort'), 'utf8').split('\n')[0]); } catch { } if (!dport) await sleep(100); }
+  if (!dport) { const code = proc.exitCode; proc.kill(); throw new Error(`the browser did not open its DevTools port in 30 s${code === null ? '' : ' (it exited with ' + code + ')'}`); }
   const list = await (await fetch(`http://127.0.0.1:${dport}/json/list`)).json();
   const ws = new WebSocket(list.find((t) => t.type === 'page').webSocketDebuggerUrl);
   await new Promise((ok, no) => { ws.onopen = ok; ws.onerror = no; });

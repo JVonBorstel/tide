@@ -2148,8 +2148,9 @@ import { syncList, windowed, WINDOW_FIRST, WINDOW_STEP } from './rows.js';
 import('./city.js').then((m) => { S.city = m.mountCity({ home: $('city'), names: $('city-names'), strip: $('city-strip'), cap: $('city-key'), api, go, buzz,
   get: () => ({ s: S.stale ? null : S.state, ev: S.events, view: S.view, lastSeen: S.sinceFrom }), legend: (html) => { $('legend-body').innerHTML = html; openSheet('legend-sheet'); } }); renderScene(); }).catch(() => {});
 function renderScene() {
-  const sky = skyAt(new Date().getHours()); if (city.dataset.sky !== sky) city.dataset.sky = sky;   // D-3: the City frame follows the City's own sky
+  const cityEl = $('city'); const sky = skyAt(new Date().getHours()); if (cityEl.dataset.sky !== sky) cityEl.dataset.sky = sky;   // D-3: the City frame follows the City's own sky
   S.city?.update();
+  if (!cityEl.dataset.drawn && cityEl.querySelector('canvas')) cityEl.dataset.drawn = '1';   // its picture is in: the held room (app.css) is let go
   const s = S.state; const el = S.view === 'cooks' ? $('scene-live') : null; if (!el || !s) return;
   mountScene(el, s, S.events, { compact: false });
   if ($('legend-sheet').open) { $('legend-body').innerHTML = sceneLegend(el); applyCss($('legend-body')); }
