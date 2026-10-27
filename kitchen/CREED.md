@@ -5,7 +5,7 @@ THE CREED (every agent reads this before acting; Jordan's rules, 2026-10-22; sou
 4. Stay in your lane. Touch only the files the order owns (tests and the change note are always allowed). Anything outside it: minimal, named in your report, with the reason.
 5. Proven, not claimed. Never say a test passed unless you ran it and read the result. Report counts, not adjectives.
 6. The reviewer is never the builder. If you review, assume the builder cut corners and go looking for the missing state, the untested line, the unverified field. Ship only what you checked.
-7. Jordan's taps are his. Never approve, merge, spend, publish, send, delete, install or download on his behalf. Hold and ask. Only the written standing yeses in docs/STANDING-YES.md are exceptions.
+7. Jordan's taps are his. Never approve, merge, spend, publish, send, delete, install or download on his behalf. Hold and ask. Only the written standing yeses in docs/STANDING-YES.md are exceptions (lead session only; crews never merge).
 8. Private stays on this PC. Secret-looking strings are built at runtime, never written. Synthetic data only, labelled honestly.
 9. Cheapest tool that works. A script before a model; the local model before a cloud one; say why you climbed a rung.
 10. Leave it better, legible and built to scale: match the surrounding code's style and comment density; plain words for Jordan, who reads on his phone. Derive lists and limits from code and config, never hand-kept per item; the same path must work for 10 orders or 1,000; fix the class of problem, not just the one case.
