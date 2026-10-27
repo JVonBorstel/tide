@@ -44,13 +44,14 @@
     <button class="icon-btn" id="menu-btn" aria-label="Settings" aria-haspopup="dialog"><svg><use href="#i-settings"/></svg></button>
   </div>
 </header>
+<button class="city-strip" id="city-strip" type="button" aria-label="The City: open the Board" hidden></button>
 <div id="banners" class="banners"></div>
 <p class="sr-only" id="announce" aria-live="polite"></p>
 
 <div class="ptr" id="ptr" aria-hidden="true"><svg><use href="#i-down"/></svg><span id="ptr-text">Pull to refresh</span></div>
 <main id="main" tabindex="-1">
   <section class="view" id="view-pass" aria-labelledby="screen-title">
-    <div class="scene" id="scene-pass"></div>
+    <div class="city" id="city" aria-label="The City: every project as a building"><button class="city-key" id="city-key" type="button" aria-label="What am I looking at?" aria-haspopup="dialog">i</button><div id="city-names"></div></div>
     <div class="headline" id="summary"></div>
     <div id="since"></div>
     <div id="lead"></div>

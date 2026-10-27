@@ -211,7 +211,12 @@ const goodPr = (p) => Number.isInteger(p.n) && p.n > 0 && !!p.at;
 // one repo's lists, read again: merged in full the first time, then only those merged since a day before the newest one kept
 async function readRepo(run, t, c, now) {
   const errs = []; let reads = 0; const next = { ...c };
-  if (!(t.past && c.merged && now - Date.parse(c.mergedAt || 0) < 864e5)) {   // an old history repo: once a day is plenty
+  if (!(c.privateAt && now - Date.parse(c.privateAt) < 864e5)) {   // private or public, once a day (not a list: not counted in reads)
+    const r = await ghCall(run, ['api', `repos/${t.slug}`, '--jq', '.private']);
+    if (r.ok && typeof r.data === 'boolean') Object.assign(next, { private: r.data, privateAt: new Date(now).toISOString() }); else errs.push(`${t.slug}: ${r.error || 'gh gave no visibility'}`);
+  }
+  if (t.office) return { next, errs, reads };   // the Office: only whether it is private (it has no floors)
+  if (!(t.past &&c.merged && now - Date.parse(c.mergedAt || 0) < 864e5)) {   // an old history repo: once a day is plenty
     const newest = (c.merged || []).map((p) => p.at).sort().pop();
     const since = newest ? new Date(Date.parse(newest) - 864e5).toISOString().slice(0, 10) : null;
     const r = await ghCall(run, ['pr', 'list', '-R', t.slug, '--state', 'merged', '--json', GH_MERGED, ...(since ? ['--search', `merged:>=${since}`, '--limit', '200'] : ['--limit', '1000'])]); reads++;
@@ -226,11 +231,12 @@ async function readRepo(run, t, c, now) {
   }
   return { next, errs, reads };
 }
-// the repos to read: every Tower's or Lot's GitHub home (kitchen.repo.json github, else its origin remote) and each old history repo
+// the repos to read: every Tower's or Lot's GitHub home (kitchen.repo.json github, else its origin remote) and each old history repo;
+// the Office's only for whether it is private
 export function githubTargets(sites, gitBy = new Map()) {
   const out = new Map();
   for (const s of sites) {
-    const slug = s.slug || gitBy.get(s.key)?.remoteSlug; if (slug && !s.office) out.set(slug.toLowerCase(), { slug, past: false });
+    const slug = s.slug || gitBy.get(s.key)?.remoteSlug; if (slug) out.set(slug.toLowerCase(), s.office ? { slug, past: false, office: true } : { slug, past: false });
     if (s.history && !out.has(s.history.slug.toLowerCase())) out.set(s.history.slug.toLowerCase(), { slug: s.history.slug, past: true });
   }
   return [...out.values()];
@@ -242,7 +248,7 @@ export function makeGithub({ root, run, targets, everyMs = Number(process.env.PA
     if (off) return;
     if (gh.busy) return gh.busy;
     gh.busy = (async () => {
-      const lists = () => JSON.stringify([...gh.repos].map(([k, c]) => [k, c.merged, c.open]));   // what is drawn, not when it was read
+      const lists = () => JSON.stringify([...gh.repos].map(([k, c]) => [k, c.merged, c.open, c.private]));   // what is drawn, not when it was read
       const t0 = Date.now(); let reads = 0; const errs = []; const before = lists();
       for (const t of targets()) {
         const r = await readRepo(run, t, gh.repos.get(t.slug.toLowerCase()) || {}, Date.now());
@@ -273,13 +279,35 @@ function blueprints(root) {
 }
 // a floor or crane of a private work order carries no title (the CREED privacy rule); priv(id) is true for a private order, and for one
 // whose file cannot be found (unknown counts as private)
-const scrub = (x, priv) => (x.title && x.job && priv(x.job) ? (({ title, ...rest }) => rest)(x) : x);
-export function buildTowers({ sites, errors = [] }, rec, gitBy = new Map(), extra = {}) {
-  const bp = extra.blueprints || new Map(); const priv = extra.isPrivateJob || (() => false); const rows = [];
+const untitled = ({ title, ...rest }) => rest;
+const scrub = (x, priv) => (x.title && x.job && priv(x.job) ? untitled(x) : x);
+// A private repo on the City (Jordan's privacy bar, review F3): a Site whose GitHub repo is private, or whose visibility is not known yet
+// (fail closed: before the first git and GitHub reads), is drawn as "Private project" with counts only: no name, no PR title, no GitHub
+// link, and a neutral key (so its name is in no route or link either). A Site with no GitHub home (git read, no origin on GitHub) is not.
+// vis(slug) -> true (private), false (public), undefined (not read yet); slugs lower-case
+export const isPrivateSite = (s, g, vis) => { const slug = s.slug || g?.remoteSlug; return slug ? vis(slug.toLowerCase()) !== false : !g; };
+// the key and name each Site shows: its own, or private, private-2 ... and "Private project", "Private project 2" ... in bootRepos order
+export function shownAs(sites, priv) {
+  const out = new Map(); const taken = new Set(sites.filter((s) => !priv(s)).map((s) => s.key)); let n = 0;
   for (const s of sites) {
-    const g = gitBy.get(s.key) || {}; const floors = (rec.floors.get(s.key) || []).map((f) => scrub(f, priv)); const open = (rec.open.get(s.key) || []).map((o) => scrub(o, priv));
+    if (!priv(s)) { out.set(s.key, { key: s.key, name: s.name }); continue; }
+    let k; do { n++; k = n > 1 ? `private-${n}` : 'private'; } while (taken.has(k));
+    out.set(s.key, { key: k, name: n > 1 ? `Private project ${n}` : 'Private project', private: true });
+  }
+  return out;
+}
+export function buildTowers({ sites, errors = [] }, rec, gitBy = new Map(), extra = {}) {
+  const bp = extra.blueprints || new Map(); const priv = extra.isPrivateJob || (() => false); const vis = extra.repoPrivate || (() => undefined); const rows = [];
+  const shown = shownAs(sites, (s) => isPrivateSite(s, gitBy.get(s.key), vis));
+  for (const s of sites) {
+    const g = gitBy.get(s.key) || {}; const as = shown.get(s.key); const oldPriv = !!s.history && vis(s.history.slug.toLowerCase()) !== false;
+    // a private Site's floors and cranes carry no title; nor do the old floors from a private history repo (under the "public from" line)
+    const hide = (x) => (as.private || (x.past && oldPriv) ? untitled(x) : x);
+    const floors = (rec.floors.get(s.key) || []).map((f) => hide(scrub(f, priv))); const open = (rec.open.get(s.key) || []).map((o) => hide(scrub(o, priv)));
     const kind = s.office ? 'office' : floors.length || open.length ? 'tower' : 'lot';
-    const t = { key: s.key, name: s.name, kind, folder: s.folder, repo: s.slug || g.remoteSlug || null, floors: kind === 'office' ? [] : floors, open: kind === 'office' ? [] : open };
+    // folder and repo stay on a private row only so the phone can match the state's own records (main status, freeze), which already
+    // name them; the City never draws either
+    const t = { key: as.key, name: as.name, ...(as.private ? { private: true } : {}), kind, folder: s.folder, repo: s.slug || g.remoteSlug || null, floors: kind === 'office' ? [] : floors, open: kind === 'office' ? [] : open };
     if (kind === 'tower' && g.plinth) t.plinth = g.plinth;
     if (kind === 'lot' && g.commits !== null && g.commits !== undefined) t.plinth = { commits: g.commits, before: g.lastCommit || null };
     if (kind === 'office') { if (g.commits !== null && g.commits !== undefined) t.commits = g.commits; if (g.lastCommit) t.lastCommit = g.lastCommit; }
@@ -306,6 +334,7 @@ export function makeTowers({ root, repoHome, run, jobs = () => [], isPrivate = (
   const sm = { sig: '', at: 0, val: null };
   const sitesNow = () => { const sig = sigOf(path.join(root, 'kitchen.json')); if (sm.val && sm.sig === sig && Date.now() - sm.at < 30000) return sm.val; Object.assign(sm, { sig, at: Date.now(), val: sitesOf(root, repoHome, home) }); return sm.val; };
   const G = makeGithub({ root, run, targets: () => githubTargets(sitesNow().sites, git.by), ...github });
+  const vis = (slug) => G.gh.repos.get(slug)?.private;   // true / false from GitHub; undefined until read (counts as private)
   const inputSig = () => {
     const files = ['kitchen.json', 'merges.jsonl', 'automerged.jsonl', 'ledger.json', 'results'].map((f) => sigOf(path.join(root, f)));
     const r = resultIds(root); const live = new Map(jobs().map((j) => [j.id, j]));
@@ -330,7 +359,7 @@ export function makeTowers({ root, repoHome, run, jobs = () => [], isPrivate = (
   }
   function compute() {
     const st = sitesNow(); const list = jobs(); const rec = localRecords(root, st.sites, list, G.gh.repos);
-    const body = buildTowers(st, rec, git.by, { blueprints: blueprints(root), isPrivateJob: privacyOf(list) });
+    const body = buildTowers(st, rec, git.by, { blueprints: blueprints(root), isPrivateJob: privacyOf(list), repoPrivate: vis });
     return { gitAt: git.at, githubAt: G.gh.at, githubError: G.gh.error, ...body };
   }
   function current() {
@@ -362,8 +391,12 @@ export function makeTowers({ root, repoHome, run, jobs = () => [], isPrivate = (
     // the state's githubAt: when GitHub was last read in full (the phone's "GitHub read N min ago" sign), null before any good read
     githubAt: () => G.gh.at,
     githubStats: () => G.gh.stats,
-    // jobView.tower: the key of the Tower a work order builds on, or null (research, career and scouts belong to the Yard lot)
-    towerOf(j) { const r = repoArgOf(j); if (!r) return null; const n = normPath(r); return sitesNow().sites.find((s) => s.n === n && !s.office)?.key || null; },
+    // jobView.tower: the key of the Tower a work order builds on (a private one's neutral key, as /api/towers shows it), or null
+    // (research, career and scouts belong to the Yard lot)
+    towerOf(j) {
+      const r = repoArgOf(j); if (!r) return null; const n = normPath(r); const { sites } = sitesNow(); const s = sites.find((x) => x.n === n && !x.office);
+      return s ? shownAs(sites, (x) => isPrivateSite(x, git.by.get(x.key), vis)).get(s.key).key : null;
+    },
     refreshGit, refreshGithub,
     stop() { clearInterval(timer); G.stop(); },
   };
