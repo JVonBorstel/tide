@@ -1047,27 +1047,124 @@ function noticesOf(markup) {
     return { tone, text, act, chip, moon: el.classList.contains('moon') };
   });
 }
+// D-12 the line never eats the screen: one row at most (chips scroll sideways in it), each chip can be cleared (Clear in its sheet, a
+// swipe up on the chip, or Clear all at the end of the line). A cleared notice stays hidden until it changes (public/notices.js keys it
+// by id + a hash of its words and state), remembered on this phone (localStorage through store, which never throws; without storage the
+// clear lasts until the page reloads). With every chip cleared the line is gone (0 px) and the header's notices count brings them back.
+// A red bar is never hidden (truth rule): it can only be made thin (one line, full text one tap away) until it changes.
+const NOTE = { cleared: new Set(keysOf(store.get('noticesCleared', []))), thin: new Set(keysOf(store.get('noticesThin', []))), v: 0, busy: false };
+const keepNotes = (name) => store.set(name === 'cleared' ? 'noticesCleared' : 'noticesThin', keysOf([...NOTE[name]]));
 function renderNotices(markup) {
-  const key = markup.join(''); if (key === S.noticeKey) return; S.noticeKey = key;   // most state patches change no notice: nothing to parse or draw
-  const list = S.notices = noticesOf(markup);
-  const bars = list.filter((n) => n.tone === 'broken').map((n) => `<div class="redbar"><span>${esc(n.text)}</span>${n.act}</div>`).join('');
-  const chips = list.map((n, i) => (n.tone === 'broken' ? '' : `<button class="notice-chip" type="button" data-notice="${i}" data-tone="${n.tone}"${n.moon ? ' data-moon' : ''} aria-haspopup="dialog"><i aria-hidden="true"></i>${esc(n.chip)}</button>`)).join('');
+  const key = markup.join('') + '|' + NOTE.v; if (key === S.noticeKey || NOTE.busy) return; S.noticeKey = key;   // most state patches change no notice: nothing to parse or draw
+  const list = S.notices = markNotices(noticesOf(markup), NOTE.cleared, NOTE.thin);
+  const bars = list.filter((n) => n.tone === 'broken').map((n) => n.thin
+    ? `<button class="redbar thin" type="button" data-key="${esc(n.key)}" aria-haspopup="dialog" aria-label="${esc(n.text)}"><span>${esc(n.text)}</span></button>`
+    : `<div class="redbar" data-key="${esc(n.key)}"><span>${esc(n.text)}</span>${n.act}<button class="bar-thin" type="button" data-thin="${esc(n.key)}" aria-label="Make this bar thin">${icon('chev')}</button></div>`).join('');
+  const shown = list.filter((n) => n.tone !== 'broken' && !n.cleared);
+  const chips = shown.map((n) => `<button class="notice-chip" type="button" data-key="${esc(n.key)}" data-tone="${n.tone}"${n.moon ? ' data-moon' : ''} aria-haspopup="dialog"><i aria-hidden="true"></i>${esc(n.chip)}</button>`).join('')
+    + (shown.length ? '<button class="clear-all" type="button" data-clear-all>Clear all</button>' : '');
+  const line = $('status-line'), wasHidden = line.hidden;
   if ($('banners').innerHTML !== bars) $('banners').innerHTML = bars;
-  if ($('status-line').innerHTML !== chips) $('status-line').innerHTML = chips;
-  $('status-line').hidden = !chips;
-  if ($('notice-sheet').open) { const o = list.find((n) => n.chip === S.noticeOpen); if (o) fillNotice(o); }   // live: the open sheet keeps its words current
+  if (line.innerHTML !== chips) line.innerHTML = chips;
+  line.hidden = !chips;
+  if (wasHidden && chips && S.noticesDrawn) unfold(line);   // a notice that comes (back) grows the line in, it never pops
+  S.noticesDrawn = true;
+  const nCleared = list.filter((n) => n.cleared).length;
+  $('notices-btn').hidden = !nCleared; $('count-notices').textContent = nCleared || '';
+  $('notices-btn').setAttribute('aria-label', `Notices: ${nCleared} cleared`);
+  if ($('notice-sheet').open) { const o = list.find((n) => n.id === S.noticeOpen); if (o) fillNotice(o); }   // live: the open sheet keeps its words current
+  if ($('notices-sheet').open) fillNoticeList();
+}
+const noticeOf = (key) => S.notices?.find((n) => n.key === key);
+// what a notice's sheet offers besides its own action: Clear (a chip), or thin / full (a red bar, which cannot be cleared)
+function noticeControls(n) {
+  if (n.tone === 'broken') return `<button class="btn" type="button" data-thin-toggle="${esc(n.key)}">${n.thin ? 'Show the full bar' : 'Make the bar thin'}</button>`;
+  return n.cleared ? `<button class="btn" type="button" data-restore="${esc(n.key)}">Restore</button>`
+    : `<button class="btn" type="button" data-clear-notice="${esc(n.key)}">${icon('x')}Clear</button>`;
 }
 function fillNotice(n) {
   $('notice-title').textContent = n.chip;
-  const html = `<p class="notice-text">${esc(n.text)}</p>${n.act ? `<div class="notice-act">${n.act}</div>` : ''}`;
+  const html = `<p class="notice-text">${esc(n.text)}</p>${n.tone === 'broken' ? '<p class="note faint">Broken things stay on the Board until they are fixed.</p>' : ''}<div class="notice-act">${n.act}${noticeControls(n)}</div>`;
   if ($('notice-body').innerHTML !== html) $('notice-body').innerHTML = html;
 }
+// the header count's sheet: every current notice (cleared, showing, red bars) with its actions; any cleared one can be restored
+function fillNoticeList() {
+  const list = S.notices || []; const nCleared = list.filter((n) => n.cleared).length;
+  const state = (n) => (n.tone === 'broken' ? (n.thin ? 'Red bar, thin' : 'Red bar') : n.cleared ? 'Cleared' : 'Showing');
+  const html = list.length ? `<ul class="notice-list">${list.map((n) => `<li class="notice-item" data-key="${esc(n.key)}" data-tone="${n.tone}"><div class="ni-head"><b>${esc(n.chip)}</b><span class="ni-state">${state(n)}</span></div>
+    <p class="notice-text">${esc(n.text)}</p><div class="notice-act">${n.act}${noticeControls(n)}</div></li>`).join('')}</ul>${nCleared > 1 ? `<button class="btn block" type="button" data-restore-all>Restore all ${nCleared}</button>` : ''}`
+    : '<p class="empty-line">No notices right now.</p>';
+  if ($('notices-body').innerHTML !== html) $('notices-body').innerHTML = html;
+}
+// motion (D-6: no flash): a cleared chip folds sideways, the last one folds the whole line (the City below moves up with it); under
+// reduced motion it cuts. The line is not redrawn while it folds (NOTE.busy), then it draws once.
+const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+function fold(el, axis, then) {
+  if (!el || still() || !el.animate) return then();
+  const r = el.getBoundingClientRect(), size = axis === 'x' ? 'width' : 'height';
+  const from = { [size]: (axis === 'x' ? r.width : r.height) + 'px', opacity: 1 }, to = { [size]: '0px', opacity: 0 };
+  if (axis === 'x') Object.assign(from, { paddingLeft: getComputedStyle(el).paddingLeft, paddingRight: getComputedStyle(el).paddingRight, minWidth: '0px' }), Object.assign(to, { paddingLeft: '0px', paddingRight: '0px', minWidth: '0px', borderWidth: '0px' });
+  else Object.assign(from, { paddingTop: getComputedStyle(el).paddingTop, paddingBottom: getComputedStyle(el).paddingBottom }), Object.assign(to, { paddingTop: '0px', paddingBottom: '0px' });
+  NOTE.busy = true; const a = el.animate([from, to], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' });
+  a.finished.catch(() => { }).then(() => { NOTE.busy = false; then(); a.cancel(); });
+}
+function unfold(el) {
+  if (still() || !el.animate) return;
+  const h = el.getBoundingClientRect().height; el.animate([{ height: '0px', opacity: 0 }, { height: h + 'px', opacity: 1 }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
+}
+const redraw = () => { NOTE.v++; renderBanners(); };
+function clearNotice(key) {
+  const n = noticeOf(key); if (!n || n.tone === 'broken' || n.cleared) return;
+  NOTE.cleared.add(key); keepNotes('cleared');
+  const line = $('status-line'), chip = line.querySelector(`.notice-chip[data-key="${CSS.escape(key)}"]`);
+  const last = !S.notices.some((x) => x.tone !== 'broken' && !x.cleared && x.key !== key);
+  fold(last ? line : chip, last ? 'y' : 'x', redraw);
+}
+function clearAll() {
+  for (const n of S.notices || []) if (n.tone !== 'broken') NOTE.cleared.add(n.key);
+  keepNotes('cleared'); fold($('status-line'), 'y', redraw);
+}
+function restoreNotice(key) { if (NOTE.cleared.delete(key)) { keepNotes('cleared'); redraw(); } }
+function toggleThin(key) { if (!NOTE.thin.delete(key)) NOTE.thin.add(key); keepNotes('thin'); redraw(); }
+const openNotice = (n) => { if (!n) return; S.noticeOpen = n.id; fillNotice(n); openSheet('notice-sheet'); };
 $('status-line').addEventListener('click', (e) => {
-  const c = e.target.closest('[data-notice]'); const n = c && S.notices?.[Number(c.dataset.notice)]; if (!n) return;
-  S.noticeOpen = n.chip; fillNotice(n); openSheet('notice-sheet');
+  if (S.swiped) { S.swiped = false; return; }   // the tap that ended a swipe is not a tap
+  if (e.target.closest('[data-clear-all]')) return clearAll();
+  const c = e.target.closest('.notice-chip[data-key]'); if (c) openNotice(noticeOf(c.dataset.key));
 });
+$('banners').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-thin]'); if (t) return toggleThin(t.dataset.thin);
+  const b = e.target.closest('.redbar.thin[data-key]'); if (b) openNotice(noticeOf(b.dataset.key));
+});
+// a swipe up on a chip clears it (sideways stays the line's own scroll: the line is touch-action pan-x)
+(function chipSwipe() {
+  let p = null; const line = $('status-line');
+  line.addEventListener('pointerdown', (e) => { const c = e.target.closest('.notice-chip'); p = c ? { c, x: e.clientX, y: e.clientY, id: e.pointerId, dy: 0 } : null; });
+  line.addEventListener('pointermove', (e) => {
+    if (!p || e.pointerId !== p.id) return; const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    if (!p.on && Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) { p.on = true; try { p.c.setPointerCapture(e.pointerId); } catch { } }
+    if (p.on) { p.dy = Math.min(0, dy); p.c.style.setProperty('translate', `0 ${p.dy}px`); p.c.style.setProperty('opacity', String(1 + p.dy / 48)); }
+  });
+  const end = () => {
+    if (!p) return; const { c, on, dy } = p; p = null; if (!on) return;
+    S.swiped = true; setTimeout(() => { S.swiped = false; }, 400);
+    c.style.removeProperty('translate'); c.style.removeProperty('opacity');
+    if (dy <= -24) { buzz(); clearNotice(c.dataset.key); }
+  };
+  line.addEventListener('pointerup', end); line.addEventListener('pointercancel', end);
+})();
 // the notice's own action (Run now, Resume, Turn on, a link) runs through the page's usual handlers; the sheet steps aside for it
-$('notice-body').addEventListener('click', (e) => { if (e.target.closest('[data-set],a[href]')) closeSheet('notice-sheet'); });
+function noticeSheetClick(e, sheet) {
+  const t = e.target;
+  if (t.closest('[data-set],a[href]')) return closeSheet(sheet);
+  const c = t.closest('[data-clear-notice]'); if (c) { if (sheet === 'notice-sheet') closeSheet(sheet); return clearNotice(c.dataset.clearNotice); }
+  const r = t.closest('[data-restore]'); if (r) return restoreNotice(r.dataset.restore);
+  const th = t.closest('[data-thin-toggle]'); if (th) { if (sheet === 'notice-sheet') closeSheet(sheet); return toggleThin(th.dataset.thinToggle); }
+  if (t.closest('[data-restore-all]')) { NOTE.cleared.clear(); keepNotes('cleared'); redraw(); }
+}
+$('notice-body').addEventListener('click', (e) => noticeSheetClick(e, 'notice-sheet'));
+$('notices-body').addEventListener('click', (e) => noticeSheetClick(e, 'notices-sheet'));
+$('notices-btn').addEventListener('click', () => { fillNoticeList(); openSheet('notices-sheet'); });
 // TD-EH-04 "Sent or not", in Settings (D-10: never a banner while push alerts are off by choice): how many alerts did not reach the
 // phone (alerts.jsonl `sent`, counted by the server as alertsUnsent). Turning push on stays the Owner's own tap.
 function alertsOffLine(s) {
@@ -2131,6 +2228,7 @@ daypart(); setInterval(daypart, 600000);
 import { sceneHtml, activityWord, mountScene, cookOf, COOK_COLORS, stepWord, applyCss, sceneLegend, frameStats, sceneApproved, sceneMeter, skyAt } from './scene.js';
 import { startLive, floorStep } from './live.js';
 import { mainStatusBanners } from './main-status.js';   // TD-EH-03a main-is-red banner
+import { markNotices, keysOf } from './notices.js';   // D-12 cleared notices and thin red bars, keyed so a change shows again
 import { ciBudgetBanners } from './ci-budget.js';   // TD-11 CI budget per Site
 import { undoPushBanners, autoMergePauseBanner } from './undo-pause.js';   // TD-EH-10 undo not pushed, TD-EH-11 auto-merge paused
 import { siteStopBanners, siteStopRows } from './site-stop.js';   // TD-8: a Site stopped by you, a Site's own Stop-work order

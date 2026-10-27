@@ -1131,10 +1131,10 @@ console.log(JSON.stringify({ banners: siteStopBanners(items, { when }), rows: si
     Check 'city: test-city.mjs exits 0 (a node crash is a failure, not silence)' ($cityExit -eq 0)
     Check 'city: test-city.mjs reported at least 25 checks' (@($cityTest).Count -ge 25)
     foreach ($t in @($cityTest)) { if ($t) { Check "city: $($t.name)" ($t.pass -eq $true) } }
-    # D-1 the status line, D-10 alerts off, the City given the space (pass-app/test-status-line.mjs: a throwaway server and headless Chrome or Edge)
+    # D-1 the status line, D-12 clearable one-row notices, D-10 alerts off, the City given the space (pass-app/test-status-line.mjs: a throwaway server and headless Chrome or Edge)
     $slOut = & node (Join-Path $repo 'pass-app\test-status-line.mjs') 2>$null; $slExit = $LASTEXITCODE; $slTest = $null
     try { $slTest = ($slOut -join "`n") | ConvertFrom-Json } catch { $slTest = $null }
-    Check 'status line: test-status-line.mjs exits 0 and reported at least 25 checks' ($slExit -eq 0 -and @($slTest).Count -ge 25)
+    Check 'status line: test-status-line.mjs exits 0 and reported at least 40 checks' ($slExit -eq 0 -and @($slTest).Count -ge 40)
     foreach ($t in @($slTest)) { if ($t) { Check "status line: $($t.name)" ($t.pass -eq $true) } }
     Check 'City_TowersNeedsKey: /api/towers needs the key' ((Get-Code "$base/api/towers") -eq 401)
     $twRaw = (Invoke-WebRequest "$base/api/towers" -Headers $auth).Content; $tw = $twRaw | ConvertFrom-Json
