@@ -37,7 +37,7 @@ It **supersedes #120, #122, #123, #124, #125, #126, #127, #128, #129, #130 and #
 | `pass-app/server.mjs` | `jobView.site`/`floor` (TD-4), `siteStops` and the site-pause/resume actions (TD-8), the Site in freeze banners (TD-9), `ciBudget` (TD-11) |
 | `pass-app/public/app.js`, `app.css`, `sw.js`, and new `sites.js`, `site-stop.js`, `ci-budget.js`, `pass-app/test-sites.mjs` | the Board: Site chips, filter and count line; Site stop/resume taps and banners; "Site TD closed" banners; the CI line (TD-4, TD-8, TD-9, TD-11) |
 
-Demo Project was not touched. Its `"site": "GW"` and `inspector` lines are still your steps after 10-28 18:00 MT, as #120 and #129 say.
+Demo Project was not touched. Its `"site": "GW"` and `inspector` lines are still your steps after 10-28 18:00 local time, as #120 and #129 say.
 
 ## How the stack was merged
 

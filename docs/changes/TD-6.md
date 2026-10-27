@@ -2,7 +2,7 @@
 
 Floor TD-6 of Site TD (TD Pour 2), from `projects/tide/plans/multi-site-design-2026-10-23.md` section 2.3 and the Floor table,
 with the Owner's answer Q4 = A (equal share). Branch `ms-td6-fair-share`, stacked on TD-3 (`ms-td3-order-site`, PR #122) at
-`4ceb56b`, built 2026-10-24 MT. Merges after #118, #120 and #122.
+`4ceb56b`, built 2026-10-24. Merges after #118, #120 and #122.
 
 ## What it does
 
@@ -58,6 +58,6 @@ Not in this Floor: per-Site `share` weights and `maxHeavy` (TD-7 registry), coun
 - **Load = running heavy steps.** As the design says ("running heavy steps for the Site divided by `share`"): the start loop counts
   each Site's running heavy steps with the scaler's weights (light steps left out, as admission does) and passes them as
   `-HeavyLoad`. Without `-HeavyLoad` (tests, other callers) the load is still the Site's running orders.
-- Tests (`tests/Test-StartOrder.ps1`, 53 checks): `NoRegistry_J10_J13` and `NoRegistry_Mixed` (no registry = the old order),
+- Tests (`tests/Test-StartOrder.ps1`, 54 checks): `NoRegistry_J10_J13` and `NoRegistry_Mixed` (no registry = the old order),
   `Registry_J10_J13`, `PriorityFirst_*` (an urgent GW order goes ahead of TD's waiting turn; equal-priority orders still
   interleave), `PriorityInsideSite`, `Load_*`; the TD-6/TD-7 checks now pass registry weights.

@@ -1,7 +1,7 @@
 # TD-9: Site-closed windows from the Sites registry
 
 Floor TD-9 of Site TD (TD Pour 2), from `projects/tide/plans/multi-site-design-2026-10-23.md` section 2.4 and the Floor table.
-Branch `ms-td9-site-closed`, stacked on TD-7 (`ms-td7-registry`, PR #125) at `4c2fda0`, built 2026-10-24 MT. Merges after #125.
+Branch `ms-td9-site-closed`, stacked on TD-7 (`ms-td7-registry`, PR #125) at `4c2fda0`, built 2026-10-24. Merges after #125.
 
 ## What it does
 
@@ -21,7 +21,7 @@ Branch `ms-td9-site-closed`, stacked on TD-7 (`ms-td7-registry`, PR #125) at `4c
 
 - A Tower with no `site` never reads kitchen.json: its windows are exactly its own (so a damaged kitchen.json cannot touch it).
 - No `sites`, no entry for the Tower's Site, or no `closed`: only the Tower's own windows; freeze.json entries gain no `site` key.
-- The Demo Project freeze (Mon 10-27 00:00 to Tue 10-28 18:00 MT, in its own `kitchen.repo.json`) is tested at every edge against each
+- The Demo Project freeze (Mon 10-27 00:00 to Tue 10-28 18:00 local time, in its own `kitchen.repo.json`) is tested at every edge against each
   registry shape. The Demo Project repo is not touched.
 
 ## Not in this Floor

@@ -2,7 +2,7 @@
 
 Floor TD-7 of Site TD (TD Pour 2), from `projects/tide/plans/multi-site-design-2026-10-23.md` section 2.2 and the Floor table,
 with the Owner's answers Q1 = A (`sites` in `kitchen.json`) and Q4 = A (equal share). Branch `ms-td7-registry`, stacked on TD-6
-(`ms-td6-fair-share`, PR #124) at `dd149bc`, built 2026-10-24 MT. Merges after #124 (which merges after #122 and #120).
+(`ms-td6-fair-share`, PR #124) at `dd149bc`, built 2026-10-24. Merges after #124 (which merges after #122 and #120).
 
 ## What it does
 
@@ -44,7 +44,7 @@ In `%LOCALAPPDATA%\brain-kitchen\kitchen.json`, one new top-level key:
 
 - Equal shares (Q4 = A). `maxHeavy` 2 each keeps either Site from taking every heavy slot (global `maxConcurrent` is 4; the RAM
   scaler runs 1-3 heavy steps on this PC's ~2 GB free). Omit `maxHeavy` for no Site limit.
-- GW orders count as GW only once Demo Project's `kitchen.repo.json` says `"site": "GW"` (the Owner's step after 2026-10-28 18:00 MT,
+- GW orders count as GW only once Demo Project's `kitchen.repo.json` says `"site": "GW"` (the Owner's step after 2026-10-28 18:00 local time,
   TD-2) or the order carries `vars.site` GW. Until then they are Unassigned: no Site limit, weight 1.
 - Check after the edit: `kitchen.ps1 doctor` shows "Sites: GW heavy 2, share 1; TD heavy 2, share 1" and no `kitchen.json sites` note.
 

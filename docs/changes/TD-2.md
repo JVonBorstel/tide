@@ -1,7 +1,7 @@
 # TD-2: kitchen.repo.json names its Site
 
 Floor TD-2 of Site TD (TD Pour 1), from `projects/tide/plans/multi-site-design-2026-10-23.md` section 1.2 and the Floor table.
-Branch `ms-td2-repo-site`, stacked on TD-1 (`ms-td1-site-ids`, PR #118) at `f638484`, built 2026-10-24 16:54 MT (22:54Z).
+Branch `ms-td2-repo-site`, stacked on TD-1 (`ms-td1-site-ids`, PR #118) at `f638484`, built 2026-10-24 22:54 UTC.
 Merges after #118.
 
 ## What it does
@@ -31,7 +31,7 @@ Nothing reads `Site` yet. TD-3 uses it to set `vars.site` when an order is added
 ## Demo Project: the Owner's step, not done here
 
 Demo Project's repo (`%USERPROFILE%\demo-project`) was not touched. Demo Project is paused, and its `kitchen.repo.json` is protected
-and frozen for edits until 2026-10-28 18:00 MT. On the evening of 10-28, after 18:00 MT, the Owner adds this line to the top-level
+and frozen for edits until 2026-10-28 18:00 local time. On the evening of 10-28, after 18:00 local time, the Owner adds this line to the top-level
 object of `%USERPROFILE%\demo-project\kitchen.repo.json`:
 
 ```

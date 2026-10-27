@@ -55,7 +55,7 @@ function Sort-ForStart($jobs, $Shares = $null, $HeavyLoad = $null) {
     $rank = @(foreach ($j in $sorted) { Get-StartRank $j })
     $out = [Collections.Generic.List[object]]::new(); $i = 0
     while ($i -lt $fair.Count) {
-        $r0 = $rank[$fair[$i]]; $queues = [ordered]@{}   # one band: equal under way; per Site, priority then oldest (the $sorted order)
+        $r0 = $rank[$fair[$i]]; $queues = [ordered]@{}   # one band: equal under way and priority; per Site, oldest first
         while ($i -lt $fair.Count) {
             $k = $fair[$i]; if ($rank[$k].started -ne $r0.started -or $rank[$k].priority -ne $r0.priority) { break }
             if (-not $queues.Contains($site[$k])) { $queues[$site[$k]] = [Collections.Generic.Queue[int]]::new() }
@@ -69,7 +69,7 @@ function Sort-ForStart($jobs, $Shares = $null, $HeavyLoad = $null) {
                 $h = $rank[$queues[$s].Peek()]
                 if ($null -eq $best) { $best = $s; $bh = $h; continue }
                 $a = $load[$s] * $wt[$best]; $b = $load[$best] * $wt[$s]   # (load / share, compared without dividing)
-                if ($a -lt $b -or ($a -eq $b -and ($h.priority -lt $bh.priority -or ($h.priority -eq $bh.priority -and $h.number -lt $bh.number)))) { $best = $s; $bh = $h }
+                if ($a -lt $b -or ($a -eq $b -and $h.number -lt $bh.number)) { $best = $s; $bh = $h }   # a tie: the Site whose next order is oldest
             }
             $out.Add($sorted[$queues[$best].Dequeue()]); $load[$best]++
         }

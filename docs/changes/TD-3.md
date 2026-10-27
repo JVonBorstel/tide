@@ -1,7 +1,7 @@
 # TD-3: every new work order knows its Site
 
 Floor TD-3 of Site TD (TD Pour 1), from `projects/tide/plans/multi-site-design-2026-10-23.md` section 2.1 and the Floor table.
-Branch `ms-td3-order-site`, stacked on TD-2 (`ms-td2-repo-site`, PR #120) at `37c37b0`, built 2026-10-24 MT.
+Branch `ms-td3-order-site`, stacked on TD-2 (`ms-td2-repo-site`, PR #120) at `37c37b0`, built 2026-10-24.
 Merges after #118 and #120.
 
 ## What it does

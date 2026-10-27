@@ -94,6 +94,8 @@ try {
     . (Join-Path $PSScriptRoot '..\kitchen\site-registry.ps1')
     $ereg = Get-SiteList @{ sites = @{ TD = @{ towers = @('%VA_F5_ROOT%\gw') } } }
     Check 'EnvTower_Find: Find-RegistrySite finds the Site of the real path for a %VAR% registry Tower' ((Find-RegistrySite $ereg $gw) -ceq 'TD' -and $ereg[0].towers[0] -eq (Join-Path $root 'gw'))
+    $nulPath = "%VA_F5_ROOT%\a$([char]0)b"
+    Check 'EnvTower_Nul: a path with a NUL is left exactly as written (expanding it would cut it at the NUL into a different, real path)' ((Expand-SitePath $nulPath) -ceq $nulPath -and (Expand-SitePath '%VA_F5_ROOT%\x') -eq (Join-Path $root 'x') -and (Expand-SitePath 'C:\plain') -ceq 'C:\plain' -and (Expand-SitePath '') -eq '')
 } finally { $env:VA_F5_ROOT = $null }
 # a damaged registry is a bad config (exit 2), never a guess
 Set-Content (Join-Path $kroot 'kitchen.json') '{ "sites": { "tide": { "towers": [] } } }'

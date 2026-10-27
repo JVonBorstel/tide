@@ -131,7 +131,7 @@ try {
     function SetReg([string]$json) { if ($json) { Set-Content -LiteralPath $kj -Value $json -Encoding utf8 } else { Remove-Item -LiteralPath $kj -ErrorAction SilentlyContinue } }
     function FzAt([string]$now) { $env:KITCHEN_FREEZE_NOW = $now; Get-RepoFreezeState $repo }
     $tdRel = '{"sites":{"TD":{"maxHeavy":2,"closed":[{"from":"2026-10-29T00:00","to":"2026-10-30T12:00","why":"release"}]}}}'
-    # today's Demo Project freeze, Mon 10-27 00:00 to Tue 10-28 18:00 MT, in its own kitchen.repo.json: the same answer at every edge whatever
+    # today's Demo Project freeze, Mon 10-27 00:00 to Tue 10-28 18:00 local time, in its own kitchen.repo.json: the same answer at every edge whatever
     # the registry holds (none, no sites, empty, another Site's window, a damaged file for a Tower with no Site, the same window under GW)
     function GwSame([string]$label, [bool]$exact = $true) {
         $a = FzAt '2026-10-26T23:59'; $b = FzAt '2026-10-27T00:00'; $c = FzAt '2026-10-27T12:00'; $d = FzAt '2026-10-28T17:59'; $e = FzAt '2026-10-28T18:00'
