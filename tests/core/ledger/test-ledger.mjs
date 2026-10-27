@@ -547,7 +547,107 @@ async function testReview31() {
   if (saved === undefined) delete process.env.LEDGER_LIVE_STATE; else process.env.LEDGER_LIVE_STATE = saved;
 }
 
+// ---- WO-UPG-L1-3: every export goes through share.mjs; needs-you first, then newest; pages, never a silent cut ----
+async function testShare() {
+  const { makeRedactor, MARK } = await import('../../../core/ledger/share.mjs');
+  const { pageLedger } = await import('../../../core/ledger/view.mjs');
+  // private-looking values are built at run time (CREED 8), and are synthetic
+  const userPath = ['C:', 'Users', 'someone', 'notes', 'plan.md'].join('\\'); const mail = ['someone', 'example.invalid'].join('@');
+  const host = ['box', 'tail0000', 'ts', 'net'].join('.'); const ip = ['192', '168', '7', '9'].join('.');
+  const r = makeRedactor({ privateWords: ['Acme Widgets'] });
+  const red = r(`see ${userPath}, mail ${mail}, host ${host} at ${ip}, apply to acme widgets; tide#21 stays`);
+  check('l3: free text loses paths, emails, private hosts and addresses, and private words (any case)', !red.includes('someone') && !red.includes('tail0000') && !red.includes(ip) && !/acme/i.test(red)
+    && red.includes(MARK.path) && red.includes(MARK.email) && red.includes(MARK.host) && red.includes(MARK.word) && red.includes('tide#21'), red);
+  // a synthetic state: a job whose goal names a path, an email and a private word; a private job; the private words list
+  const state = path.join(tmp, 'l3-state'); makeState(state, 6);
+  const setJob = (id, f) => { const p = path.join(state, 'jobs', `${id}.json`); const j = JSON.parse(fs.readFileSync(p, 'utf8')); f(j); W(p, j); };
+  setJob('J1', (j) => { j.vars.goal = `Fix ${userPath} for ${mail} at Acme Widgets`; j.status = 'waiting-approval'; });
+  setJob('J2', (j) => { j.vars.goal = 'A secret goal text'; j.vars.private = 'yes'; j.status = 'pending'; });   // as the Yard writes it (kitchen/cook.ps1)
+  setJob('J3', (j) => { j.vars.goal = 'Another secret goal'; j.steps = [{ script: 'stations/tests.ps1', args: { Private: true } }]; });
+  W(path.join(state, 'ledger-private-words.json'), ['Acme Widgets']);
+  const db = path.join(tmp, 'l3-out', 'tide.db'); const lines = [];
+  check('l3: build writes the shared files', await main(['build', '--state', state, '--db', db, '--no-github', '--repo', `example=${path.join(tmp, 'repo')}`, '--now', NOW.toISOString()], { out: (x) => lines.push(x) }) === 0);
+  const work = fs.readFileSync(path.join(tmp, 'l3-out', 'work.json'), 'utf8'); const led = fs.readFileSync(path.join(tmp, 'l3-out', 'ledger.next.json'), 'utf8');
+  for (const [name, text] of [['work.json', work], ['ledger.next.json', led]]) {
+    check(`l3: ${name} has no path, email or private word, and no private order's goal`, !text.includes('someone') && !/acme widgets/i.test(text) && !text.includes('A secret goal text') && !text.includes('Another secret goal'));
+  }
+  check('l3: a private order shows "a private work order" in work.json and ledger.next.json', JSON.parse(work).rows.find((x) => x.id === 'WO-2')?.goal === MARK.order && JSON.parse(led).items.find((x) => x.id === 'J2')?.title === MARK.order);
+  const s = await openStore(db, { readOnly: true }); const raw = s.events({ wo: 'WO-2' }).find((e) => e.kind === 'wo.created'); s.close();
+  check('l3: tide.db keeps the raw facts (it never leaves the PC)', raw?.data.goal === 'A secret goal text');
+  lines.length = 0; await main(['show', 'J2', '--db', db, '--json', '--state', state, '--now', NOW.toISOString()], { out: (x) => lines.push(x) });
+  const shown = JSON.parse(lines[0]);
+  check('l3: show --json hides a private order\'s goal and drops x.* event data', shown.row.goal === MARK.order && shown.events.filter((e) => /^x\./.test(e.kind)).every((e) => JSON.stringify(e.data) === '{}'));
+  lines.length = 0; await main(['queue', '--db', db, '--json', '--state', state, '--now', NOW.toISOString()], { out: (x) => lines.push(x) });
+  check('l3: queue --json is redacted (the waiting order\'s goal loses its path, email and private word)', !lines[0].includes('someone') && !/acme widgets/i.test(lines[0]) && /WO-1/.test(lines[0]));
+  // order: needs-you first, then newest
+  const rows = JSON.parse(work).rows; const items = JSON.parse(led).items;
+  const rNot = rows.findIndex((x) => x.state !== 'waiting-on-jordan');
+  check('l3: work.json rows: needs-you first, then newest first', rows[0].state === 'waiting-on-jordan' && rows.slice(rNot).every((x) => x.state !== 'waiting-on-jordan') && rows.slice(rNot).every((x, i, a) => i === 0 || a[i - 1].ageH <= x.ageH));
+  const firstNot = items.findIndex((x) => x.state !== 'waiting-on-jordan');
+  check('l3: ledger.next.json items: needs-you first, then newest first', items[0].state === 'waiting-on-jordan' && items.slice(firstNot).every((x, i, a) => i === 0 || String(a[i - 1].since || '') >= String(x.since || '')));
+  // pages, never a silent cut
+  const doc = { ok: true, updated: NOW.toISOString(), items: Array.from({ length: 950 }, (_, i) => ({ id: `I${i}` })) };
+  const pages = pageLedger(doc);
+  check('l3: 950 items make 3 pages of 400, 400 and 150, each saying the page count and the total', pages.length === 3 && pages.map((p) => p.items.length).join() === '400,400,150' && pages.every((p) => p.paging.pages === 3 && p.paging.itemsTotal === 950));
+  check('l3: the pages hold every item once, in order', pages.flatMap((p) => p.items.map((x) => x.id)).join() === doc.items.map((x) => x.id).join());
+  check('l3: an empty export is one page with 0 items', pageLedger({ ok: true, items: [] }).length === 1);
+  const big = path.join(tmp, 'l3-big'); makeState(big, 420);
+  await main(['build', '--state', big, '--db', path.join(big, 'out', 'tide.db'), '--no-github', '--repo', `example=${path.join(tmp, 'repo')}`, '--now', NOW.toISOString()], { out: () => { } });
+  const p1 = JSON.parse(fs.readFileSync(path.join(big, 'out', 'ledger.next.json'), 'utf8')); const p2f = path.join(big, 'out', 'ledger.next.page-2.json');
+  check('l3: build writes page 2 when there are over 400 items, and page 1 says how many there are', p1.items.length === 400 && p1.paging.itemsTotal > 400 && fs.existsSync(p2f) && JSON.parse(fs.readFileSync(p2f, 'utf8')).items.length === p1.paging.itemsTotal - 400);
+}
+
+// ---- review 37 (audits/review-tide-37-2026-10-26.md): event payloads, flags and cards of private orders; the error line; path shapes;
+// stale pages; the private words example and a missing list ----
+async function testShare37() {
+  const { makeRedactor, MARK, readPrivateWords } = await import('../../../core/ledger/share.mjs');
+  const r = makeRedactor({ privateWords: [] });
+  const u = (...p) => p.join('\\'); const home = ['', 'home', 'someone', 'x'].join('/');
+  const cases = [
+    ['after a colon', `cwd:${u('C:', 'Users', 'someone', 'x')}`],
+    ['a file:/// URL', `open file:///C:/Users/someone/x.txt now`],
+    ['a path with spaces', `${u('C:', 'Users', 'someone', 'my docs', 'a.txt')}`],
+    ['Program Files', `${u('C:', 'Program Files', 'someone tool', 'x.exe')}`],
+    ['a home path', `in ${home} now`],
+    ['a share', `${u('', '', 'server', 'share', 'someone')}`],
+  ];
+  for (const [name, text] of cases) { const out = r(text); check(`l3-37: a path ${name} is fully redacted`, !/someone/.test(out) && out.includes(MARK.path), out); }
+  check('l3-37: a tailnet IPv6 address is redacted', !r(`at ${['fd7a', '115c', 'a1e0', '', '1'].join(':')} now`).includes('fd7a'));
+  check('l3-37: a file name like appsettings.local.json is kept', r('edit appsettings.local.json') === 'edit appsettings.local.json');
+  const long = 'a'.repeat(200000); const t0 = Date.now(); r(long);
+  check('l3-37: a long run of letters is redacted in linear time (200 000 chars under 1 s)', Date.now() - t0 < 1000);
+  // a private order with a card and a failed step
+  const state = path.join(tmp, 'l37-state'); makeState(state, 4);
+  const p2 = path.join(state, 'jobs', 'J2.json'); const j2 = JSON.parse(fs.readFileSync(p2, 'utf8'));
+  Object.assign(j2, { status: 'quarantined' }); j2.vars = { goal: 'Private goal words', private: 'yes' }; W(p2, j2);
+  fs.appendFileSync(path.join(state, 'events.jsonl'), JSON.stringify({ ts: '2030-01-06T11:00:00Z', type: 'job.quarantined', job: 'J2', reason: 'Private reason words' }) + '\n');
+  const db = path.join(tmp, 'l37-out', 'tide.db'); const out = path.dirname(db);
+  const lines = []; const say = (x) => lines.push(x);
+  await main(['build', '--state', state, '--db', db, '--no-github', '--repo', `example=${path.join(tmp, 'repo')}`, '--now', NOW.toISOString()], { out: say });
+  check('l3-37: a missing private words list is a loud warning in the output and in work.json; paths are still redacted', lines.some((l) => /^WARNING: no private words list/.test(l)) && JSON.parse(fs.readFileSync(path.join(out, 'work.json'), 'utf8')).warnings.length === 1);
+  const s = await openStore(db); s.append([{ ...ev(1, 'decision.asked', 'WO-2', { decision: { v: V, id: 'D-9', wo: 'WO-2', kind: 'merge', ask: 'Private ask words', options: ['Yes', 'No'], recommended: 'Yes', why: 'Private why words', answer: null, note: null, at: '2030-01-09T00:00:00Z', answeredAt: null, via: null } }), key: 'd9' }]); s.close();
+  lines.length = 0; await main(['show', 'J2', '--db', db, '--json', '--now', NOW.toISOString()], { out: say });
+  check('l3-37: show <private> --json carries no goal, reason or card text in its events', !/Private (goal|reason|ask|why) words/.test(lines[0]) && JSON.parse(lines[0]).events.every((e) => JSON.stringify(e.data) === '{}'));
+  lines.length = 0; await main(['queue', '--db', db, '--json', '--now', NOW.toISOString()], { out: say });
+  check('l3-37: queue --json carries no private card question', !/Private (goal|ask|why) words/.test(lines[0]) && lines[0].includes(MARK.ask));
+  await main(['build', '--state', state, '--db', db, '--no-github', '--repo', `example=${path.join(tmp, 'repo')}`, '--now', NOW.toISOString()], { out: () => { } });
+  const files = ['work.json', 'ledger.next.json'].map((f) => fs.readFileSync(path.join(out, f), 'utf8')).join('\n');
+  check('l3-37: work.json and ledger.next.json flags and cards carry no private goal, reason or question', !/Private (goal|reason|ask|why) words/.test(files) && JSON.parse(fs.readFileSync(path.join(out, 'ledger.next.json'), 'utf8')).flags.some((f) => f.id === 'D-9'));
+  // the --json error line
+  lines.length = 0; await main(['queue', '--db', path.join(['C:', 'Users', 'someone', 'nowhere'].join('\\'), 'x.db'), '--json'], { out: say });
+  check('l3-37: the --json error line is redacted (no path)', /"ok":false/.test(lines[0]) && !/someone/.test(lines[0]), lines[0]);
+  // stale pages of this writer go; other files stay
+  W(path.join(out, 'ledger.next.page-5.json'), '{}'); W(path.join(out, 'notes-page-5.json'), '{}');
+  await main(['build', '--state', state, '--db', db, '--no-github', '--repo', `example=${path.join(tmp, 'repo')}`, '--now', NOW.toISOString()], { out: () => { } });
+  check('l3-37: a page file above the new page count is removed; a file not made by this writer stays', !fs.existsSync(path.join(out, 'ledger.next.page-5.json')) && fs.existsSync(path.join(out, 'notes-page-5.json')));
+  // the example list
+  const ex = readPrivateWords(path.join(repo, 'core', 'ledger', 'ledger-private-words.example.json'));
+  check('l3-37: the example private words list reads, with neutral placeholders only', ex.warning === null && ex.words.length === 2 && ex.words.every((w) => /^example/i.test(w)));
+}
+
 try {
+  await testShare37();
+  await testShare();
   await testLegacy();
   await testReview31();
   await testStore(); await testYard(); await testGithub(); await testLocal(); testView(); testExport();
