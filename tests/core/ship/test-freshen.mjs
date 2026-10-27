@@ -37,7 +37,7 @@ export function run(check) {
 
   // a clean Resurvey: main changed a different file, so no re-review
   const a = setup({ 'src/b.txt': 'b changed by the PR\n' }, { 'README.md': 'main moved\n' });
-  const ra = freshenPr({ dir: a.clone, branch: 'feature', pr: 'example#41', wo: 'WO-2001' });
+  const ra = freshenPr({ expectEmail: EMAIL, dir: a.clone, branch: 'feature', pr: 'example#41', wo: 'WO-2001' });
   const remoteHead = g(a.seed, ['ls-remote', 'origin', 'refs/heads/feature']).split('\t')[0];
   check('freshen: main is merged into the PR branch and pushed normally', ra.ok && ra.status === 'freshened' && ra.pushed && remoteHead === ra.head, ra.reason);
   check('freshen: the merge commit is by the noreply identity', g(a.clone, ['log', '-1', '--format=%ae %ce', String(ra.head)]) === `${EMAIL} ${EMAIL}`);
@@ -47,19 +47,19 @@ export function run(check) {
   check('freshen: a pr.updated event (why freshen) passes the event contract', pu && validate('event', asEvent(pu, 30)).ok, pu ? validate('event', asEvent(pu, 30)).errors.join('; ') : 'none');
   const act = toActivityResult(ra);
   check('freshen: the activity result passes the activity-result contract', validate('activity-result', act).ok && act.exit === 0, validate('activity-result', act).errors.join('; '));
-  const again = freshenPr({ dir: a.clone, branch: 'feature' });
+  const again = freshenPr({ expectEmail: EMAIL, dir: a.clone, branch: 'feature' });
   check('freshen: a branch that already contains main is current (nothing pushed)', again.ok && again.status === 'current' && !again.pushed, again.reason);
 
   // ---- acceptance: the re-review mark is set (main changed a file the PR changes, without a conflict)
   const b = setup({ 'src/a.txt': 'ONE\ntwo\nthree\nfour\nfive\n' }, { 'src/a.txt': 'one\ntwo\nthree\nfour\nFIVE\n' });
-  const rb = freshenPr({ dir: b.clone, branch: 'feature', pr: 'example#42', wo: 'WO-2002' });
+  const rb = freshenPr({ expectEmail: EMAIL, dir: b.clone, branch: 'feature', pr: 'example#42', wo: 'WO-2002' });
   const mark = /** @type {any} */ (rb.events.find((e) => /** @type {any} */ (e).kind === 'x.ship.re-review'));
   check('freshen: the re-review mark is set when main changed one of the PR files', rb.ok && rb.reReview && JSON.stringify(rb.overlap) === '["src/a.txt"]' && mark && mark.data.files[0] === 'src/a.txt', rb.reason);
   check('freshen: the re-review mark is an event the contract accepts (x.ship namespace)', mark && validate('event', asEvent(mark, 31)).ok, mark ? validate('event', asEvent(mark, 31)).errors.join('; ') : 'none');
 
   // a conflict is held with the files named, and the clone is left clean
   const c = setup({ 'src/a.txt': 'one\nTWO by the PR\nthree\nfour\nfive\n' }, { 'src/a.txt': 'one\ntwo by main\nthree\nfour\nfive\n' });
-  const rc = freshenPr({ dir: c.clone, branch: 'feature' });
+  const rc = freshenPr({ expectEmail: EMAIL, dir: c.clone, branch: 'feature' });
   check('freshen: a conflict with main is held with the files named', !rc.ok && rc.status === 'held' && JSON.stringify(rc.files) === '["src/a.txt"]' && /conflicts in 1 file/.test(rc.reason), rc.reason);
   check('freshen: a held conflict leaves the clone clean and the remote branch unchanged', g(c.clone, ['status', '--porcelain']) === '' && g(c.seed, ['ls-remote', 'origin', 'refs/heads/feature']).startsWith(c.prHead));
   check('freshen: a held result is a failed activity (exit 1)', toActivityResult(rc).exit === 1 && validate('activity-result', toActivityResult(rc)).ok);
@@ -70,7 +70,7 @@ export function run(check) {
   g(u.seed, ['rm', '-rq', '--cached', '.']);
   commit(u.seed, { 'other.txt': 'no shared history\n' }, 'an unrelated root');
   g(u.seed, ['push', '-q', 'origin', 'stray']);
-  const ru = freshenPr({ dir: u.clone, branch: 'stray' });
+  const ru = freshenPr({ expectEmail: EMAIL, dir: u.clone, branch: 'stray' });
   check('freshen: a branch with unrelated history is held, never merged', !ru.ok && /unrelated history/.test(ru.reason) && !ru.pushed, ru.reason);
 
   // ---- acceptance: never force (tested by refusing a non-fast-forward): the remote branch moves while Resurvey runs
@@ -80,7 +80,7 @@ export function run(check) {
   g(n.seed, ['push', '-q', 'origin', 'side']);
   const hook = path.join(n.clone, '.git', 'hooks', 'pre-push');
   fs.writeFileSync(hook, `#!/bin/sh\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\ngit --git-dir="${fwd(n.origin)}" update-ref refs/heads/feature ${sideSha}\nexit 0\n`, { mode: 0o755 });
-  const rn = freshenPr({ dir: n.clone, branch: 'feature' });
+  const rn = freshenPr({ expectEmail: EMAIL, dir: n.clone, branch: 'feature' });
   const after = g(n.seed, ['ls-remote', 'origin', 'refs/heads/feature']).split('\t')[0];
   check('freshen: a non-fast-forward is refused and held, never forced', !rn.ok && rn.status === 'held' && /never forced/.test(rn.reason) && !rn.pushed, rn.reason);
   check("freshen: after the refused push the remote keeps the other person's commit", after === sideSha, `remote ${after}`);
@@ -89,13 +89,15 @@ export function run(check) {
   // the identity is checked before anything runs
   const i = setup({ 'src/b.txt': 'x\n' }, { 'README.md': 'y\n' });
   setIdentity(i.clone, 'someone@example.com');
-  const ri = freshenPr({ dir: i.clone, branch: 'feature' });
+  const ri = freshenPr({ expectEmail: EMAIL, dir: i.clone, branch: 'feature' });
   check('freshen: a commit identity that is not a noreply address is held', !ri.ok && /not a GitHub noreply address/.test(ri.reason), ri.reason);
   setIdentity(i.clone);
-  const rx = freshenPr({ dir: i.clone, branch: 'feature', expectEmail: '2000002+other@users.noreply.github.com' });
+  const rdef = freshenPr({ dir: i.clone, branch: 'feature' });
+  check("freshen: by default a noreply address other than the owner's is held", !rdef.ok && rdef.reason.includes('not the expected 204934145+JVonBorstel@users.noreply.github.com'), rdef.reason);
+  const rx =freshenPr({ expectEmail: EMAIL, dir: i.clone, branch: 'feature', expectEmail: '2000002+other@users.noreply.github.com' });
   check('freshen: a noreply identity that is not the expected one is held', !rx.ok && /not the expected/.test(rx.reason), rx.reason);
   fs.writeFileSync(path.join(i.clone, 'dirty.txt'), 'x');
-  const rd = freshenPr({ dir: i.clone, branch: 'feature' });
+  const rd = freshenPr({ expectEmail: EMAIL, dir: i.clone, branch: 'feature' });
   check('freshen: a clone with local changes is held', !rd.ok && /local changes/.test(rd.reason), rd.reason);
-  check('freshen: an option-looking branch name is refused', !freshenPr({ dir: i.clone, branch: '--force' }).ok);
+  check('freshen: an option-looking branch name is refused', !freshenPr({ expectEmail: EMAIL, dir: i.clone, branch: '--force' }).ok);
 }

@@ -5,7 +5,7 @@
 // history, the merge conflicts (the files are named), or the remote branch moved meanwhile (a normal push is refused; never forced).
 // @ts-check
 import path from 'node:path'; import { pathToFileURL } from 'node:url';
-import { git, NOREPLY, conflictedFiles, changedFiles } from './git.mjs';
+import { git, NOREPLY, OWNER_NOREPLY, conflictedFiles, changedFiles } from './git.mjs';
 import { toActivityResult, eventDraft } from './activity.mjs';
 
 /**
@@ -17,15 +17,17 @@ import { toActivityResult, eventDraft } from './activity.mjs';
 const report = (r) => ({ ok: false, status: 'held', reason: '', files: [], reReview: false, overlap: [], head: null, pushed: false, events: [], proof: null, ...r });
 
 /**
- * The commit identity a ship step uses: the clone's user.email, which must be a GitHub noreply address (and the expected one, when given).
+ * The commit identity a ship step uses: the clone's user.email, which must be a GitHub noreply address and exactly the expected one
+ * (by default the owner's, OWNER_NOREPLY; another noreply address is refused).
  * @param {string} dir @param {string} [expect]
  * @returns {{ ok: boolean, email: string, name: string, reason: string }}
  */
-export function checkIdentity(dir, expect = '') {
+export function checkIdentity(dir, expect = OWNER_NOREPLY) {
   const email = git(dir, ['config', 'user.email']).out;
   const name = git(dir, ['config', 'user.name']).out || 'Tide ship path';
   if (!NOREPLY.test(email)) return { ok: false, email, name, reason: `the commit identity "${email || '(none)'}" is not a GitHub noreply address (<id>+<login>@users.noreply.github.com)` };
-  if (expect && email !== expect) return { ok: false, email, name, reason: `the commit identity is ${email}, not the expected ${expect}` };
+  const want = expect || OWNER_NOREPLY;
+  if (email !== want) return { ok: false, email, name, reason: `the commit identity is ${email}, not the expected ${want}` };
   return { ok: true, email, name, reason: '' };
 }
 

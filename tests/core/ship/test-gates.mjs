@@ -79,4 +79,10 @@ export function run(check) {
   check('gates: ci.yml node --checks core/ and runs the lanes\' suites from gates.json coreSuites', ci.includes('name: Core (node --check core/**/*.mjs') && ci.includes('.coreSuites.paths') && loadGates().coreSuites.paths.includes('tests/Test-CoreLedger.ps1'));
   const uses = [...ci.matchAll(/uses:\s*(\S+)/g)].map((m) => m[1]);
   check('gates: every action in ci.yml is pinned by a 40-hex commit sha', uses.length > 0 && uses.every((u) => /@[0-9a-f]{40}$/.test(u)), uses.join(', '));
+
+  // ---- the main ruleset Jordan applies (card 1): phase 1 blocks force-push and deletion only, no bypass, no required checks
+  const rs = JSON.parse(fs.readFileSync(path.join(repo, 'core', 'ship', 'ruleset-main-phase1.json'), 'utf8'));
+  check('gates: ruleset phase 1 targets the default branch, active, with no bypass',
+    rs.target === 'branch' && rs.enforcement === 'active' && JSON.stringify(rs.conditions.ref_name.include) === '["~DEFAULT_BRANCH"]' && Array.isArray(rs.bypass_actors) && rs.bypass_actors.length === 0);
+  check('gates: ruleset phase 1 has exactly the deletion and non_fast_forward rules (merging untouched)', JSON.stringify(rs.rules.map((r) => r.type).sort()) === '["deletion","non_fast_forward"]');
 }

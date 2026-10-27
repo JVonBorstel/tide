@@ -20,12 +20,21 @@ Zero packages; Node 18 or later; `.mjs` with JSDoc and `// @ts-check`. git runs 
 - **Docs step** failures are named: `change-note-missing`, `change-note-no-effects`, `new-names-unlisted`, `glossary-missing`,
   `names-hit`, `names-check-error`. A change note lists its new names under `## New names` (or `- none`). MAP.md is rebuilt on main
   after the merge, in a `ship/docs-*` branch, which the generated-files gate allows; a PR never commits it.
-- **Resurvey** and the **Handover queue** need a GitHub noreply commit identity, a clean clone, and shared history with main. They
-  hold (exit 1) and name the reason and the conflicted files otherwise. Their results are activity results
-  (`core/contracts/activity-result.schema.json`) with event drafts (`pr.updated`, `x.ship.re-review`, `merged`) for the engine.
-- **Landing** (`landPr({ land: true })`, from the engine only) needs the upgrade switch `ship.queue` at `new` in `kitchen/kitchen.json`
-  (old and shadow only dry-run), `ship.merge-queue` on, a `decision.answered` "Yes" by Jordan,
-  the `agent-review` status on the PR head when `ship.review-check` is on, the PR as `<repo>#<n>`, and main unmoved since the test.
-  The push moves main forward to the tested merge commit; it is a fast-forward and never forced.
+- **Resurvey** and the **Handover queue** commit as the owner's noreply address (`OWNER_NOREPLY` in `git.mjs`; another address,
+  noreply or not, is held), in a clean clone that shares history with main. They hold (exit 1) and name the reason and the
+  conflicted files otherwise. Their results are activity results (`core/contracts/activity-result.schema.json`) with event drafts
+  (`pr.updated`, `x.ship.re-review`, `merged`) for the engine.
+- **Landing** (`await landPr({ land: true, wo, pr })`, from the engine only) takes no permission from its caller. It reads them from files:
+  - the upgrade switch `ship.queue` = `new` in this repo's `kitchen/kitchen.json` (old and shadow only dry-run);
+  - flag `ship.merge-queue` on: declared in `flags.json`, turned on by a `flag.set` event in `<state>\tide.db` (the ledger's event store,
+    read only; state = `BRAIN_KITCHEN`, else `%LOCALAPPDATA%\brain-kitchen`);
+  - in the same store: a merge card (`decision.asked`, kind merge) for the work order whose ask names the PR (`<repo>#<n>`), and Jordan's
+    latest answer to it is Yes with the PR's **exact head sha as its proof** (a new push needs a new yes);
+  - a `review.verdict` "ship" on that head that names its builder, by a reviewer who is not the builder (CREED 6).
+
+  Then main and the PR must be unmoved since the test, and the push moves main forward to the tested merge commit: a fast-forward,
+  never forced. An event store that cannot be read gives no permission.
+- `ruleset-main-phase1.json`: the ruleset for main that blocks force-push and deletion (Jordan's tap:
+  `gh api -X POST repos/JVonBorstel/tide/rulesets --input core/ship/ruleset-main-phase1.json`).
 
 Tests: `tests/Test-Ship.ps1` (`node tests/core/ship/test-ship.mjs [name]`), throwaway git repos in the temp folder only.
