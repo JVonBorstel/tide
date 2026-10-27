@@ -328,7 +328,23 @@ function jobView(j) {
     v.activity = readActivity(j.run.base + '.activity.jsonl', priv);
     v.plan = (j.steps || []).map((x) => ({ station: stationOf(x), role: String(x.args?.Role || '').slice(0, 24) }));   // the Live call's tree (order -> steps -> cook): step kinds only, never their words
   }
+  // task 32 failure care (kitchen/failure-policy.ps1 writes both): the failure's class and its one plain sentence (the raw line stays in
+  // last, one tap away), and the cleared state of an order that ended (retried, superseded, duplicate, stale or dropped) with its reason
+  const fl = failureView(j.failure); if (fl) v.failure = fl;
+  const cl = clearedView(j.cleared); if (cl) { v.cleared = cl; v.updated = cl.at || v.updated; }
   return v;
+}
+const CLEARED = ['retried', 'superseded', 'duplicate', 'stale', 'dropped'];
+const FAIL_ACTIONS = ['retry', 'freshen', 'wait', 'ask', 'stop'];
+const word = (x, n) => (typeof x === 'string' ? x.replace(/\s+/g, ' ').trim().slice(0, n) : '');
+const isoOf = (x) => (x instanceof Date ? x.toISOString() : typeof x === 'string' ? x : null);
+function failureView(f) {
+  if (!f || typeof f !== 'object' || !/^[a-z]{2,20}$/.test(String(f.class || ''))) return null;
+  return { cls: f.class, label: word(f.label, 40) || 'Failed', action: FAIL_ACTIONS.includes(f.action) ? f.action : 'stop', text: word(f.text, 400), unknown: f.unknown === true, at: isoOf(f.at) };
+}
+function clearedView(c) {
+  if (!c || typeof c !== 'object' || !CLEARED.includes(c.state)) return null;
+  return { state: c.state, reason: word(c.reason, 300), at: isoOf(c.at), by: word(c.by, 120), from: word(c.from, 20) };
 }
 // TD-EH-15: a merge gate whose last CI look failed (gh down or signed out, a crash, the time limit) shows why: ci-wait (or the caller that
 // ran it) saved {state 'error', error, at} in results\<job>.ci.json. Only an error look is shown; a good look says nothing here.
@@ -853,9 +869,15 @@ function recipes() {
 function ps(file, args, timeout = 60000, extraEnv = {}) {
   return run(pwsh, ['-NoProfile', '-NonInteractive', '-File', file, ...args], { timeout, windowsHide: true, maxBuffer: 8 << 20, env: { ...process.env, ...extraEnv, BRAIN_KITCHEN: root } });
 }
+// task 32, duplicates at the door (D-11): a refused order names the open one in plain words (WO-0012, its state), never the CLI's words
+const DUP_STATE = { pending: 'queued', running: 'building', 'waiting-approval': 'waiting for your sign-off', 'needs-human': 'waiting for your sign-off' };
+const dupTicket = (id) => 'WO-' + String(id).replace(/^J/, '').padStart(4, '0');
 async function kitchen(op, args = {}) {
   const { err, out } = await ps(api, ['-Channel', 'chef', '-RequestJson', JSON.stringify({ id: 'pass-' + Date.now(), op, args })]);
-  try { return JSON.parse(out.trim().split(/\r?\n/).pop()); } catch { return { ok: false, error: err ? String(err.message) : 'no answer from the Yard' }; }
+  let r; try { r = JSON.parse(out.trim().split(/\r?\n/).pop()); } catch { return { ok: false, error: err ? String(err.message) : 'no answer from the Yard' }; }
+  const dup = r && !r.ok && jobId(r.data?.duplicate) ? r.data.duplicate : '';
+  if (dup) { const st = DUP_STATE[r.data.status]; return { ok: false, sameAs: dup, error: `${dupTicket(dup)} already asks for this${st ? ` (${st})` : ''}` }; }
+  return r;
 }
 // What would the sous chef do with this order? Decides only; nothing is cooked or sent.
 async function preview(body) {
@@ -949,6 +971,13 @@ async function act(body) {
       try { const r = JSON.parse(out.trim().split(/\r?\n/).pop()); if (r.ok) { try { fs.appendFileSync(path.join(root, 'events.jsonl'), JSON.stringify({ ts: new Date().toISOString(), type: 'merge.undone', job: body.id, ...(typeof r.pushed === 'boolean' ? { undoPushed: r.pushed, ...(r.pushed ? {} : { undoPushWhy: String(r.pushWhy || 'no reason was given') }) } : {}) }) + '\n'); } catch {} } return r.ok ? { ok: true, data: r.message } : { ok: false, error: r.message }; } catch { return { ok: false, error: err ? String(err.message) : 'no answer' }; }   // TD-EH-10: undoPushed as on verify's event
     }
     case 'undo-push-check': return undoPushCheck();   // TD-EH-10: is an undo that stayed on this PC on GitHub now? (the banner's Check now)
+    case 'close': {   // task 32: one tap on a failure's Close: it ends as dropped (its cleared state, with the reason) and moves to Older
+      if (!jobId(body.id)) return { ok: false, error: 'bad job id' };
+      const j = readJson(path.join(root, 'jobs', body.id + '.json'));
+      if (!j || !['quarantined', 'killed', 'failed'].includes(j.status)) return { ok: false, error: `${body.id} is not failed or stopped any more; look again` };
+      const { out } = await ps(kitchenPs, ['close', '-Id', body.id, '-Why', 'dropped: closed by Jordan on the Board'], 90000, { KITCHEN_FROM_CHEF: '1' });
+      return new RegExp(`closed ${body.id}\\b`).test(out) ? { ok: true, data: { closed: body.id } } : { ok: false, error: String(out || 'the Yard did not answer').trim().slice(0, 200) };
+    }
     case 'clear-aside': {   // close set-aside tickets older than 24 h; the server re-checks status and age, the phone's list is a hint
       const ids = Array.isArray(body.ids) ? [...new Set(body.ids.filter(jobId))].slice(0, 50) : [];
       if (!ids.length) return { ok: false, error: 'nothing to clear' };

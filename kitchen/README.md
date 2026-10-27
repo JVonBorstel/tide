@@ -13,6 +13,7 @@ Names: `gemini-brain/projects/tide/naming/GLOSSARY.md`. Commands, files, task na
 | Add a work order | `pwsh -File kitchen/kitchen.ps1 add -Name review -Script <step.ps1> [-Approve] [-Replay unsafe]` |
 | Status page | `pwsh -File kitchen/kitchen.ps1 report -HtmlPath status.html` |
 | Self-check and backup | `pwsh -File kitchen/kitchen.ps1 doctor` |
+| Bring back a cleared order | `pwsh -File kitchen/kitchen.ps1 reopen -Id J3` |
 | Short form | `kitchen\jk.cmd status`, `jk approve -Id J3`, `jk demo` |
 
 Other bots and front ends: see [API.md](API.md) (one JSON contract over command line, inbox folder or MCP; bots can never sign off).
@@ -32,6 +33,7 @@ Other bots and front ends: see [API.md](API.md) (one JSON contract over command 
 | Spawns more agents | depth cap (depth 2 may not spawn), 5 children per work order, 100 work orders total; refusals logged |
 | Swarm-wide failure | Stop-work order (code: circuit breaker) stops new starts: opens when 5 of the last 10 steps failed, stays on at least 5 min (longer each time it opens again soon after closing, up to 30 min), lifts only when failures fall under 30 % or one trial step passes. One HIGH alert per episode and one "lifted" note (`kitchen.json` `breaker`; tested in Test-Backoff.ps1) |
 | Risky step | waits for Jordan's sign-off; the yes is hash-verified and remembered, never asked twice |
+| A failure nobody ends | failure care (task 32): `failure-policy.json` maps every failure to a class (flaky timing, merge conflict, stale base, crews resting, privacy hold, real failure, infrastructure) and one action (retry once on fresh main, freshen, wait for the window, ask Jordan, stop and say why); an unknown one is "real failure, needs a look". Each failure carries one plain sentence. Every order that is not done ends in one cleared state (retried, superseded, duplicate, stale, dropped) with a reason, on the order and in events; the doctor clears killed, failed and closed orders after 3 days without a human action (`-FindOnly` lists them; `reopen` brings one back). `add` refuses a goal that matches an open order (`-Force` adds it anyway) (tested in Test-KitchenCare.ps1) |
 | Supervisor dies | all state on disk; next Walkround resumes; workers keep running |
 
 Every decision lands in `events.jsonl` (append-only audit trail). Alerts go to `alerts.jsonl`, and to Jordan's phone once `BRAIN_NTFY_TOPIC` is set.

@@ -1,4 +1,4 @@
-# The Yard's two brakes as pure functions (no clock, no random draw, no files): the Stop-work order's hysteresis (TD-EH-07) and retry back-off (TD-EH-08).
+# The Yard's two brakes as pure functions (no clock, no random draw, no files but the failure policy table): the Stop-work order's hysteresis (TD-EH-07) and retry back-off (TD-EH-08).
 # Dot-sourced by kitchen/kitchen.ps1 (the Walkround passes its own clock and random draw); tests/Test-Backoff.ps1 drives every rule with a fake clock.
 # Settings: kitchen.json "breaker" and "backoff" (defaults below, also written there). Times are kept as ISO strings ('o'), read back in UTC.
 #
@@ -44,25 +44,13 @@ function Get-BackoffSettings($Config, [int]$FloorSec = 0) {
     $s
 }
 
-# The class of a failure, from what the Yard already records for it: the kind (fail, crash, timeout, memcap, logflood, hung, taster) and
-# the detail line ("exit 1: <last log line>"). 'wait' = it waited on something outside the Yard; 'code' = anything else. A verdict
-# (FAILED, STOPPED, REFUSED, CONFLICT, CI failed, broke main) is always 'code', even when its words mention GitHub or the network.
-$script:BackoffVerdictRx = '\b(FAILED|STOPPED|REFUSED|CONFLICT)\b'
-$script:BackoffVerdictWordsRx = '(?i)CI failed on|broke main|checks? failed'
-$script:BackoffWaitRx = '(?i)' + (@(
-        'no CI check', 'CI has not started', 'CI still running', 'has not caught up',                                   # CI not reporting
-        'could not reach', 'unreachable', 'network', 'connection (reset|refused|closed|timed out|aborted)', 'stream was interrupted',
-        'could not resolve host', 'name resolution', 'ECONNRESET', 'ETIMEDOUT', 'socket hang up', 'TLS handshake',      # the network
-        'GitHub API', 'api\.github\.com', 'HTTP 5\d\d', '\b50[234]\b', 'UNAVAILABLE', 'overloaded', 'Service Unavailable', 'Bad Gateway',   # GitHub / a provider
-        'rate.?limit', 'HTTP 429', '\b429\b', 'too many requests', 'usage limit', 'quota', 'cloud hiccup'                # rate limits, a provider down
-    ) -join '|')
-function Get-FailureClass([string]$Kind, [string]$Detail) {
-    if ($Kind -ne 'fail') { return 'code' }   # crash, timeout, memcap, logflood, hung, taster: what the step itself did
-    $d = [string]$Detail
-    if ($d -cmatch $script:BackoffVerdictRx -or $d -match $script:BackoffVerdictWordsRx) { return 'code' }
-    if ($d -match $script:BackoffWaitRx) { return 'wait' }
-    'code'
-}
+# The back-off class of a failure, from what the Yard already records for it: the kind (fail, crash, timeout, memcap, logflood, hung,
+# taster) and the detail line ("exit 1: <last log line>"). 'wait' = it waited on something outside the Yard (CI not reporting, the network,
+# GitHub, a provider down, a rate limit or usage cap); 'code' = anything else. The signatures live in the one failure policy table
+# (kitchen/failure-policy.json, read by failure-policy.ps1, task 32): each class says its back-off. A verdict (FAILED, STOPPED, REFUSED,
+# CONFLICT, CI failed, broke main) matches first, so it is always 'code', even when its words mention GitHub or the network.
+if (-not (Get-Command Get-FailureVerdict -ErrorAction SilentlyContinue)) { . (Join-Path $PSScriptRoot 'failure-policy.ps1') }
+function Get-FailureClass([string]$Kind, [string]$Detail) { (Get-FailureVerdict $Kind $Detail).backoff }
 
 # "N min", rounded up (30 s reads "1 min"): the words every retry and wait line uses
 function Format-WaitMinutes([double]$Sec) { '{0} min' -f [int][math]::Max(1, [math]::Ceiling($Sec / 60)) }

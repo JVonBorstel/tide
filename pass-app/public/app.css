@@ -1466,3 +1466,14 @@ html.px .city-cut .city-t{font-family:var(--mono);font-size:14px}
 .lv-screen{font-size:14px;line-height:20px}.lv-code{font-size:14px;white-space:pre-wrap;text-overflow:clip}
 /* Activity: a work order in a sentence is its title in the sentence's own type; its number small beside it */
 .ev .say a:not(.mono){font-family:inherit;font-size:inherit;color:var(--ink)}
+/* Failure care (task 32): the Failures list in groups by class (the Yard's failure policy), each failure's one plain sentence in full
+   (it wraps, never cut), its raw detail one tap away (See why), Retry / Close / See why on the row; cleared orders sit quietly in Older */
+.fail-grp{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:14px var(--gutter) 4px;font-size:13px;line-height:18px;font-weight:600;color:var(--ink-2);border-top:1px solid var(--line)}
+.fail-grp:first-child{border-top:0;padding-top:6px}
+.fail-grp .n{font-family:var(--mono);font-weight:500;color:var(--ink-3)}
+.fail-grp+.row .row-inner::before{display:none}
+.fail-say{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;color:var(--ink);margin-top:2px}
+.row.cleared .fail-say{color:var(--ink-2)}
+.why-detail{position:relative;z-index:2;margin:8px 0 0;padding:8px 10px;max-height:12em;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px;font:400 13px/18px var(--mono);color:var(--ink-2);white-space:pre-wrap;overflow-wrap:anywhere}
+.fail-acts{flex-wrap:wrap}.fail-acts .btn{flex:1 1 auto;padding:0 12px;white-space:nowrap}
+.g-cleared{color:var(--ink-3)}.g-cleared::before{content:"\2013"}

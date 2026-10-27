@@ -1147,6 +1147,12 @@ console.log(JSON.stringify({ banners: siteStopBanners(items, { when }), rows: si
     try { $rdTest = ($rdOut -join "`n") | ConvertFrom-Json } catch { $rdTest = $null }
     Check 'readable: test-readable.mjs exits 0 and reported at least 25 checks' ($rdExit -eq 0 -and @($rdTest).Count -ge 25)
     foreach ($t in @($rdTest)) { if ($t) { Check "readable: $($t.name)" ($t.pass -eq $true) } }
+    # task 32 failure care (D-1, D-11, D-14): the home count is the failures that need Jordan now; the Failures list grouped by class with
+    # Retry, Close and See why; cleared orders in Older (pass-app/test-failures.mjs: a throwaway server, headless Chrome or Edge, the real kitchen.ps1)
+    $fcOut = & node (Join-Path $repo 'pass-app\test-failures.mjs') 2>$null; $fcExit = $LASTEXITCODE; $fcTest = $null
+    try { $fcTest = ($fcOut -join "`n") | ConvertFrom-Json } catch { $fcTest = $null }
+    Check 'failure care: test-failures.mjs exits 0 and reported at least 12 checks' ($fcExit -eq 0 -and @($fcTest).Count -ge 12)
+    foreach ($t in @($fcTest)) { if ($t) { Check "failure care: $($t.name)" ($t.pass -eq $true) } }
     # D-4 the WebGL2 renderer in a real browser (pass-app/test-scene-gl-screen.mjs: a throwaway server, headless Chrome or Edge with and without the graphics chip)
     $glOut = & node (Join-Path $repo 'pass-app\test-scene-gl-screen.mjs') 2>$null; $glExit = $LASTEXITCODE; $glTest = $null
     try { $glTest = ($glOut -join "`n") | ConvertFrom-Json } catch { $glTest = $null }

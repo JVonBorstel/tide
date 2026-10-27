@@ -12,11 +12,13 @@
 #                                     board, report, ledger, doctor, backup, watchdog, standing orders, diagnose, ideas. Never starts a worker.
 #                                     While paused (TD-EH-26) only the watchers run: the doctor's findings (doctor -FindOnly), the Watch and
 #                                     memory-truth, on their usual hourly clock; nothing that changes work.
-#   kitchen.ps1 doctor [-FindOnly]    self-check, backup and cleanup; -FindOnly (and always while paused) only finds: no reset, prune or archive
+#   kitchen.ps1 doctor [-FindOnly]    self-check, backup, cleanup and failure care; -FindOnly (and always while paused) only finds: no reset,
+#                                     prune, archive or clearing (it lists what it would clear)
 #   kitchen.ps1 watch [-Seconds 120]  ticks once a second until every job settles or time runs out
 #   kitchen.ps1 status [-Json]        jobs, breaker, recent alerts
 #   kitchen.ps1 approve -Id J3        says yes to the approval J3 is waiting on (recorded via scripts/approvals.ps1, hash-verified)
 #   kitchen.ps1 kill -Id J3 | -All    stops the worker tree; job becomes killed
+#   kitchen.ps1 reopen -Id J3         puts a cleared order (failure care, task 32) back as it was before it was cleared
 #   kitchen.ps1 report -HtmlPath x    static status page (no network, no scripts)
 #   kitchen.ps1 pause | resume        Jordan stops the supervisor on purpose (a PAUSED file: every tick starts nothing new and only minds
 #                                     the running steps and runs the watchers (TD-EH-26), and Chef and
@@ -28,14 +30,16 @@
 # may not add jobs), per-step timeout / memory (whole process tree) / log size / heartbeat, retries with backoff, quarantine, unsafe-replay
 # needs a human, and a circuit breaker that stops new starts when most recent steps fail.
 # State: %LOCALAPPDATA%\brain-kitchen (override env BRAIN_KITCHEN). events.jsonl is append-only. jobs\ holds the orders in play and
-# finished ones of the last 3 days (jobs-index.json caches their status); the doctor moves older finished ones to jobs\archive\yyyy-MM\. Exit: 0 ok, 2 error/refused, 3 depth cap.
+# finished ones of the last 3 days (jobs-index.json caches their status); the doctor moves older finished ones to jobs\archive\yyyy-MM\. Exit: 0 ok, 2 error/refused, 3 depth cap, 4 duplicate (add refused a goal that matches an open order; -Force adds it).
 param(
-    [Parameter(Mandatory, Position = 0)][ValidateSet('add', 'tick', 'chores', 'watch', 'status', 'approve', 'kill', 'requeue', 'close', 'report', 'doctor', 'pause', 'resume')][string]$Action,
+    [Parameter(Mandatory, Position = 0)][ValidateSet('add', 'tick', 'chores', 'watch', 'status', 'approve', 'kill', 'requeue', 'close', 'report', 'doctor', 'pause', 'resume', 'reopen')][string]$Action,
     [string]$Name = '', [string]$Script = '', [hashtable]$ScriptArgs = @{}, [ValidateSet('safe', 'unsafe')][string]$Replay = 'safe',
     [switch]$Approve, [string]$SpecPath = '', [int]$TimeoutSec = 300, [int]$MaxMB = 2000, [int]$MaxLogMB = 50, [int]$HungSec = 0, [int]$Retries = 2,
     [string]$Id = '', [switch]$All, [switch]$Json, [int]$Seconds = 120, [string]$HtmlPath = '',
     [string]$Why = '',   # close: why a set-aside order is closed for good
-    [switch]$FindOnly,   # doctor: findings only (TD-EH-26; always so while paused): nothing reset, pruned, archived or moved
+    [switch]$FindOnly,   # doctor: findings only (TD-EH-26; always so while paused): nothing reset, pruned, archived, moved or cleared
+    [switch]$Force,   # add: add it even when an open order asks the same thing (task 32: duplicates at the door)
+    [switch]$Recook,   # requeue: make it again from today's recipe on fresh main, whatever its age (the doctor's failure care)
     [string]$Site = '',   # pause / resume: one Site's code (TD-8), for that Site only
     [string]$ReplacedBy = '', [string]$Proof = '',   # close: the order that replaces it, or proof it was done another way (no silent endings)
     [string]$ApprovalId = '',   # approve: sign off only if this is still the job's ask (Chef sends the one Jordan was shown)
@@ -62,6 +66,7 @@ $terminal = 'done', 'failed', 'quarantined', 'killed', 'closed'
 . (Join-Path $PSScriptRoot 'site-registry.ps1')   # the one Sites registry reader (kitchen.json "sites"): admission, Stop-work and pause per Site, status, doctor
 . (Join-Path $PSScriptRoot 'freeze-lib.ps1')   # merge freeze windows per repo (kitchen.repo.json "freeze"): status lines and Chef's freeze.json
 . (Join-Path $PSScriptRoot 'scaler.ps1')   # admission: the RAM-scaled limit (scaler.json) and each station's measured weight (weights.json)
+. (Join-Path $PSScriptRoot 'failure-policy.ps1')   # failure care (task 32): the policy table (failure-policy.json), plain words, the cleared states
 . (Join-Path $PSScriptRoot 'backoff-lib.ps1')   # the Stop-work order's hysteresis and retry back-off (TD-EH-07/08), pure functions
 . (Join-Path $PSScriptRoot 'train.ps1')   # the merge train per repo: a merge step waits (no worker, no slot) while its repo's train is busy
 
@@ -536,8 +541,10 @@ function Fail-Step($j, [string]$kind, [string]$detail) {
             return
         }
     }
-    Emit "step.$kind" $j.id @{ step = $j.cursor; attempt = $j.attempt; detail = $detail }
-    $j.history += , @{ step = $j.cursor; attempt = $j.attempt; outcome = $kind; detail = $detail; at = Iso (Now) }
+    # task 32: every failure carries its class (failure-policy.json), its one action and one plain sentence; the raw detail stays one tap away
+    $fr = New-FailureRecord $j $kind $detail (Iso (Now)); $j.failure = $fr
+    Emit "step.$kind" $j.id @{ step = $j.cursor; attempt = $j.attempt; detail = $detail; class = $fr.class; say = $fr.text }
+    $j.history += , @{ step = $j.cursor; attempt = $j.attempt; outcome = $kind; detail = $detail; say = $fr.text; at = Iso (Now) }
     # an explicit REWORK from the reviewer (its mustNotMatch fired) after the rework rounds are used up is a verdict, not a crash:
     # retrying would ask another (stronger) cook the same question until one says SHIP, overruling the rejection. Jordan decides.
     # A missing verdict (mustMatch not found: the cook died or said nothing) still retries as before.
@@ -565,11 +572,11 @@ function Fail-Step($j, [string]$kind, [string]$detail) {
         return
     }
     if ($j.attempt -ge $s.retries) {
-        $j.status = 'quarantined'
-        Emit 'job.quarantined' $j.id @{ reason = "$kind x$($j.attempt + 1)" }
+        $j.status = 'quarantined'; $j.stateAt = Iso (Now)
+        Emit 'job.quarantined' $j.id @{ reason = "$kind x$($j.attempt + 1)"; class = $fr.class; action = $fr.action; say = $fr.text }
         # TD-EH-05: the alert says what failed (the first 120 characters of the detail; the job's history keeps it whole)
         $why = ([string]$detail -replace '\s+', ' ').Trim(); if ($why.Length -gt 120) { $why = $why.Substring(0, 120) }
-        Alert 'MED' "$($j.id) $($j.name) quarantined after $($j.attempt + 1) attempts (last: $kind). Look at it when you can." $j.id $why
+        Alert 'MED' "$($j.id) $($j.name) quarantined after $($j.attempt + 1) attempts (last: $kind). $($fr.text)" $j.id $why
         return
     }
     # TD-EH-08: a retry waits long enough for the world to change: minutes, with jitter, longer when the failure waited on CI, the
@@ -701,7 +708,11 @@ function Check-Running($j, $procs) {
             Emit 'step.wait' $j.id @{ step = $j.cursor; inSec = $sec; detail = $why; kind =$(if ($hiccup) { 'hiccup' } else { 'wait' }) }
             $j.history += , @{ step = $j.cursor; attempt = $j.attempt; outcome = 'wait'; detail = $why; at = Iso (Now) }
             # ~4 days of 30-minute waits, counted per step: every cook capped for a weekend parks orders, it does not set them aside
-            if ($j.waits -gt 200) { $j.status = 'quarantined'; Emit 'job.quarantined' $j.id @{ reason = 'waited too long for a cook' }; Alert 'MED' "$($j.id) $($j.name) set aside: no cook was free after 200 waits ($why)" $j.id; return }
+            if ($j.waits -gt 200) {
+                $fr = New-FailureRecord $j 'fail' "waited too long for a cook: $why" (Iso (Now)); $j.failure = $fr
+                $j.status = 'quarantined'; $j.stateAt = Iso (Now); Emit 'job.quarantined' $j.id @{ reason = 'waited too long for a cook'; class = $fr.class; action = $fr.action; say = $fr.text }
+                Alert 'MED' "$($j.id) $($j.name) set aside: no cook was free after 200 waits ($why)" $j.id; return
+            }
             $j.notBefore = Iso ((Now).AddSeconds($sec)); $j.status = 'pending'; $j.retryWait = $null   # a wait, not a retry
             return
         }
@@ -1291,6 +1302,52 @@ function Prune-Worktrees($jobs) {
 # by the yyyyMMdd in their name or else their write time. Until 10-23 both shared backups\ and were pruned by name sort, so hand-made
 # folders (sorting above dates) took 3 of the 7 places and were never pruned: the old layout is moved over on the first run (a move,
 # never a copy or a delete; an item whose new place is taken stays where it is). Returns @{ daily; manual; pruned; moved }.
+# Failure care (task 32), the doctor's part: the plan (failure-policy.ps1 Get-CarePlan, git read once per repo for the stale reason),
+# then under the state lock each order is read again and changed only if it is still as the plan saw it: cleared (job.cleared), given
+# its policy action once (job.care), or given the plain words it never had. $LookOnly changes nothing and lists what it would do.
+function Invoke-FailureCare($jobs, [bool]$LookOnly) {
+    $pol = Read-FailurePolicy
+    $times = @{}; foreach ($f in (Get-JobFiles $root)) { $times[$f.BaseName] = $f.LastWriteTimeUtc }
+    $script:careGitCache = @{}
+    $changes = if ($env:KITCHEN_CARE_NO_GIT -eq '1') { $null } else { { param($repo, $since) Get-MainChanges $repo $since $script:careGitCache } }
+    $plan = Get-CarePlan @($jobs) (Now) $pol $times $changes
+    $r = [ordered]@{ cleared = 0; byState = [ordered]@{}; acted = 0; filled = 0; items = @() }
+    foreach ($c in $plan.clear) { if ($LookOnly) { $r.byState[$c.state] = 1 + [int]$r.byState[$c.state] }; $r.items += "$($c.id) $($c.state)$(if ($c.by) { " ($($c.by))" }): $($c.reason)" }
+    foreach ($a in $plan.act) { $r.items += "$($a.id) $($a.action): $($a.why)" }
+    if ($LookOnly) { $r.cleared = $plan.clear.Count; $r.acted = $plan.act.Count; $r.filled = $plan.fill.Count; return $r }
+    $seen = @{}; foreach ($j in $jobs) { $seen[[string]$j.id] = [string]$j.status }
+    $recook = @()
+    Enter-State
+    try {
+        foreach ($c in $plan.clear) {
+            $j = try { Load-Job $c.id } catch { $null }
+            if (-not $j -or $j.cleared -or [string]$j.status -ne $seen[$c.id]) { continue }   # (it moved since the plan: next run)
+            $ev = Set-JobCleared $j $c.state $c.reason $c.by (Iso (Now)); $ev.by = $(if ($c.by) { $c.by } else { 'doctor' })
+            Save-Job $j; Emit 'job.cleared' $j.id $ev; $r.cleared++; $r.byState[$c.state] = 1 + [int]$r.byState[$c.state]
+        }
+        foreach ($a in $plan.act) {
+            $j = try { Load-Job $a.id } catch { $null }
+            if (-not $j -or [string]$j.status -ne 'quarantined' -or $j.care) { continue }
+            $j.care = @{ action = $a.action; at = Iso (Now); why = $a.why }
+            if ($a.action -eq 'recook') { Save-Job $j; $recook += $a.id; continue }   # (cook.ps1 takes the lock itself: after this one)
+            $j.cursor = [int]$a.to; $j.attempt = 0; $j.waits = 0; $j.hiccups = 0; $j.run = $null; $j.status = 'pending'; $j.clashCheck = $true; $j.stateAt = Iso (Now)
+            $j.notBefore = if ($a.action -eq 'wait') { Iso ((Now).AddMinutes(30)) } else { $null }
+            $j.history += , @{ step = $j.cursor; attempt = 0; outcome = 'care'; detail = $a.why; at = Iso (Now) }
+            Save-Job $j; Emit 'job.care' $j.id @{ action = $a.action; step = $j.cursor; why = $a.why }; $r.acted++
+        }
+        foreach ($id in $plan.fill) {
+            $j = try { Load-Job $id } catch { $null }
+            if (-not $j -or $j.failure -or [string]$j.status -notin $script:SetAsideStates) { continue }
+            $j.failure = Get-BackfillFailure $j $pol; Save-Job $j; $r.filled++
+        }
+    } finally { Exit-State }
+    foreach ($id in $recook) {
+        $o = & $PSCommandPath requeue -Id $id -Recook | Out-String
+        if ($o -match 're-cooked recipe \S+ as (J\d+)') { $r.acted++; Enter-State; try { Emit 'job.care' $id @{ action = 'recook'; to = $Matches[1] } } finally { Exit-State } }
+        else { Enter-State; try { $j = Load-Job $id; $j.care.failed = (Cut-Words $o 200); Save-Job $j; Emit 'job.care' $id @{ action = 'recook'; failed = (Cut-Words $o 200) } } finally { Exit-State } }
+    }
+    $r
+}
 function Invoke-BackupRetention([string]$bkRoot, [int]$keepDaily = 7, [int]$keepManualDays = 14) {
     $res = @{ daily = 0; manual = 0; pruned = 0; moved = 0 }
     if (-not (Test-Path -LiteralPath $bkRoot)) { return $res }
@@ -1743,6 +1800,15 @@ switch ($Action) {
                     run = $null; notBefore = $null; approval = $null; history = @(); created = Iso (Now) }
             if ($recName) { $j.recipe = $recName }
             if ($null -ne $recVars) { $j.vars = $recVars }
+            # task 32, duplicates at the door: a goal that matches an open order (normalized text, or the same files and title, or the
+            # same roadmap item: jobs-lib.ps1 Get-OrderDupKeys) is refused with that order's id; -Force adds it anyway
+            $dupOf = Find-OpenDuplicate $ur.index @(Get-OrderDupKeys $j)
+            if ($dupOf -and -not $Force) {
+                Emit 'job.duplicate' $dupOf @{ name = $Name; status = [string]$ur.index[$dupOf].s }
+                Write-Output "DUPLICATE: $dupOf is open with the same goal ($([string]$ur.index[$dupOf].s)); not added. Open $dupOf, or add again with -Force."
+                exit 4
+            }
+            if ($dupOf) { $j.forcedOver = $dupOf }
             Set-NewJobSite $j
             Save-Job $j; Save-NextId ($n + 1)
             Emit 'job.added' $j.id @{ name = $Name; steps = $steps.Count; depth = $depth; parent = $parent }
@@ -1910,6 +1976,9 @@ switch ($Action) {
         # closed or killed order that never merged stays reachable on its branch; only its checkout folder goes.
         $report.notes = @()
         if (-not $lookOnly) { try { $pr = Prune-Worktrees $jobs; $report.prunedWorktrees = $pr.worktrees; $report.prunedBranches = $pr.branches; $report.keptBranches = $pr.kept; $report.notes = @($pr.notes) } catch { $report.problems += "worktree prune: $($_.Exception.Message)" } }
+        # failure care (task 32): every killed, failed or closed order gets one cleared state with a reason (failure-policy.ps1 Get-CarePlan);
+        # a fresh failure gets its policy action once; an older one its plain words. Findings only: the list of what it would do.
+        try { $report.care = Invoke-FailureCare $jobs $lookOnly } catch { $report.problems += "failure care: $($_.Exception.Message)" }
         # finished orders (done, closed) untouched for archiveDays (kitchen.json, default 3) move to jobs\archive\yyyy-MM\ with a summary
         # line each in jobs\archive\index.jsonl, so every scan costs the live set. After the worktree prune, which still needed them.
         $archiveDays = if ($env:KITCHEN_ARCHIVE_DAYS -match '^\d+(\.\d+)?$') { [double]$env:KITCHEN_ARCHIVE_DAYS } elseif ($null -ne $config.archiveDays) { [double]$config.archiveDays } else { 3 }
@@ -1932,7 +2001,8 @@ switch ($Action) {
         if ($regD.sites.Count) { $report.slots += "; Sites: " + (@($regD.sites.Keys | Sort-Object | ForEach-Object { "$_ heavy $(if ($null -ne $regD.sites[$_].maxHeavy) { $regD.sites[$_].maxHeavy } else { 'any' }), share $($regD.sites[$_].share)" }) -join '; ') }
         foreach ($sp in $regD.problems) { $report.notes += "kitchen.json $sp" }
         $report.ok = -not $report.problems.Count; $report.ms = $dsw.ElapsedMilliseconds; $report.lockMs = $lsw.ElapsedMilliseconds
-        Emit 'doctor' '' @{ ok = $report.ok; findOnly = $lookOnly; problems = ($report.problems -join '; '); watch = ($watchFound -join '; '); archived = $report.archived; ms = $report.ms; lockMs = $report.lockMs; slots = $report.slots; notes = ($report.notes -join '; ') }
+        $careLine = if ($report.care) { "$(if ($lookOnly) { 'would clear' } else { 'cleared' }) $($report.care.cleared) ($(@($report.care.byState.Keys | Sort-Object | ForEach-Object { "$_ $($report.care.byState[$_])" }) -join ', ')), acted on $($report.care.acted), plain words for $($report.care.filled)" } else { '' }
+        Emit 'doctor' '' @{ ok = $report.ok; findOnly = $lookOnly; problems = ($report.problems -join '; '); watch = ($watchFound -join '; '); archived = $report.archived; ms = $report.ms; lockMs = $report.lockMs; slots = $report.slots; notes = ($report.notes -join '; '); care = $careLine }
         if (-not $report.ok) { Alert 'MED' ("Kitchen doctor: " + ($report.problems -join '; ')) }
         if ($newWatch) { Alert 'MED' ("The Watch found: " + ($watchFound -join '; ')) }
         if ($Json) { $report | ConvertTo-Json -Depth 4 } elseif (-not $Quiet) {
@@ -1941,6 +2011,7 @@ switch ($Action) {
             $report.problems | ForEach-Object { Write-Output "  - $_" }
             $watchFound | ForEach-Object { Write-Output "  watch: $_" }   # (the Watch's findings, a watcher that gave no report among them)
             $report.notes | ForEach-Object { Write-Output "  note: $_" }   # (a git cleanup call that failed: TD-EH-21)
+            if ($report.care) { Write-Output "  failure care: $careLine"; @($report.care.items) | ForEach-Object { Write-Output "    $(if ($lookOnly) { 'would: ' })$_" } }
             Write-Output "  slots: $($report.slots)"
             Write-Output "  backup: $($report.backup)"
         }
@@ -2042,7 +2113,9 @@ switch ($Action) {
                 if ($j.status -in $terminal) { continue }
                 if ($j.run -and (Is-Alive $j.run.pid $j.run.startMs)) { Kill-Tree $j.run.pid }
                 $atVerify = $j.status -in 'running', 'pending', 'needs-human' -and $j.cursor -gt 0 -and $j.cursor -lt $j.steps.Count -and (Station-Name $j.steps[$j.cursor]) -eq 'verify' -and (Station-Name $j.steps[$j.cursor - 1]) -eq 'merge'
-                $j.run = $null; $j.status = 'killed'; Save-Job $j; Emit 'job.killed' $j.id
+                $j.run = $null; $j.status = 'killed'; $j.stateAt = Iso (Now)
+                $j.failure = New-FailureRecord $j 'killed' '' (Iso (Now))   # task 32: a stopped order says so in plain words too
+                Save-Job $j; Emit 'job.killed' $j.id
                 # stopping verify stops it before its undo: the merge stays on main unchecked, so Jordan is told so in plain words
                 if ($atVerify) { Emit 'merge.unverified' $j.id @{ step = $j.cursor; kind = 'killed' }; Alert 'HIGH' "$($j.id) was stopped while being verified: it is merged on main but NOT verified" $j.id }
                 Write-Output "killed $($j.id)"
@@ -2063,11 +2136,37 @@ switch ($Action) {
             $j = Load-Job $Id
             if ($j.status -notin 'quarantined', 'killed', 'failed') { Die "$Id is $($j.status); only set-aside jobs (quarantined, killed, failed) can be closed" }
             if ($rb) { if ($rb -eq $Id.ToUpperInvariant()) { Die 'an order cannot replace itself' }; if (-not (Get-KitchenJobPath $root $rb)) { Die "-ReplacedBy ${rb}: no such order" }; $j.replacedBy = $rb }
-            $j.status = 'closed'; Save-Job $j
+            # task 32: the close is its cleared state: duplicate (-ReplacedBy with a Why that starts 'duplicate'), superseded (-ReplacedBy, or
+            # -Proof: a merged PR, a commit, a file) or dropped (-Why 'dropped: ...'), with the reason and the time, on the order and in events
+            $state = if ($rb -and $Why.Trim() -match '^(?i)duplicate\b') { 'duplicate' } elseif ($rb -or $pf) { 'superseded' } else { 'dropped' }
+            $cwhy = $Why.Trim(); if ($state -eq 'dropped' -and ($cwhy -replace '^(?i)dropped\s*:?\s*', '')) { $cwhy = $cwhy -replace '^(?i)dropped\s*:?\s*', '' }   # (the state already says dropped)
+            $cev = Set-JobCleared $j $state $cwhy $(if ($rb) { $rb } else { $pf }) (Iso (Now))
+            Save-Job $j
             $ev = @{ reason = $Why.Trim().Substring(0, [math]::Min(300, $Why.Trim().Length)); by = $(if ($env:KITCHEN_FROM_CHEF -eq '1') { 'Jordan' } else { 'cli' }) }
             if ($rb) { $ev.replacedBy = $rb }; if ($pf) { $ev.proof = $pf }; if ($dropped) { $ev.dropped = $true }
             Emit 'job.closed' $Id $ev
+            Emit 'job.cleared' $Id $cev
             Write-Output "closed $Id"
+        } finally { Exit-State }
+    }
+    'reopen' {
+        # task 32: a cleared order (failure care) back as it was before it was cleared, in one command: its status before (killed,
+        # quarantined, failed or closed), the clearing kept in clearedBefore and the history. An archived one comes back to jobs\ first.
+        if ($Id -notmatch '^J\d{1,6}$') { Die 'reopen needs -Id like J12' }
+        Enter-State 90000
+        try {
+            $src = Get-KitchenJobPath $root $Id
+            if (-not $src) { Die "no order $Id (not in jobs\ or the archive)" }
+            $j = Get-Content -LiteralPath $src -Raw | ConvertFrom-Json -AsHashtable
+            if (-not $j.cleared) { Die "$Id is $($j.status) and was never cleared; nothing to reopen" }
+            $c = $j.cleared; $was = [string]$c.from; if ($was -notin 'quarantined', 'killed', 'failed', 'closed') { $was = 'quarantined' }
+            if ($src -ne (Job-Path $Id)) { [IO.File]::Move($src, (Job-Path $Id)) }   # (a jobs\ file wins over its archive line: jobs-lib.ps1)
+            $j.clearedBefore = @(@($j.clearedBefore) | Where-Object { $_ }) + @($c)
+            $j.cleared = $null; $j.status = $was; $j.stateAt = Iso (Now)
+            $j.history += , @{ step = [int]$j.cursor; attempt = [int]$j.attempt; outcome = 'reopened'; detail = "was $($c.state): $($c.reason)"; at = Iso (Now) }
+            Save-Job $j
+            Emit 'job.reopened' $Id @{ state = [string]$c.state; to = $was }
+            Write-Output "reopened $Id as $was (it was cleared as $($c.state): $($c.reason))"
         } finally { Exit-State }
     }
     'requeue' {
@@ -2091,7 +2190,7 @@ switch ($Action) {
             # or opens a second PR for it (10-22: J210 -> J299)
             $prAt = -1; for ($i = 0; $i -lt @($j.steps).Count; $i++) { if ([IO.Path]::GetFileName([string]$j.steps[$i].script) -eq 'commit.ps1') { $prAt = $i } }
             $hasPr = $prAt -ge 0 -and [int]$j.cursor -gt $prAt
-            if ($isOld -and $isRecipe -and -not $hasPr) {
+            if (($isOld -or $Recook) -and $isRecipe -and -not $hasPr) {
                 # claim the order before the lock is let go for cooking: a second tap (another phone) then finds it closed and is refused,
                 # so one set-aside order is never re-cooked twice. Put back as it was if cooking fails.
                 $prevStatus = $j.status
@@ -2117,12 +2216,17 @@ switch ($Action) {
                 Enter-State
                 $j = Load-Job $Id
                 # 'closed' (not 'killed'): it leaves the set-aside list, and requeue refuses it from now on
-                $j.status = 'closed'; $j.recooking = $null; $j.recookFrom = $null; $j.recookAt = $null; $j.run = $null; $j.closed = $true; $j.replacedBy = $newJobId
+                $j.recooking = $null; $j.recookAt = $null; $j.run = $null; $j.closed = $true; $j.replacedBy = $newJobId
+                $j.status = $prevStatus   # (so the cleared record says what it was; Set-JobCleared closes it)
+                $cev = Set-JobCleared $j 'retried' "made again from today's recipe on fresh main as $newJobId" $newJobId (Iso (Now)); $j.recookFrom = $null
                 Save-Job $j
+                # the new attempt knows what it retries (the doctor's failure care retries an order once, never a retry of a retry)
+                try { $nj = Load-Job $newJobId; $nj.retryOf = $Id; Save-Job $nj } catch { }
                 Emit 'job.closed' $Id @{ replacedBy = $newJobId; reason = 're-cooked from current recipe' }
+                Emit 'job.cleared' $Id $cev
                 Write-Output "re-cooked recipe $recipe as $newJobId (closed $Id)"
             } else {
-                $j.status = 'pending'; $j.attempt = 0; $j.notBefore = $null; $j.run = $null; $j.waits = 0; $j.hiccups = 0
+                $j.status = 'pending'; $j.attempt = 0; $j.notBefore = $null; $j.run = $null; $j.waits = 0; $j.hiccups = 0; $j.stateAt = Iso (Now)
                 $j.clashCheck = $true   # a requeued order passes the clash rule again before it goes on (kitchen/clash.ps1)
                 Save-Job $j; Emit 'job.requeued' $j.id @{ step = $j.cursor }
                 Write-Output "requeued $Id at step $($j.cursor + 1) of $($j.steps.Count)"
