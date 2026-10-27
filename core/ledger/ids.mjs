@@ -28,7 +28,8 @@ export function streamOf(branch, wo) {
     [/^rename\//, 'RENAME'], [/^kitchen\/J/, 'YARD'], [/^dependabot\//, 'DEPENDENCIES']]);
   for (const [re, s] of rules) if (re.test(b)) return s;
   const m = /^wo\/([a-z0-9]+(?:-[a-z]+\d*)?)/i.exec(b);
-  if (wo && /^WO-[A-Z]/.test(wo)) { const parts = wo.slice(3).split('-'); while (parts.length > 1 && /^\d+$/.test(parts[parts.length - 1])) parts.pop(); return parts.join('-').slice(0, 40); }
+  // WO-PR-<REPO>-<n> names a PR, not a stream
+  if (wo && /^WO-[A-Z]/.test(wo) && !/^WO-PR-/.test(wo)) { const parts = wo.slice(3).split('-'); while (parts.length > 1 && /^\d+$/.test(parts[parts.length - 1])) parts.pop(); return parts.join('-').slice(0, 40); }
   if (m) return m[1].toUpperCase().replace(/[^A-Z0-9-]/g, '-').slice(0, 40);
   return 'OTHER';
 }

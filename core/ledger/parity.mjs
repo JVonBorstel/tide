@@ -3,7 +3,7 @@
 // state, or explained (a named reason the new ledger differs on purpose), or listed as unexplained. The cutover rule (docs/changes):
 // shadow and new need 0 unexplained items on a scratch copy of the live state folder.
 import { woOfJob } from './ids.mjs';
-import { fold } from './view.mjs';
+import { fold, exportLedgerJson } from './view.mjs';
 
 /**
  * Why a state differs, or null when no known reason covers it.
@@ -45,11 +45,32 @@ export function compareLedgers(old, view, events) {
   const byAlias = new Map(view.rows.filter((r) => r.alias).map((r) => [r.alias, r]));
   const byId = new Map(view.rows.map((r) => [r.id, r]));
   const { wos } = fold(events);
+  const exp = /** @type {any} */ (view).internal ? exportLedgerJson(/** @type {any} */ (view)) : { items: [] };
+  const exported = new Map(exp.items.map((/** @type {any} */ x) => [`${x.kind}|${x.id}`, x]));
+  const roadmaps = /** @type {any} */ (view).internal?.fold?.snap?.roadmaps;
   const items = [];
   for (const it of Array.isArray(old?.items) ? old.items : []) {
     const id = String(it?.id || ''); const oldState = String(it?.state || 'unknown'); const kind = String(it?.kind || '');
     const out = { old: id, kind, oldState, new: /** @type {string|null} */ (null), newState: /** @type {string|null} */ (null), verdict: 'unexplained', reason: '' };
-    if (kind === 'roadmap') { out.verdict = 'explained'; out.reason = 'a roadmap item, not a work order: roadmaps (kitchen/roadmap-lib.ps1) are not imported yet (card: a roadmap importer)'; items.push(out); continue; }
+    // ideas and roadmap items: the export rebuilds them with the old rules (legacy.mjs), so they are compared item for item
+    const ex = exported.get(`${kind}|${id}`);
+    if (ex && (kind === 'idea' || kind === 'roadmap')) {
+      out.new = ex.wo || ex.id; out.newState = ex.state;
+      // the same state is not enough: an idea's chain (its orders, in order) must match too
+      const ids = (/** @type {any} */ x) => (Array.isArray(x?.chain) ? x.chain.map((/** @type {any} */ c) => String(c?.id || '')).join(',') : '');
+      if (ex.state === oldState && (kind !== 'idea' || ids(it) === ids(ex))) { out.verdict = 'same'; out.reason = `the export's own ${kind} item`; items.push(out); continue; }
+      if (ex.state === oldState) { out.reason = `same state, but the chain differs: old ${ids(it) || 'none'}, new ${ids(ex) || 'none'}`; items.push(out); continue; }
+      if (ex.state === 'shipped') { out.verdict = 'explained'; out.reason = `new proof the old ledger does not read: ${ex.proof}`; items.push(out); continue; }
+      out.reason = `the old ledger says ${oldState}, the export's own ${kind} item says ${ex.state}${ex.why ? ` (${ex.why})` : ''}: no known reason`; items.push(out); continue;
+    }
+    if (kind === 'roadmap') {
+      const rm = roadmaps?.get(String(it.from || ''));
+      if (!rm) { out.verdict = 'explained'; out.reason = `the roadmap of ${it.from} was not imported (its checkout was not given and no Yard order names it)`; }
+      else if (!rm.ok) { out.verdict = 'explained'; out.reason = `the roadmap of ${it.from} could not be read: ${rm.why}`; }
+      else if (!ex) out.reason = `the old ledger lists ${id} (${oldState}); the export does not: no known reason`;
+      else out.reason = `the old ledger says ${oldState}, the export ${ex.state}: no known reason`;
+      items.push(out); continue;
+    }
     let job = kind === 'order' ? id : '';
     if (kind === 'idea') {
       const chain = Array.isArray(it.chain) ? it.chain : [];
