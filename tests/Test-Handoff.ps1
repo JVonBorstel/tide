@@ -210,7 +210,7 @@ try {
     $creedLines = @(Get-Content (Join-Path $PSScriptRoot '..\kitchen\CREED.md') | Where-Object { $_ -match '^\d+\. ' })
     $b11 = Join-Path $root 'brain11'; New-Item -ItemType Directory -Force "$b11\memory" | Out-Null
     Set-Content "$b11\memory\PICKUP.md" ((1..40 | % { "pickup row $_ " + ('p' * 95) }) -join "`n")
-    Set-Content "$b11\memory\NOW.md" ((1..20 | % { "now $_ " + ('n' * 85) }) -join "`n")   # 20 rows: room for the Creed (it grows with each rule; it is never cut)
+    Set-Content "$b11\memory\NOW.md" ((1..10 | % { "now $_ " + ('n' * 85) }) -join "`n")   # 10 rows (was 20 before CREED 12-13; keeps margin under the 10000 cap): room for the Creed (it grows with each rule; it is never cut)
     $r = HO -BrainPath $b11 -Repos $repoA -KitchenScript $kOk -OutPath (Join-Path $root 'out\c1.md')
     $c1 = Get-Content (Join-Path $root 'out\c1.md') -Raw
     Check 'cap: a pack over the old 8000 but under 10000 is not shortened' ($r.Code -eq 0 -and $c1.Length -gt 8000 -and $c1.Length -le 10000 -and $c1 -notmatch 'shortened to fit|boot pack exceeded')
