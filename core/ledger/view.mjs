@@ -235,8 +235,8 @@ export function buildView(events, o) {
   const count = (/** @type {string} */ s) => rows.filter((r) => r.state === s).length;
   const shipped24 = rows.filter((r) => r.state === 'shipped' && r.stageAgeH <= 24).length;
   const top = `Work: ${queueAll.length} cards and ${count('waiting-on-jordan')} orders waiting on Jordan, ${count('stale')} stale, ${count('stuck')} stuck, ${count('lost')} lost, ${count('moving')} moving; ${shipped24} shipped in the last 24 h; ${build.length} of ${WIP.streams} build streams open${paused ? '; the Yard is paused' : ''}`;
-  const order = ['waiting-on-jordan', 'stale', 'stuck', 'lost', 'moving', 'shipped', 'dropped', 'replaced'];
-  rows.sort((a, b) => order.indexOf(a.state) - order.indexOf(b.state) || b.ageH - a.ageH || a.id.localeCompare(b.id));
+  // needs-you first, then newest first (a reader that shows only the first N never shows only the oldest N)
+  rows.sort((a, b) => Number(b.state === 'waiting-on-jordan') - Number(a.state === 'waiting-on-jordan') || a.ageH - b.ageH || a.id.localeCompare(b.id));
   const internal = { rowMeta: rows.map((r) => ({ planWhy: r._planWhy, createdAt: r._createdAt })), fold: { wos, decisions, snap } };
   for (const r of rows) { delete r._planWhy; delete r._createdAt; }
   return { at: o.now.toISOString(), top, queue: queueAll.slice(0, 7), queueTotal: queueAll.length, queueAll, streams, rows, flags, flagValues, paused, internal };
@@ -262,6 +262,23 @@ export function flagProjection(defaults, sets) {
  * ledger leaves out shipped orders.
  * @param {ReturnType<typeof buildView>} v @param {{ recentH?: number }} [o]
  */
+/** The page size of ledger.next.json: the Board's reader takes the first 400 items (pass-app/server.mjs ledgerView). */
+export const PAGE_SIZE = 400;
+
+/**
+ * Split the export into pages: page 1 is the whole document with the first PAGE_SIZE items (ledger.next.json, the file the Board
+ * reads); every page says the page count and the item total, so no reader takes a first page for the whole list.
+ * @param {any} doc @param {number} [size] @returns {any[]}
+ */
+export function pageLedger(doc, size = PAGE_SIZE) {
+  const total = doc.items.length; const pages = Math.max(1, Math.ceil(total / size)); const out = [];
+  for (let p = 1; p <= pages; p++) {
+    const items = doc.items.slice((p - 1) * size, p * size); const paging = { page: p, pages, pageSize: size, itemsTotal: total };
+    out.push(p === 1 ? { ...doc, paging, items } : { ok: true, updated: doc.updated, paging, items });
+  }
+  return out;
+}
+
 export function exportLedgerJson(v, o = {}) {
   const recentH = o.recentH ?? 168;
   const ownerWord = /** @type {Record<string,string>} */ ({ crew: 'kitchen', jordan: 'Jordan', nobody: '' });
@@ -274,7 +291,9 @@ export function exportLedgerJson(v, o = {}) {
     chain: [{ id: r.alias || r.id, status: r.stage, proof: r.proof || '', note: r.next || '', replacedBy: r.state === 'replaced' && r.next ? r.next.replace(/^continues as /, '') : '' }],
   }));
   // no cap: the old file had none, and a cap would drop items silently (the Board's reader takes the first 400 itself)
-  const items = [...lg.items, ...rowItems];
+  // needs-you first, then newest first; nothing is cut here (pageLedger splits the file into pages)
+  const items = [...lg.items, ...rowItems].map((x, i) => ({ x, i })).sort((a, b) => Number(b.x.state === 'waiting-on-jordan') - Number(a.x.state === 'waiting-on-jordan')
+    || String(b.x.since || '').localeCompare(String(a.x.since || '')) || a.i - b.i).map((y) => y.x);
   const ruleOwner = /** @type {Record<string,[string, number]>} */ ({ lost: ['Claude', 1], stale: ['Claude', 2], 'stack-too-deep': ['Claude', 2], 'no-plan': ['Claude', 3], 'no-decision': ['Jordan', 2], 'over-wip': ['Jordan', 2] });
   // the view's own flags for rows that are not Yard orders (the old rules flag those), Jordan's cards, then the old flags
   const flags = v.flags.filter((f) => !f.wo || !jobOfWo(f.wo)).map((f) => ({ id: f.wo || f.flag, rule: f.flag, owner: ruleOwner[f.flag]?.[0] || 'Claude', pri: ruleOwner[f.flag]?.[1] || 3, say: f.detail }))

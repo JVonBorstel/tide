@@ -547,7 +547,58 @@ async function testReview31() {
   if (saved === undefined) delete process.env.LEDGER_LIVE_STATE; else process.env.LEDGER_LIVE_STATE = saved;
 }
 
+// ---- WO-UPG-L1-3: every export goes through share.mjs; needs-you first, then newest; pages, never a silent cut ----
+async function testShare() {
+  const { makeRedactor, MARK } = await import('../../../core/ledger/share.mjs');
+  const { pageLedger } = await import('../../../core/ledger/view.mjs');
+  // private-looking values are built at run time (CREED 8), and are synthetic
+  const userPath = ['C:', 'Users', 'someone', 'notes', 'plan.md'].join('\\'); const mail = ['someone', 'example.invalid'].join('@');
+  const host = ['box', 'tail0000', 'ts', 'net'].join('.'); const ip = ['192', '168', '7', '9'].join('.');
+  const r = makeRedactor({ privateWords: ['Acme Widgets'] });
+  const red = r(`see ${userPath}, mail ${mail}, host ${host} at ${ip}, apply to acme widgets; tide#21 stays`);
+  check('l3: free text loses paths, emails, private hosts and addresses, and private words (any case)', !red.includes('someone') && !red.includes('tail0000') && !red.includes(ip) && !/acme/i.test(red)
+    && red.includes(MARK.path) && red.includes(MARK.email) && red.includes(MARK.host) && red.includes(MARK.word) && red.includes('tide#21'), red);
+  // a synthetic state: a job whose goal names a path, an email and a private word; a private job; the private words list
+  const state = path.join(tmp, 'l3-state'); makeState(state, 6);
+  const setJob = (id, f) => { const p = path.join(state, 'jobs', `${id}.json`); const j = JSON.parse(fs.readFileSync(p, 'utf8')); f(j); W(p, j); };
+  setJob('J1', (j) => { j.vars.goal = `Fix ${userPath} for ${mail} at Acme Widgets`; j.status = 'waiting-approval'; });
+  setJob('J2', (j) => { j.vars.goal = 'A secret goal text'; j.vars.private = 'yes'; j.status = 'pending'; });   // as the Yard writes it (kitchen/cook.ps1)
+  setJob('J3', (j) => { j.vars.goal = 'Another secret goal'; j.steps = [{ script: 'stations/tests.ps1', args: { Private: true } }]; });
+  W(path.join(state, 'ledger-private-words.json'), ['Acme Widgets']);
+  const db = path.join(tmp, 'l3-out', 'tide.db'); const lines = [];
+  check('l3: build writes the shared files', await main(['build', '--state', state, '--db', db, '--no-github', '--repo', `example=${path.join(tmp, 'repo')}`, '--now', NOW.toISOString()], { out: (x) => lines.push(x) }) === 0);
+  const work = fs.readFileSync(path.join(tmp, 'l3-out', 'work.json'), 'utf8'); const led = fs.readFileSync(path.join(tmp, 'l3-out', 'ledger.next.json'), 'utf8');
+  for (const [name, text] of [['work.json', work], ['ledger.next.json', led]]) {
+    check(`l3: ${name} has no path, email or private word, and no private order's goal`, !text.includes('someone') && !/acme widgets/i.test(text) && !text.includes('A secret goal text') && !text.includes('Another secret goal'));
+  }
+  check('l3: a private order shows "a private work order" in work.json and ledger.next.json', JSON.parse(work).rows.find((x) => x.id === 'WO-2')?.goal === MARK.order && JSON.parse(led).items.find((x) => x.id === 'J2')?.title === MARK.order);
+  const s = await openStore(db, { readOnly: true }); const raw = s.events({ wo: 'WO-2' }).find((e) => e.kind === 'wo.created'); s.close();
+  check('l3: tide.db keeps the raw facts (it never leaves the PC)', raw?.data.goal === 'A secret goal text');
+  lines.length = 0; await main(['show', 'J2', '--db', db, '--json', '--state', state, '--now', NOW.toISOString()], { out: (x) => lines.push(x) });
+  const shown = JSON.parse(lines[0]);
+  check('l3: show --json hides a private order\'s goal and drops x.* event data', shown.row.goal === MARK.order && shown.events.filter((e) => /^x\./.test(e.kind)).every((e) => JSON.stringify(e.data) === '{}'));
+  lines.length = 0; await main(['queue', '--db', db, '--json', '--state', state, '--now', NOW.toISOString()], { out: (x) => lines.push(x) });
+  check('l3: queue --json is redacted (the waiting order\'s goal loses its path, email and private word)', !lines[0].includes('someone') && !/acme widgets/i.test(lines[0]) && /WO-1/.test(lines[0]));
+  // order: needs-you first, then newest
+  const rows = JSON.parse(work).rows; const items = JSON.parse(led).items;
+  const rNot = rows.findIndex((x) => x.state !== 'waiting-on-jordan');
+  check('l3: work.json rows: needs-you first, then newest first', rows[0].state === 'waiting-on-jordan' && rows.slice(rNot).every((x) => x.state !== 'waiting-on-jordan') && rows.slice(rNot).every((x, i, a) => i === 0 || a[i - 1].ageH <= x.ageH));
+  const firstNot = items.findIndex((x) => x.state !== 'waiting-on-jordan');
+  check('l3: ledger.next.json items: needs-you first, then newest first', items[0].state === 'waiting-on-jordan' && items.slice(firstNot).every((x, i, a) => i === 0 || String(a[i - 1].since || '') >= String(x.since || '')));
+  // pages, never a silent cut
+  const doc = { ok: true, updated: NOW.toISOString(), items: Array.from({ length: 950 }, (_, i) => ({ id: `I${i}` })) };
+  const pages = pageLedger(doc);
+  check('l3: 950 items make 3 pages of 400, 400 and 150, each saying the page count and the total', pages.length === 3 && pages.map((p) => p.items.length).join() === '400,400,150' && pages.every((p) => p.paging.pages === 3 && p.paging.itemsTotal === 950));
+  check('l3: the pages hold every item once, in order', pages.flatMap((p) => p.items.map((x) => x.id)).join() === doc.items.map((x) => x.id).join());
+  check('l3: an empty export is one page with 0 items', pageLedger({ ok: true, items: [] }).length === 1);
+  const big = path.join(tmp, 'l3-big'); makeState(big, 420);
+  await main(['build', '--state', big, '--db', path.join(big, 'out', 'tide.db'), '--no-github', '--repo', `example=${path.join(tmp, 'repo')}`, '--now', NOW.toISOString()], { out: () => { } });
+  const p1 = JSON.parse(fs.readFileSync(path.join(big, 'out', 'ledger.next.json'), 'utf8')); const p2f = path.join(big, 'out', 'ledger.next.page-2.json');
+  check('l3: build writes page 2 when there are over 400 items, and page 1 says how many there are', p1.items.length === 400 && p1.paging.itemsTotal > 400 && fs.existsSync(p2f) && JSON.parse(fs.readFileSync(p2f, 'utf8')).items.length === p1.paging.itemsTotal - 400);
+}
+
 try {
+  await testShare();
   await testLegacy();
   await testReview31();
   await testStore(); await testYard(); await testGithub(); await testLocal(); testView(); testExport();

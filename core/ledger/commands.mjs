@@ -12,7 +12,8 @@ import { importGithub } from './import-github.mjs';
 import { importLocal } from './import-local.mjs';
 import { importIdeas } from './import-ideas.mjs';
 import { importRoadmaps, importLobe } from './import-roadmap.mjs';
-import { buildView, exportLedgerJson } from './view.mjs';
+import { buildView, exportLedgerJson, pageLedger } from './view.mjs';
+import { makeRedactor, readPrivateWords, privateOf, shareWork, shareLedger, redactDeep, publicEvent } from './share.mjs';
 import { compareLedgers } from './parity.mjs';
 import { readSwitches } from '../contracts/upgrade.mjs';
 import { woOfJob } from './ids.mjs';
@@ -68,12 +69,19 @@ function writeAtomic(p, obj) { fs.mkdirSync(path.dirname(p), { recursive: true }
 /** @param {any} o */
 const nowOf = (o) => { if (!o.now) return new Date(); const d = new Date(o.now); if (Number.isNaN(d.getTime())) throw new UsageError('--now must be a time like 2030-01-07T09:00:00Z'); return d; };
 const flagsFile = (/** @type {any} */ o) => o.flags || path.join(REPO_ROOT, 'flags.json');
+/** The private words list lives in the state folder (personal values never enter the repo). */
+const privateWordsFile = (/** @type {any} */ o) => o['private-words'] || (o.state ? path.join(o.state, 'ledger-private-words.json') : undefined);
 
 /** @param {any} o */
 async function viewFrom(o) {
   if (!o.db) throw new UsageError('give --db <file> (the event store)');
   const store = await openStore(o.db, { readOnly: true });
-  try { const events = store.events(); return { events, view: buildView(events, { now: nowOf(o), flagDefaults: readJson(flagsFile(o)) }) }; } finally { store.close(); }
+  try {
+    const events = store.events(); const view = buildView(events, { now: nowOf(o), flagDefaults: readJson(flagsFile(o)) });
+    // the --json answers use the shared view: a private order shows no goal (emit then redacts every string)
+    const { internal, ...work } = view; const shared = shareWork(work, privateOf(view), (x) => x);
+    return { events, view, shared };
+  } finally { store.close(); }
 }
 
 /** @param {any} o @param {(s: string) => void} say */
@@ -102,9 +110,14 @@ async function build(o, say, live = []) {
     const lobe = importLobe(o.state, { now }); report.lobe = lobe.report; report.added.lobe = store.append(lobe.events).added;
     const events = store.events();
     const view = buildView(events, { now, flagDefaults: readJson(flagsFile(o)) });
+    // every file written for readers goes through share.mjs: private orders show no goal, free text loses paths, hosts, emails and
+    // private words; ledger.next.json is paged (page 1 is the file the Board reads; ledger.next.page-<n>.json holds the rest)
+    const pw = readPrivateWords(privateWordsFile(o)); const priv = privateOf(view); const redact = makeRedactor({ privateWords: [...pw.words, ...priv.words] });
     const { internal, ...work } = view;
-    writeAtomic(path.join(out, 'work.json'), { ok: true, ...work });
-    writeAtomic(path.join(out, 'ledger.next.json'), exportLedgerJson(view));
+    writeAtomic(path.join(out, 'work.json'), { ok: true, ...shareWork(work, priv, redact) });
+    const pages = pageLedger(shareLedger(exportLedgerJson(view), priv, redact));
+    pages.forEach((pg, i) => writeAtomic(path.join(out, i === 0 ? 'ledger.next.json' : `ledger.next.page-${i + 1}.json`), pg));
+    report.share = { privateWords: pw.words.length + priv.words.length, privateOrders: priv.ids.size, why: pw.why, pages: pages.length, items: pages[0].paging.itemsTotal };
     report.store = store.info(); report.top = view.top; report.rows = view.rows.length;
     say(view.top);
     say(`events: ${report.store.events} (added: yard ${report.added.yard}, github ${report.added.github ?? 0}, local ${report.added.local}, ideas ${report.added.ideas}, roadmaps ${report.added.roadmaps}, lobe ${report.added.lobe}); rows ${view.rows.length}; wrote ${path.join(out, 'work.json')} and ledger.next.json`);
@@ -124,15 +137,17 @@ export async function main(argv, io = {}) {
   try {
     o = parseArgs(argv);
     const cmd = o._[0] || 'build';
-    const emit = (/** @type {any} */ obj, /** @type {() => void} */ text) => { if (o.json) say(JSON.stringify(obj)); else text(); };
-    if (cmd === 'build') { const r = await build(o, o.json ? () => { } : say, io.liveState || []); if (o.json) say(JSON.stringify({ ok: true, ...r })); return 0; }
+    // a --json answer may be piped anywhere, so it is redacted like the files (the state folder's private words, when --state is given)
+    const jsonRedact = () => makeRedactor({ privateWords: readPrivateWords(privateWordsFile(o)).words });
+    const emit = (/** @type {any} */ obj, /** @type {() => void} */ text) => { if (o.json) say(JSON.stringify(redactDeep(obj, jsonRedact()))); else text(); };
+    if (cmd === 'build') { const r = await build(o, o.json ? () => { } : say, io.liveState || []); if (o.json) say(JSON.stringify(redactDeep({ ok: true, ...r }, jsonRedact()))); return 0; }
     if (cmd === 'show') {
       const id = String(o._[1] || ''); if (!id) throw new UsageError('give an id: show WO-312 (or J312)');
-      const { events, view } = await viewFrom(o); const wo = /^J\d+$/.test(id) ? woOfJob(id) : id;
+      const { events, view, shared } = await viewFrom(o); const wo = /^J\d+$/.test(id) ? woOfJob(id) : id;
       const row = view.rows.find((r) => r.id === wo || r.alias === id);
       if (!row) { emit({ ok: false, code: 'not-found', error: `nothing named ${id} in the ledger` }, () => say(`nothing named ${id} in the ledger`)); return 1; }
       const evs = events.filter((e) => e.wo === row.id);
-      emit({ ok: true, row, events: evs }, () => {
+      emit({ ok: true, row: shared.rows.find((/** @type {any} */ r) => r.id === row.id), events: evs.map((e) => publicEvent(e).doc) }, () => {
         say(`${row.id}${row.alias ? ` (${row.alias})` : ''} [${row.stream}] ${row.goal.slice(0, 120)}`);
         say(`  ${row.state} at ${row.stage} for ${row.stageAgeH} h (age ${row.ageH} h); owner ${row.owner}${row.blockedOn ? `; waits on: ${row.blockedOn}` : ''}`);
         if (row.next) say(`  next: ${row.next}`); if (row.proof) say(`  proof: ${row.proof}`); if (row.pr) say(`  ${row.pr} ${row.branch} -> ${row.base}${row.stackParent ? ` (stacked on ${row.stackParent})` : ''}`);
@@ -142,9 +157,9 @@ export async function main(argv, io = {}) {
       return 0;
     }
     if (cmd === 'queue') {
-      const { view } = await viewFrom(o);
+      const { view, shared } = await viewFrom(o);
       const waiting = view.rows.filter((r) => r.state === 'waiting-on-jordan' && !r.decision).sort((a, b) => b.stageAgeH - a.stageAgeH);
-      emit({ ok: true, queue: view.queueAll, queueTotal: view.queueTotal, waitingWithoutCard: waiting }, () => {
+      emit({ ok: true, queue: shared.queueAll, queueTotal: view.queueTotal, waitingWithoutCard: shared.rows.filter((/** @type {any} */ r) => waiting.some((x) => x.id === r.id)) }, () => {
         say(`${view.queueTotal} cards for Jordan, oldest first; ${waiting.length} orders wait on him with no card`);
         view.queueAll.forEach((c, i) => say(`${i + 1}. [${c.ageH} h] ${c.decision.id} ${c.decision.kind}: ${c.decision.ask} (recommended: ${c.decision.recommended})`));
         for (const r of waiting) say(`-  [${r.stageAgeH} h] ${r.id}: ${r.blockedOn} (no card)`);
@@ -152,7 +167,7 @@ export async function main(argv, io = {}) {
       return 0;
     }
     if (cmd === 'streams') {
-      const { view } = await viewFrom(o);
+      const { view, shared } = await viewFrom(o);
       emit({ ok: true, streams: view.streams, flags: view.flags }, () => {
         say(view.top);
         for (const s of view.streams) say(`${s.stream}: ${s.open} open, oldest ${s.oldestH} h at ${s.stage ?? '-'}, ${s.cards} waiting on Jordan${s.overLimit ? ' (OVER A LIMIT)' : ''}${s.blockedOn ? `; ${s.blockedOn}` : ''}`);
@@ -160,11 +175,11 @@ export async function main(argv, io = {}) {
       });
       return 0;
     }
-    if (cmd === 'flags') { const { view } = await viewFrom(o); emit({ ok: true, flags: view.flagValues }, () => { if (!view.flagValues.length) say('no feature flags declared or set'); for (const f of view.flagValues) say(`${f.flag}: ${f.on ? 'on' : 'off'} (${f.from}${f.decision ? `, ${f.decision}` : ''})`); }); return 0; }
+    if (cmd === 'flags') { const { view, shared } = await viewFrom(o); emit({ ok: true, flags: view.flagValues }, () => { if (!view.flagValues.length) say('no feature flags declared or set'); for (const f of view.flagValues) say(`${f.flag}: ${f.on ? 'on' : 'off'} (${f.from}${f.decision ? `, ${f.decision}` : ''})`); }); return 0; }
     if (cmd === 'parity') {
       if (!o.old) throw new UsageError('give --old <ledger.json> (built by kitchen/ledger.ps1 on the same scratch copy)');
       const old = readJson(o.old); if (!old) { emit({ ok: false, code: 'unreadable', error: `cannot read ${o.old}` }, () => say(`cannot read ${o.old}`)); return 1; }
-      const { events, view } = await viewFrom(o); const p = compareLedgers(old, view, events);
+      const { events, view, shared } = await viewFrom(o); const p = compareLedgers(old, view, events);
       emit(p, () => {
         say(`Parity: ${p.old} old items: ${p.same} same, ${p.explained} explained, ${p.unexplained} unexplained; ${p.newOnly} rows only in the new ledger; ${p.lobeFlagsNotImported} lobe flags not imported`);
         for (const i of p.items.filter((x) => x.verdict !== 'same')) say(`${i.verdict === 'unexplained' ? 'UNEXPLAINED' : 'explained'} ${i.old} (${i.oldState}) -> ${i.new ?? 'no row'} (${i.newState ?? '-'}): ${i.reason}`);

@@ -21,6 +21,8 @@ function readJsonl(p) {
 }
 const isCode = (/** @type {any} */ j) => Array.isArray(j?.steps) && j.steps.some((/** @type {any} */ s) => /merge\.ps1$/i.test(String(s?.script || '')));
 const stepName = (/** @type {any} */ s) => String(s?.script || 'step').split(/[\\/]/).pop()?.replace(/\.ps1$/i, '').toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^[^a-z]+/, '').slice(0, 40) || 'step';
+// a private order, as the Yard marks it (kitchen/cook.ps1, automerge.ps1): vars.private yes or true, or a step run with -Private
+const isPrivate = (/** @type {any} */ j) => /^(yes|true)$/i.test(String(j?.vars?.private ?? '')) || j?.vars?.private === true || (Array.isArray(j?.steps) && j.steps.some((/** @type {any} */ s) => s?.args?.Private === true));
 const clampAttempt = (/** @type {unknown} */ n) => Math.min(20, Math.max(1, Number(n) || 1));
 const REPO_RE = /^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+$/;
 
@@ -65,7 +67,7 @@ export function importYard(state, opt = {}) {
     const created = isoOrNull(j.created) || fileAt;
     const goal = text(j.vars?.goal || j.name || id, 2000) || id;
     const repo = REPO_RE.test(String(j.vars?.github || '')) ? String(j.vars.github) : undefined;
-    add(`yard:${id}:created`, created, 'wo.created', wo, { goal, stream: 'YARD', alias: id, ...(repo ? { repo } : {}), ...(j.vars?.private === true || j.vars?.private === 'true' ? { private: true } : {}) });
+    add(`yard:${id}:created`, created, 'wo.created', wo, { goal, stream: 'YARD', alias: id, ...(repo ? { repo } : {}), ...(isPrivate(j) ? { private: true } : {}) });
     const status = String(j.status || 'unknown'); const c = closedBy.get(id);
     const hist = Array.isArray(j.history) ? j.history : [];
     const lastAt = isoOrNull(hist[hist.length - 1]?.at) || isoOrNull(j.ended) || c?.at || created;
