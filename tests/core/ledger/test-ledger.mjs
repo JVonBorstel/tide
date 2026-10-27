@@ -391,6 +391,17 @@ async function testParity(db) {
 }
 
 // ---- WO-UPG-L1-2: ideas, manual links, Jordan's drops, roadmaps, the lobe's decisions, and the old ledger's items rebuilt ----
+// the lobe part of WO-UPG-L1-2: a missing, a changing and an unreadable flags.json
+async function testLegacyLobe(state, base, lobeDir, importLobe) {
+  const noLobe = importLobe(state, { now: NOW, home: path.join(base, 'none') });
+  check('l2: lobe: no flags.json is unknown (null counts), never a made-up zero', noLobe.report.ok === false && noLobe.events[0].data.missing === true);
+  const lo = await openStore(':memory:'); const lobeRead = (home) => lo.append(importLobe(state, { now: NOW, home }).events).added;
+  check('l2: lobe flags present -> missing -> present again records 3 changes (A -> B -> A), and a rerun adds 0', lobeRead(lobeDir) + lobeRead(path.join(base, 'none')) + lobeRead(lobeDir) === 3 && lobeRead(lobeDir) === 0); lo.close();
+  W(path.join(base, 'bad', 'flags.json'), '{ not json');
+  const bad = importLobe(state, { now: NOW, home: path.join(base, 'bad') }); const s2 = await openStore(':memory:'); s2.append(bad.events);
+  check('l2: lobe: an unreadable flags.json is a flag for Claude', exportLedgerJson(buildView(s2.events(), { now: NOW })).flags.some((f) => f.rule === 'lobe-flags-unreadable')); s2.close();
+}
+
 async function testLegacy() {
   const { importIdeas } = await import('../../../core/ledger/import-ideas.mjs');
   const { importRoadmaps, importLobe } = await import('../../../core/ledger/import-roadmap.mjs');
@@ -449,13 +460,7 @@ async function testLegacy() {
   check('l2: lobe: a post-mortem of an undone merge says undone', lf('S-J7-b')?.proofKind === 'undone');
   check('l2: lobe: an order with no file is unknown; a day that is not 30/60/90 is skipped', lf('S-J99-c')?.proofKind === 'unknown' && !lf('S-J5-d') && ex.counts.postMortemsDue === 3);
   check('l2: counts keep the old meaning; the new rows are counted under work', ex.counts.claimed === 1 && ex.counts.notStarted >= 3 && typeof ex.work.rows === 'number');
-  const noLobe = importLobe(state, { now: NOW, home: path.join(base, 'none') });
-  check('l2: lobe: no flags.json is unknown (null counts), never a made-up zero', noLobe.report.ok === false && noLobe.events[0].data.missing === true);
-  const lo = await openStore(':memory:'); const lobeRead = (home) => lo.append(importLobe(state, { now: NOW, home }).events).added;
-  check('l2: lobe flags present -> missing -> present again records 3 changes (A -> B -> A), and a rerun adds 0', lobeRead(lobeDir) + lobeRead(path.join(base, 'none')) + lobeRead(lobeDir) === 3 && lobeRead(lobeDir) === 0); lo.close();
-  W(path.join(base, 'bad', 'flags.json'), '{ not json');
-  const bad = importLobe(state, { now: NOW, home: path.join(base, 'bad') }); const s2 = await openStore(':memory:'); s2.append(bad.events);
-  check('l2: lobe: an unreadable flags.json is a flag for Claude', exportLedgerJson(buildView(s2.events(), { now: NOW })).flags.some((f) => f.rule === 'lobe-flags-unreadable')); s2.close();
+  await testLegacyLobe(state, base, lobeDir, importLobe);
   const none = importRoadmaps({ repos: [{ path: path.join(tmp, 'repo'), name: 'plain' }], now: NOW });
   check('l2: a repo with no roadmap adds nothing', none.events.length === 0 && /no (kitchen\.repo\.json|roadmap)/.test(none.report[0].why));
   W(path.join(base, 'broken', 'kitchen.repo.json'), { roadmap: 'map/roadmap.json' }); W(path.join(base, 'broken', 'map', 'roadmap.json'), { waves: [{ id: 'W1', items: [{ id: 'not an id' }] }] });
