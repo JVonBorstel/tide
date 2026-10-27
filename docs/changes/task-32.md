@@ -123,3 +123,32 @@ One check per acceptance line, named after it:
   - `SpeedBudget_NotWorse`: no canvas, animation or frame loop added, a few nodes per row. The budget itself is measured by CI's report-only `speed` job on the pull request.
 - `pass-app/test-readable.mjs` (task 30): its home-count checks now expect the task 32 words and window.
 - `tests/Test-KitchenApi.ps1`: its second cook of the same question now asks another one, and a new check proves the duplicate is refused over the API.
+- Run one at a time, bounded (`scripts/run-bounded.ps1`), on this branch:
+
+  | Suite | Result |
+  |---|---|
+  | `Test-KitchenCare` | 22 passed, 0 failed |
+  | `Test-Backoff` | 48 passed, 0 failed |
+  | `Test-JobsIndex` | 13 passed, 0 failed |
+  | `Test-KitchenApi` | 64 passed, 0 failed |
+  | `Test-Kitchen` | 70 passed, 0 failed |
+  | `Test-KitchenCooks` | 59 passed, 0 failed |
+  | `Test-KitchenFreshen` | 85 passed, 0 failed |
+  | `Test-KitchenIdeas` | 49 passed, 0 failed |
+  | `Test-KitchenMap` | 16 passed, 0 failed |
+  | `Test-KitchenMerge` | 59 passed, 0 failed |
+  | `Test-KitchenRecipes` | 87 passed, 0 failed |
+  | `Test-KitchenSupervisor` | 245 passed, 0 failed |
+  | `Test-PassApp` | 1384 passed, 0 failed |
+  | `Test-Standards` | 20 passed, 0 failed |
+  | `Test-Work` | 118 passed, 0 failed |
+
+- Two flakes seen while other suites or screen tests ran at the same time on this PC; both were green when run again alone:
+  - `test-status-line.mjs` `BrokenBar_NotClearable_ShrinksTo28` (once in 4 runs here, 0 in 2 on main);
+  - `Test-KitchenSupervisor` "kill stops the worker" (the 30 s wait for a pid).
+- Code-quality ratchet (`scripts/quality/metrics.ps1 -ChangedSince origin/main`): 0 new violations. Five long functions grew, which is a warning only: `Check-Running`, `act` and `handle` in this change; `Read-RepoConfig` and `startLive` were already over on main.
+- Speed budget: `SpeedBudget_NotWorse` is checked in the screen test above. CI's `speed` job (report only) measures the budget itself on the pull request.
+
+**L1-L4:**
+- Person: every failure on the Board says what happened and what comes next, and only what needs Jordan now is counted.
+- Business, MSP, community: none.
