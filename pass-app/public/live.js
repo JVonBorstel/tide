@@ -393,7 +393,7 @@ export function startLive(o) {
     chime();
     try {
       if (!('Notification' in win) || win.Notification.permission !== 'granted') return;
-      const opts = { body: 'Open the Board', tag: 'chef-quiet', icon: '/icon.svg' };
+      const opts = { body: 'Open the Board', tag: 'chef-quiet', icon: '/icon-192.png' };
       try { new win.Notification('The Yard went quiet', opts); } catch { win.navigator.serviceWorker?.ready.then((r) => r.showNotification('The Yard went quiet', opts)).catch(() => {}); }
     } catch { /* notices blocked: the chime played */ }
   }

@@ -32,7 +32,7 @@ export function makeView(sec, o) {
       const r = await fetch(`/api/work?page=${page}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
       if (r.status === 404) { location.hash = '#/ledger'; return; }   // the flag went off
       const j = await r.json().catch(() => null);
-      if (!j || !j.ok) throw new Error(j?.error || `the Board answered ${r.status}`);
+      if (!j || !j.ok) throw new Error(j?.error || `Tide answered ${r.status}`);
       if (page === 1) { const extra = V.rows.slice(j.rows.length).filter((x) => !j.rows.some((y) => y.id === x.id)); V.data = j; V.rows = V.page > 1 ? j.rows.concat(extra) : j.rows; store.set('snap', j); }
       else V.rows = V.rows.concat(j.rows.filter((x) => !V.rows.some((y) => y.id === x.id)));
       if (page > 1) V.page = page; V.pages = Number(r.headers.get('X-Rows-Pages')) || 1; V.total = Number(r.headers.get('X-Rows-Total')) || V.rows.length;
