@@ -176,7 +176,7 @@ const maskDecision = (d) => ({ ...d, ask: MARK.ask, ...(d.why != null ? { why: n
  * @param {any} work the view without internal @param {ReturnType<typeof privateOf>} priv @param {(s: string) => string} redact
  */
 export function shareWork(work, priv, redact) {
-  const rows = work.rows.map((/** @type {any} */ r) => (priv.ids.has(r.id) ? { ...r, goal: MARK.order, blockedOn: maskReason(r.blockedOn), next: maskReason(r.next) } : r));
+  const rows = work.rows.map((/** @type {any} */ r) => (priv.ids.has(r.id) ? { ...r, goal: MARK.order, blockedOn: maskReason(r.blockedOn), next: maskReason(r.next), branch: null, pr: null } : r));   // a private order's branch and PR name its work too (review of tide#40, F1)
   const queue = (/** @type {any[]} */ q) => q.map((c) => (priv.decisions.has(c.decision?.id) || (c.decision?.wo && priv.ids.has(c.decision.wo)) ? { ...c, goal: MARK.order, decision: maskDecision(c.decision) } : c));
   const flags = (work.flags || []).map((/** @type {any} */ f) => (f.wo && priv.ids.has(f.wo) ? { ...f, detail: `${f.wo}: ${MARK.order} (${f.flag})` } : f));
   const streams = (work.streams || []).map((/** @type {any} */ s) => ({ ...s, blockedOn: s.blockedOn && rows.some((/** @type {any} */ r) => priv.ids.has(r.id) && r.stream === s.stream && work.rows.find((/** @type {any} */ x) => x.id === r.id)?.blockedOn === s.blockedOn) ? maskReason(s.blockedOn) : s.blockedOn }));

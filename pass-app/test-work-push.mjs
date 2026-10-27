@@ -33,7 +33,7 @@ function phone(endpoint) {
 
 // a fake push service on 127.0.0.1: answers each path with the status the test sets
 const got = []; const statusFor = new Map();
-const svc = http.createServer((req, res) => { const chunks = []; req.on('data', (d) => chunks.push(d)); req.on('end', () => { got.push({ path: req.url, headers: req.headers, body: Buffer.concat(chunks) }); res.writeHead(statusFor.get(req.url) ?? 201); res.end(); }); });
+const svc = http.createServer((req, res) => { const chunks = []; req.on('data', (d) => chunks.push(d)); req.on('end', () => { got.push({ path: req.url, headers: req.headers, body: Buffer.concat(chunks) }); const st = statusFor.get(req.url) ?? 201; res.writeHead(st, st >= 300 && st < 400 ? { Location: `${base}/elsewhere` } : {}); res.end(); }); });
 await new Promise((r) => svc.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${svc.address().port}`;
 const T = { allowHttpLocal: true };
@@ -88,6 +88,9 @@ try {
   const s4 = stateDir('noanswer'); fs.writeFileSync(path.join(s4, 'push-on'), 'on'); addSub(s4, phone('http://127.0.0.1:9/never').sub, T);
   const dead = await pushCards({ state: s4, n: 1, workOn: true, timeoutMs: 1500, ...T });
   check('a push service that cannot be reached also falls back to the badge, with the reason', dead.failed === 1 && dead.fallback === 'badge' && dead.errors.length === 1, JSON.stringify(dead));
+  statusFor.set('/redir', 307); const s7 = stateDir('redir'); fs.writeFileSync(path.join(s7, 'push-on'), 'on'); addSub(s7, phone(`${base}/redir`).sub, T);
+  const before7 = got.length; const red = await pushCards({ state: s7, n: 2, workOn: true, ...T });
+  check('a push service that answers with a redirect is not followed (review F4): it counts as failed, the badge is the fallback', red.failed === 1 && red.sent === 0 && red.fallback === 'badge' && got.slice(before7).every((g) => g.path !== '/elsewhere'), JSON.stringify(red) + ' ' + got.slice(before7).map((g) => g.path).join());
   statusFor.set('/gone', 410); const s5 = stateDir('gone'); fs.writeFileSync(path.join(s5, 'push-on'), 'on'); addSub(s5, phone(`${base}/gone`).sub, T); addSub(s5, phone(`${base}/fine`).sub, T);
   const gone = await pushCards({ state: s5, n: 4, workOn: true, ...T });
   check('a phone the push service says is gone (410) is forgotten; the others still get theirs', gone.gone === 1 && gone.sent === 1 && gone.fallback === null && readSubs(s5).map((s) => s.endpoint).join() === `${base}/fine`, JSON.stringify(gone));

@@ -9,6 +9,9 @@
 //     minimal environment whose LOCALAPPDATA, APPDATA, USERPROFILE, HOME and TEMP point inside that scratch folder, so the live state
 //     folder (%LOCALAPPDATA%\brain-kitchen) cannot be found, let alone read. A worktree or fixture inside the live folder is refused;
 //   - the port is freed after 2 h (ttl): the process tree is ended and the scratch folder removed; at most 3 previews run at once;
+//   - over Tailscale: the preview answers this PC's tailnet name (PASS_HOSTS, read once from `tailscale status --json`, read-only),
+//     so the link works once Jordan turns `tailscale serve` on for its port; the 2 h limit is a ceiling (--ttl-min above 120 is cut to 120);
+//   - a scratch folder a hard-killed launcher left behind is removed by the next start once it is older than the limit;
 //   - it never changes Tailscale: reaching the port from the phone needs `tailscale serve`, which is Jordan's setting. The answer names the
 //     exact command (serve) so a card can ask for it.
 // The PR's code runs as this Windows user. Run previews only for PRs of this repo (the crews' own branches), never for a stranger's fork.
@@ -47,6 +50,23 @@ export function writeFixture(dir) {
   fs.writeFileSync(path.join(dir, 'FIXTURE.txt'), 'synthetic preview data (pass-app/work/preview.mjs)\n');
 }
 
+/** This PC's tailnet name (Self.DNSName of `tailscale status --json`), or none. Read-only; never changes Tailscale. */
+export function tailnetHosts() {
+  for (const exe of ['tailscale', 'C:/Program Files/Tailscale/tailscale.exe']) {
+    try { const n = String(JSON.parse(execFileSync(exe, ['status', '--json'], { timeout: 5000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }).toString()).Self?.DNSName || '').toLowerCase().replace(/.$/, ''); if (n) return [n]; } catch { }
+  }
+  return [];
+}
+/** Remove scratch folders a hard-killed launcher left behind (older than the limit, not one of ours). */
+function sweepLeftovers() {
+  const mine = new Set([...running.values()].map((r) => path.resolve(r.scratch)));
+  try {
+    for (const d of fs.readdirSync(os.tmpdir())) {
+      if (!/^tide-preview-d+-/.test(d)) continue; const full = path.resolve(os.tmpdir(), d); if (mine.has(full)) continue;
+      try { if (Date.now() - fs.statSync(full).mtimeMs > TTL_MS + 600000) fs.rmSync(full, { recursive: true, force: true }); } catch { }
+    }
+  } catch { }
+}
 /** Is this port free on 127.0.0.1? @param {number} port */
 export function portFree(port) {
   return new Promise((ok) => { const s = net.createServer(); s.once('error', () => ok(false)); s.listen(port, '127.0.0.1', () => s.close(() => ok(true))); });
@@ -61,14 +81,14 @@ async function pickPort(/** @type {number|undefined} */ want) {
  * The minimal environment a preview server gets: no path or variable that leads to the live state folder or to Jordan's accounts.
  * @param {string} scratch @param {number} port
  */
-export function previewEnv(scratch, port) {
+export function previewEnv(scratch, port, hosts = []) {
   const keep = ['PATH', 'Path', 'PATHEXT', 'SystemRoot', 'SYSTEMROOT', 'ComSpec', 'windir', 'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'OS'];
   /** @type {Record<string, string>} */ const env = {};
   for (const k of keep) if (process.env[k] !== undefined) env[k] = String(process.env[k]);
   const home = path.join(scratch, 'home'); const tmp = path.join(scratch, 'tmp'); const empty = path.join(scratch, 'empty');
   for (const d of [home, tmp, empty]) fs.mkdirSync(d, { recursive: true });
   return { ...env, BRAIN_KITCHEN: path.join(scratch, 'state'), LOCALAPPDATA: home, APPDATA: home, USERPROFILE: home, HOME: home, TEMP: tmp, TMP: tmp,
-    PASS_PORT: String(port), PASS_NO_TAILSCALE: '1', PASS_HOSTS: '', PASS_NO_KICK: '1', BRAIN_NTFY_TOPIC: '', KITCHEN_NOTIFY_LOG: path.join(tmp, 'notify.txt'),
+    PASS_PORT: String(port), PASS_NO_TAILSCALE: '1', PASS_HOSTS: hosts.join(','), PASS_NO_KICK: '1', BRAIN_NTFY_TOPIC: '', KITCHEN_NOTIFY_LOG: path.join(tmp, 'notify.txt'),
     PASS_INCOME_DIR: empty, PASS_CAREER_DIR: empty, TIDE_DB: path.join(scratch, 'state', 'tide.db'), PASS_PREVIEW: '1' };
 }
 
@@ -97,6 +117,7 @@ export async function startPreview(o) {
   if (inside(wt, live)) return { ok: false, error: 'the worktree is inside the live state folder: refused' };
   if (o.fixture && (inside(o.fixture, live) || live.some((d) => inside(d, [path.resolve(o.fixture).toLowerCase()])))) return { ok: false, error: 'the fixture is (or holds) the live state folder: refused; previews use fixture data only' };
   if (o.fixture && !fs.existsSync(path.join(o.fixture, 'FIXTURE.txt'))) return { ok: false, error: 'a fixture folder must say what it is (FIXTURE.txt); only synthetic data goes in a preview' };
+  sweepLeftovers();
   if (running.size >= MAX_PREVIEWS) return { ok: false, error: `${MAX_PREVIEWS} previews are running; stop one first` };
   const port = await pickPort(o.port);
   if (!port) return { ok: false, error: o.port ? `port ${o.port} is taken` : `no free port in ${PORTS[0]}-${PORTS[1]}` };
@@ -105,18 +126,20 @@ export async function startPreview(o) {
   const state = path.join(scratch, 'state');
   if (o.fixture) fs.cpSync(o.fixture, state, { recursive: true }); else writeFixture(state);
   if (o.users?.length) fs.writeFileSync(path.join(state, 'pass-users.txt'), o.users.join('\n') + '\n');
-  const env = previewEnv(scratch, port);
+  const hosts = (o.hosts ?? tailnetHosts()).filter((h) => /^[a-z0-9.-]{3,253}$/.test(h));
+  const env = previewEnv(scratch, port, hosts);
   const log = fs.openSync(path.join(scratch, 'server.log'), 'a');
   const proc = spawn(process.execPath, [...(o.nodeArgs || []), server], { cwd: wt, env, stdio: ['ignore', log, log], windowsHide: true, detached: process.platform !== 'win32' });   // its own process group, so the whole tree ends
   fs.closeSync(log);
-  const ttl = Math.max(1000, o.ttlMs ?? TTL_MS);
+  const ttl = Math.min(TTL_MS, Math.max(1000, o.ttlMs ?? TTL_MS));   // the 2 h limit is a ceiling, not a default
   const rec = { id, port, url: `http://127.0.0.1:${port}/`, scratch, proc, expires: Date.now() + ttl, worktree: wt, timer: setTimeout(() => { stopPreview(id); }, ttl) };
   rec.timer.unref?.();
   running.set(id, rec);
   proc.once('exit', () => { if (running.has(id)) stopPreview(id); });
   for (let i = 0; i < 100 && !(await answers(port)); i++) await new Promise((r) => setTimeout(r, 150));
   if (!(await answers(port))) { await stopPreview(id); return { ok: false, error: 'the preview server did not start (see its server.log before it is removed)' }; }
-  return { ok: true, id, url: rec.url, port, expires: new Date(rec.expires).toISOString(), scratch, serve: `tailscale serve --bg --https=${port} http://127.0.0.1:${port}` };
+  return { ok: true, id, url: rec.url, port, expires: new Date(rec.expires).toISOString(), scratch, tailnet: hosts[0] || null,
+    serve: hosts.length ? `tailscale serve --bg --https=${port} http://127.0.0.1:${port}` : 'not reachable over Tailscale: no tailnet name was found on this PC' };
 }
 /** Does the Board answer /api/health on this port? @param {number} port */
 async function answers(port) { try { const r = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(1000) }); return r.status === 200; } catch { return false; } }

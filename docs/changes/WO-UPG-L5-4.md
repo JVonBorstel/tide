@@ -56,3 +56,16 @@ DevTools protocol with Node's own WebSocket; no package).
 - A/B/C preview images: `variants[].preview` is a path relative to an unnamed root (repo or private notes), so the tiles show the
   title and letter. A route for the images is a later slice.
 - Contracts (L0): the week route, plus the earlier `head` and paging fields.
+
+**Review fixes folded in (verifier on tide#40, #42, #45: `audits/review-tide-40-42-45-2026-10-27.md`):**
+- F1 (privacy): `core/ledger/share.mjs` `shareWork` masks a private order's `branch` and `pr` (null), so `work.json`, `/api/work`,
+  `/api/work/:id` and the stream no longer name its work. The coordinator asked for the fix there (an L1 file, one line). Tested.
+- F2: the Work API reads `flags.json` first, so an undeclared `board.work` never opens the store. Otherwise it opens the store
+  read-only to read the `flag.set` events and builds no view while the flag is off. A tap opens a write handle only for its write.
+- F3: a tap body with a `__proto__`, `constructor` or `prototype` key is refused (400). The validator fix itself is L0's.
+- F4: Web Push sends never follow a redirect (`redirect: 'manual'`); a redirect counts as failed, and the badge is the fallback.
+- P1: a preview answers this PC's tailnet name (`PASS_HOSTS`, read from `tailscale status --json`), so the link works through
+  `tailscale serve`. With no tailnet name, the answer says so.
+- P2: the 2 h preview limit is a ceiling: a longer `--ttl-min` is cut to 120.
+- P3: a scratch folder a hard-killed launcher left behind is removed by the next start once it is older than the limit.
+  - Left: a preview's recipe list still shows the real home folder (`os.userInfo()` in `server.mjs`, not an L5 line). This is a card.

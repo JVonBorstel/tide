@@ -2,7 +2,7 @@
 // line of the L5 brief (work breakdown "previews": fixture data only, a test proves the state folder is not read; the port is freed after
 // 2 h) or a rule of preview.mjs. Called by tests/Test-Work.ps1 (CI's Core step) and by hand: node pass-app/test-work-preview.mjs
 // It starts this checkout's own Board as the "PR worktree", against a decoy live state folder under TEMP (never the real one).
-import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import { fileURLToPath } from 'node:url';
+import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import http from 'node:http'; import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url)); const repo = path.resolve(here, '..');
 const results = [];
@@ -28,14 +28,19 @@ try {
   check('the decoy live folder is what the launcher guards', liveStateDirs().includes(path.resolve(decoy).toLowerCase()));
 
   // ---- fixture data only ----
-  const p = await startPreview({ worktree: repo, ttlMs: 60000 });
+  const tn = ['mybox', 'tail1234', 'ts', 'net'].join('.');   // a synthetic tailnet name, built at run time
+  const p = await startPreview({ worktree: repo, ttlMs: 60000, hosts: [tn] });
   check('a preview starts this worktree\'s Board on a local port', p.ok === true && /^http:\/\/127\.0\.0\.1:\d+\/$/.test(p.url), JSON.stringify(p));
   const s = p.ok ? await state(p) : { code: 0, text: '' };
   check('fixture data only: the preview shows the synthetic orders', s.code === 200 && s.text.includes('example sunrise colour') && s.text.includes('example empty state'), `${s.code} ${s.text.slice(0, 120)}`);
   check('fixture data only: the state folder is not read (the canary order in the live folder never shows)', s.code === 200 && !s.text.includes('CANARY-LIVE-ORDER'));
   check('fixture data only: the live folder is not written either (no pass key, no log, nothing new)', fs.readdirSync(decoy).sort().join() === decoyBefore, fs.readdirSync(decoy).join());
   check('the preview has its own pass key in its scratch folder, not the live one', p.ok && fs.existsSync(path.join(p.scratch, 'state', 'pass-key.txt')) && !fs.existsSync(path.join(decoy, 'pass-key.txt')));
-  check('it never changes Tailscale: the answer only names the serve command for a card', p.ok && p.serve === `tailscale serve --bg --https=${p.port} http://127.0.0.1:${p.port}`);
+  check('it never changes Tailscale: the answer only names the serve command for a card', p.ok && p.serve === `tailscale serve --bg --https=${p.port} http://127.0.0.1:${p.port}` && p.tailnet === tn);
+  const viaTail = p.ok ? await new Promise((ok) => { const r = http.request({ host: '127.0.0.1', port: p.port, path: '/api/state', headers: { Host: tn } }, (res) => { res.resume(); ok(res.statusCode); }); r.on('error', () => ok(0)); r.end(); }) : 0;
+  check('the preview answers this PC tailnet name, so the link works through tailscale serve (review P1): 401 for no key, not 421', viaTail === 401, String(viaTail));
+  const r0 = await startPreview({ worktree: repo, ttlMs: 60000, hosts: [] }); if (r0.ok) await stopPreview(r0.id);
+  check('with no tailnet name the answer says the preview is not reachable over Tailscale', r0.ok && /not reachable over Tailscale/.test(r0.serve) && r0.tailnet === null, JSON.stringify(r0));
   const noKey = p.ok ? await fetch(`${p.url}api/state`) : { status: 0 };
   check('the preview keeps the Board\'s auth: no key, 401', noKey.status === 401, String(noKey.status));
   check('the preview is listed while it runs', listPreviews().some((x) => x.id === p.id && x.port === p.port));
@@ -60,7 +65,9 @@ try {
   // ---- a given fixture is copied, not used in place ----
   const fx = path.join(tmp, 'fixture'); writeFixture(fx); const fxBefore = fs.readdirSync(fx).sort().join();
   // ---- the port is freed after the time limit (2 h; here 2.5 s) ----
-  const q = await startPreview({ worktree: repo, fixture: fx, ttlMs: 2500 });
+  const big = await startPreview({ worktree: repo, ttlMs: 1000 * 3600 * 1000, hosts: [] }); if (big.ok) await stopPreview(big.id);
+  check('the 2 h limit is a ceiling: a longer time is cut to 2 h (review P2)', big.ok && Date.parse(big.expires) - Date.now() <= 2 * 3600e3 + 5000, big.expires);
+  const q = await startPreview({ worktree: repo, fixture: fx, ttlMs: 2500, hosts: [] });
   const qs = q.ok ? await state(q) : { code: 0, text: '' };
   check('a given fixture is served from a copy (the fixture folder is unchanged)', q.ok && qs.code === 200 && qs.text.includes('example tidy') && fs.readdirSync(fx).sort().join() === fxBefore, `${qs.code}`);
   check('the preview names when it ends', q.ok && Math.abs(Date.parse(q.expires) - Date.now() - 2500) < 15000);
