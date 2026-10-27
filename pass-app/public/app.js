@@ -999,7 +999,7 @@ $('cook-body').addEventListener('click', (e) => { if (e.target.closest('.row-lin
 function offlineCard() {
   if (S.unauth) return '<div class="quiet offline"><p><b>This device isn\'t signed in.</b></p><p class="faint">Open the Board from your Tailscale link.</p></div>';
   if (S.conn !== 'down') return '';
-  return '<div class="quiet offline" role="status"><p><b>Can\'t reach the Yard.</b></p><p class="faint">Your phone or the PC is offline. The Board keeps trying; pull down to retry now.</p><button class="btn" data-set="reconnect">Try again</button></div>';
+  return '<div class="quiet offline" role="status"><p><b>Can\'t reach the Yard.</b></p><p class="faint">Your phone or the PC is offline. Tide keeps trying; pull down to retry now.</p><button class="btn" data-set="reconnect">Try again</button></div>';
 }
 function renderBanners() {
   const s = S.stale ? null : S.state; const b = [];
@@ -1081,7 +1081,7 @@ function renderChrome() {
   const cd = $('count-due'); cd.hidden = !s?.due; cd.textContent = s?.due || '';
   const cl = $('count-live'); const cooking = s ? s.jobs.filter((j) => j.status === 'running').length : 0; if (cl) { cl.hidden = !cooking; cl.textContent = cooking; }
   const cw = $('count-world'); const selfN = s ? selfCount(s.lobe, s.lobeOwner || null) : 0; if (cw) { cw.hidden = !selfN; cw.textContent = selfN || ''; }   // ZG-45: the Self card's count (lobe-self.js)
-  document.title = needs ? `(${needs}) The Board` : 'The Board';
+  document.title = needs ? `(${needs}) Tide` : 'Tide';
   if ('setAppBadge' in navigator) { try { needs ? navigator.setAppBadge(needs) : navigator.clearAppBadge(); } catch {} }
   if (s && needs !== S.lastNeeds) { if (S.lastNeeds >= 0) $('announce').textContent = needs ? `${needs} ${needs === 1 ? 'work order needs' : 'work orders need'} your sign-off` : 'Nothing needs your sign-off'; S.lastNeeds = needs; }
   renderBanners();
@@ -1207,7 +1207,7 @@ function renderPulse() {
   const s = S.state; let cls = 'live', text = 'Live';
   if (S.unauth) { cls = 'off'; text = 'Not signed in'; }
   else if (S.conn === 'down') { cls = 'off'; text = S.state ? OFFLINE_TEXT(S.savedAt) : 'Offline'; }
-  else if (S.conn === 'retry' || S.conn === 'connecting') { cls = 'wait'; text = S.restartAt && Date.now() - S.restartAt < 30000 ? 'The Board is updating…' : 'Reconnecting…'; }
+  else if (S.conn === 'retry' || S.conn === 'connecting') { cls = 'wait'; text = S.restartAt && Date.now() - S.restartAt < 30000 ? 'Tide is updating…' : 'Reconnecting…'; }
   else if (s?.paused) { cls = 'wait'; text = 'Paused by you'; }
   else if (tickAge() != null) { const a = tickAge(); text = a > 150 ? `Live · supervisor quiet ${words(a)}` : `Live · checked ${a < 5 ? 'just now' : words(a) + ' ago'}`; }
   if (S.updateReady && cls === 'live') text = 'Live · update ready';
@@ -1238,7 +1238,7 @@ addEventListener('pagehide', snapNow);
 // carry no content, nothing private ever shows on the lock screen).
 function notify(title, tag) {
   if (!document.hidden || !('Notification' in window) || Notification.permission !== 'granted') return;
-  navigator.serviceWorker?.ready.then((r) => r.showNotification(/^[\w# -]{1,20} needs your sign-off$/.test(String(title)) ? String(title) : 'The Board needs your sign-off', { body: 'Open the Board', tag: String(tag || 'chef'), icon: '/icon.svg' })).catch(() => {});
+  navigator.serviceWorker?.ready.then((r) => r.showNotification(/^[\w# -]{1,20} needs your sign-off$/.test(String(title)) ? String(title) : 'Tide needs your sign-off', { body: 'Open the Board', tag: String(tag || 'chef'), icon: '/icon-192.png' })).catch(() => {});
 }
 
 // ---------- new order ----------
@@ -1492,7 +1492,7 @@ async function applyClick(t) {
     if (!await confirmBox({ title: 'Send this application?', html: `<p><b>${esc(pk.role)}</b> at <b>${esc(pk.company)}</b></p><p>Your PC fills the form with the resume, cover note and the ${pk.answers.length} answer${pk.answers.length === 1 ? '' : 's'} you just reviewed, and submits it. If anything looks off (a CAPTCHA, a new question) it stops and leaves Edge open for you.</p>`, yes: 'Apply' })) return true;
     buzz(); sb.disabled = true;
     const r = await api('/api/hunt', { method: 'POST', body: JSON.stringify({ op: 'apply-submit', id, hash: pk.hash }) });
-    if (r.ok) toast('Applying on your PC. The Board updates when it is done.'); else toast(`Not sent: ${r.error}`, { bad: true });
+    if (r.ok) toast('Applying on your PC. Tide updates when it is done.'); else toast(`Not sent: ${r.error}`, { bad: true });
     delete S.hunt.packets[id]; await loadHunt(); return true;
   }
   const fl = t.closest('[data-apply-fill]');
@@ -1973,7 +1973,7 @@ async function openSettings() {
     ${siteStopRows(s.siteStops)}
     <h3 class="set-label">Audit trail</h3><ol class="audit" id="audit"><li>Loading…</li></ol>
     <h3 class="set-label">About</h3>
-    <dl class="kv"><div><dt>Signed in as</dt><dd id="whoami">…</dd></div><div><dt>The Board</dt><dd class="mono">${esc(s.version || '')} · ${esc(S.build || '')}</dd></div>
+    <dl class="kv"><div><dt>Signed in as</dt><dd id="whoami">…</dd></div><div><dt>Tide</dt><dd class="mono">${esc(s.version || '')} · ${esc(S.build || '')}</dd></div>
       <div><dt>Updates</dt><dd>${S.updateReady ? 'New version ready, loads when you leave the app' : 'Automatic, when you are not using it'}</dd></div>
       ${(() => { const f = frameStats(); return f ? `<div><dt>Scene frame</dt><dd class="mono">p95 ${f.p95} ms · p50 ${f.p50} ms · ${f.n} frames</dd></div>` : ''; })()}
       <div><dt>Supervisor</dt><dd>${tickAge() == null ? 'never ran' : 'last pass ' + words(tickAge()) + ' ago'}</dd></div></dl>

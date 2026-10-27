@@ -124,7 +124,7 @@ function sessionOk(tok) {
 // reaches Chef from 127.0.0.1 (tailscale serve), so the count is global; a Tailscale login on pass-users.txt is never affected.
 const LOGIN_MAX = 10, LOGIN_WINDOW_MS = 15 * 60000; let loginFails = [];
 const loginLocked = () => (loginFails = loginFails.filter((t) => Date.now() - t < LOGIN_WINDOW_MS)).length >= LOGIN_MAX;
-const loginForm = (msg) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>The Board sign-in</title>
+const loginForm = (msg) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tide sign-in</title>
 <form method="post" action="/login"><p>${msg}</p><label>Pass key <input name="key" type="password" autocomplete="current-password" required></label> <button>Sign in</button></form>`;
 
 // ---- reading kitchen state straight from disk (read-only, fast) ----
@@ -2380,7 +2380,7 @@ async function handle(req, res) {
     loginFails.push(Date.now());
     return send(res, 401, loginForm('Wrong or missing key.'), html);
   }
-  if (url.pathname === '/manifest.webmanifest' || url.pathname === '/icon.svg') {   // needed before login for "Add to Home Screen"
+  if (['/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'].includes(url.pathname)) {   // needed before login for "Add to Home Screen"
     return send(res, 200, fs.readFileSync(path.join(pub, url.pathname.slice(1))), types[path.extname(url.pathname)]);
   }
   if (url.pathname === '/api/health') return send(res, 200, { ok: true, version: VERSION, build: build.id, server: SERVER, up: Math.round(process.uptime()), loop: loopView(), work });   // no data (numbers only: loop delay, files read); for watchdogs, update.ps1 and the W4 tests
