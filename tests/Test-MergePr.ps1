@@ -112,6 +112,25 @@ try {
     Check 'after the freeze window merges' ($r.Code -eq 0 -and $r.Merged)
     Scenario @{ config = '{"freeze":[{"from":"2026-10-27T00:00","to":"later","why":"x"}]}' }; $r = Run
     Check 'a malformed freeze refuses naming the field' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match "'freeze\[0\]\.to'" -and $r.Out -match 'main on GitHub')
+    # Site-closed windows (TD-9) from the Sites registry (kitchen.json "sites" in the kitchen state folder), for a Tower whose config names its Site
+    $kj = Join-Path $kr 'kitchen.json'; $env:KITCHEN_FREEZE_NOW = '2026-10-29T12:00'
+    Scenario @{ config = '{"site":"TD"}' }; $r = Run
+    Check 'Site-closed: no registry, a Tower with a Site merges as before' ($r.Code -eq 0 -and $r.Merged)
+    Set-Content $kj '{"sites":{"TD":{"closed":[{"from":"2026-10-29T00:00","to":"2026-10-30T12:00","why":"release"}]}}}' -Encoding utf8
+    Scenario @{ config = '{"site":"TD"}' }; $r = Run
+    Check "Site-closed: inside its Site's window refuses, naming the Site" ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'frozen until 10-30 12:00: release \(Site TD closed\)')
+    Scenario @{ config = '{"site":"GW"}' }; $r = Run
+    Check "Site-closed: another Site's window never closes this Tower" ($r.Code -eq 0 -and $r.Merged)
+    Scenario @{ config = $null }; $r = Run
+    Check 'Site-closed: a Tower with no kitchen.repo.json (no Site) merges' ($r.Code -eq 0 -and $r.Merged)
+    $env:KITCHEN_FREEZE_NOW = '2026-10-30T12:00'; Scenario @{ config = '{"site":"TD"}' }; $r = Run
+    Check "Site-closed: after the Site's window merges" ($r.Code -eq 0 -and $r.Merged)
+    Set-Content $kj '{"sites": [' -Encoding utf8
+    Scenario @{ config = '{"site":"TD"}' }; $r = Run
+    Check 'Site-closed: a registry that will not read refuses a Tower with a Site, naming kitchen.json' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'cannot tell whether merges' -and $r.Out -match 'kitchen\.json')
+    Scenario @{ config = '{"freeze":[]}' }; $r = Run
+    Check 'Site-closed: a damaged registry never touches a Tower with no Site' ($r.Code -eq 0 -and $r.Merged)
+    Remove-Item $kj
 
     # site closed when red (TD-EH-03c): the Tower's main status in the kitchen state folder (kitchen/main-status.ps1, written by verify)
     $env:KITCHEN_FREEZE_NOW = '2026-10-22T12:00'
