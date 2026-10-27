@@ -4,7 +4,7 @@
 #
 # 1. The policy table: a failure (the kind the Yard records: fail, crash, timeout, hung, memcap, logflood, taster, killed, hold, plus its
 #    detail line) -> a class (flaky, conflict, stale, resting, privacy, real, infra, stopped) -> one action (retry once on fresh main,
-#    freshen, wait for the window, ask Jordan, stop and say why) and plain words. The first signature that matches wins; a kind other
+#    freshen, wait for the window, ask Jordan, stop and say why) and plain words. The first signature that matches wins (its own next step, when it has one, wins over its class's); a kind other
 #    than 'fail' takes its kind's class; anything else is the unknown class: "real failure, needs a look". Never retried silently.
 # 2. The lifecycle: every order that is not done ends in exactly one cleared state with a reason and a time, written on the order
 #    (j.cleared {state, reason, at, by?, from}) and to events.jsonl (job.cleared): retried (by a new attempt on fresh main), superseded

@@ -20,7 +20,7 @@
   },
   "unknown": { "class": "real", "say": "Something failed that the Yard does not recognise", "next": "It needs a look (See why has the detail), then Retry or Close" },
   "signatures": [
-    { "class": "real", "say": "This PC ran out of disk space", "next": "Free some disk space on this PC, then Retry", "match": "no space left on device|not enough space on the disk|disk (is )?full|ENOSPC" },
+    { "class": "real", "say": "This PC ran out of disk space", "next": "Free some disk space on this PC, then Retry", "match": "no space left on device|not enough space on the disk|\\bdisk (is )?full\\b|ENOSPC" },
     { "class": "conflict", "say": "Main moved and its change conflicts with main", "match": "(?-i:\\bCONFLICT\\b)|needs freshen|merge conflict" },
     { "class": "stale", "say": "Its brief was written against files that changed on main since", "match": "stale base|written against|no longer applies|patch does not apply|patch failed" },
     { "class": "real", "say": "The tests failed", "match": "(?-i:\\btests?: FAILED\\b)|tests? failed" },

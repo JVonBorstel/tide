@@ -104,8 +104,10 @@ async function act(body, { btn, ok, timeout = 90000 } = {}) {
   const r = await api('/api/action', { method: 'POST', body: JSON.stringify(body), timeout }).finally(() => { inflight.delete(key); btn?.classList.remove('busy'); btn?.removeAttribute('aria-busy'); });
   if (r.ok) { if (ok) toast(ok); }
   else if (r.sameAs) {   // task 32: an open order already asks the same; name it (with its title when the Board has it) and offer to open it
+    // the toasts sit under an open sheet (a modal), so the sheet closes first (a typed order stays a draft): the line and Open can be seen and tapped
+    for (const d of document.querySelectorAll('dialog.sheet[open]')) closeSheet(d.id, false);
     const j = S.state?.jobs.find((x) => x.id === r.sameAs);
-    toast(`Not added: ${r.error}${j ? ` · ${nameOf(j).text}` : ''}`, { bad: true, sticky: true, action: { label: 'Open', fn: () => { location.hash = '#/job/' + r.sameAs; } } });
+    toast(`Not added: ${r.error}${j ? ` · ${nameOf(j).text}` : ''}`, { bad: true, sticky: true, action: { label: 'Open', fn: () => go('#/job/' + r.sameAs) } });
   } else toast(`Not done: ${r.error || 'unknown error'}`, { bad: true, sticky: true });
   return r;
 }

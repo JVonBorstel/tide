@@ -121,13 +121,18 @@ try {
   await ev(`(() => { const g = document.getElementById('v-goal'); g.value = ${JSON.stringify(dupGoal)}; g.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('order-form').requestSubmit(); })()`);
   await until(`[...document.querySelectorAll('#toasts .toast.bad')].some((t) => /already asks/.test(t.textContent))`, 30000);
   const dupToast = await ev(`(() => { const t = [...document.querySelectorAll('#toasts .toast.bad')].find((x) => /already asks/.test(x.textContent)); return { msg: t?.querySelector('.msg')?.textContent || '', btn: t?.querySelector('[data-a]')?.textContent || '' }; })()`);
-  await ev(`[...document.querySelectorAll('#toasts .toast.bad')].find((x) => /already asks/.test(x.textContent))?.querySelector('[data-a]')?.click()`); await settle(400);
-  const dupHash = await ev('location.hash'); const dupFiles = jobFiles();
+  // a real tap: the sheet has closed and Open is the element under its own centre (a modal sheet over the toasts would swallow the tap)
+  await settle(400);
+  const dupHit = await ev(`(() => { const b = [...document.querySelectorAll('#toasts .toast.bad')].find((x) => /already asks/.test(x.textContent))?.querySelector('[data-a]'); if (!b) return { hit: false };
+    const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2; return { hit: document.elementFromPoint(x, y) === b, x, y, sheet: document.getElementById('order-sheet').open }; })()`);
+  if (dupHit.hit) { await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: dupHit.x, y: dupHit.y, button: 'left', clickCount: 1 }); await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: dupHit.x, y: dupHit.y, button: 'left', clickCount: 1 }); }
+  await until(`location.hash === '#/job/J68' && document.getElementById('job-sheet').open`, 8000);
+  const dupHash = await ev(`location.hash + (document.getElementById('job-sheet').open ? ' sheet' : '') + (document.getElementById('order-sheet').open ? ' order' : '')`); const dupFiles = jobFiles();
   check('DuplicateAtTheDoor_PlainWords: a new order whose goal is already open is not added; the phone says which work order already asks for it in plain words (WO-0068, its state, its title) with an Open button, never a bare J-id or a CLI flag',
     dupApi.ok === false && dupApi.sameAs === 'J68' && dupApi.error === 'WO-0068 already asks for this (queued)'
-      && dupToast.msg === 'Not added: WO-0068 already asks for this (queued) · Example order already in the queue' && dupToast.btn === 'Open' && dupHash === '#/job/J68'
-      && !/-Force|\bJ68\b|DUPLICATE/.test(dupApi.error + dupToast.msg) && dupFiles === dupBefore, JSON.stringify({ dupApi, dupToast, dupHash, dupFiles, dupBefore }));
-  await ev(`(() => { document.getElementById('order-sheet')?.close?.(); location.hash = ''; })()`); await settle(300);
+      && dupToast.msg === 'Not added: WO-0068 already asks for this (queued) · Example order already in the queue' && dupToast.btn === 'Open' && dupHit.hit && !dupHit.sheet && dupHash === '#/job/J68 sheet'
+      && !/-Force|\bJ68\b|DUPLICATE/.test(dupApi.error + dupToast.msg) && dupFiles === dupBefore, JSON.stringify({ dupApi, dupToast, dupHit, dupHash, dupFiles, dupBefore }));
+  await ev(`(() => { document.getElementById('job-sheet')?.close?.(); location.hash = ''; })()`); await settle(300);
   // ---------- a long list: the window counts failure rows only (review round 3, D-11 and the truth rule) ----------
   // 22 more recent failures in two more classes (11 Real failure, 11 Infrastructure), so 25 need Jordan in 5 classes and the window of 20
   // cuts through a group; the old count took the group heads as rows ("Showing 20 of 29") and could leave a head last with no rows under it
