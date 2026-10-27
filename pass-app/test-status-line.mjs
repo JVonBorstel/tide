@@ -194,8 +194,13 @@ try {
   check('City_LookAByDay_BAtNight: the City frame follows the City\'s own sky: day is Look A (plain crisp pixels), night lights it (B)', day.sky === 'day' && day.glow === 'none' && night.sky === 'night' && night.glow !== 'none', JSON.stringify({ day, night }));
 
   // ---------- D-12: the line is one row and clearable; a cleared notice stays hidden until it changes; red bars only shrink ----------
+  // where the header really ends on screen: its box, plus the pixel look's hazard stripe (::after, hung below it) and that stripe's drop shadow
+  const UNDER = `(() => { const t = document.querySelector('header.top'), a = getComputedStyle(t, '::after'), b = t.getBoundingClientRect().bottom;
+    if (!a.content || a.content === 'none' || a.display === 'none') return b; const sy = /(-?[\\d.]+)px\\s+(-?[\\d.]+)px/.exec(a.boxShadow);
+    return b + Math.max(0, -(parseFloat(a.bottom) || 0)) + Math.max(0, sy ? +sy[2] : 0); })()`;
   const line = () => ev(`(() => { const l = document.getElementById('status-line'); const r = l.getBoundingClientRect(); const chips = [...l.querySelectorAll('.notice-chip, .clear-all')];
-    return { hidden: l.hidden, h: Math.round(r.height * 10) / 10, rows: new Set(chips.map((c) => Math.round(c.getBoundingClientRect().top))).size, chips: [...l.querySelectorAll('.notice-chip')].map((c) => c.textContent.trim()),
+    const under = ${UNDER};
+    return { hidden: l.hidden, under: Math.round(under * 10) / 10, tops: chips.map((c) => Math.round(c.getBoundingClientRect().top * 10) / 10), h: Math.round(r.height * 10) / 10, rows: new Set(chips.map((c) => Math.round(c.getBoundingClientRect().top))).size, chips: [...l.querySelectorAll('.notice-chip')].map((c) => c.textContent.trim()),
       clearAll: !!l.querySelector('[data-clear-all]'), wraps: l.scrollHeight > l.clientHeight + 1, vw: innerWidth, sw: document.documentElement.scrollWidth, bw: document.body.scrollWidth,
       badge: document.getElementById('notices-btn').hidden ? null : document.getElementById('count-notices').textContent, cityTop: Math.round(document.getElementById('city').getBoundingClientRect().top) }; })()`);
   const fresh = async () => { await ev('localStorage.clear()'); await open(); };
@@ -206,6 +211,8 @@ try {
     await phone(w, h); await fresh(); const l = await line();
     check(`OneRow${w}x${h}_ThreeNotices: with 3 notices at ${w}x${h} the line is one row, at most 32 px tall, no horizontal page scroll`,
       !l.hidden && l.chips.length === 3 && l.clearAll && l.rows === 1 && !l.wraps && l.h > 0 && l.h <= 32 && l.sw <= l.vw && l.bw <= l.vw, JSON.stringify(l));
+    check(`OneRow${w}x${h}_ChipsBelowHeaderStripe: at ${w}x${h} every chip and Clear all starts at or below the header's stripe and its shadow, so no top border is cut (D-3)`,
+      l.tops.length === 4 && l.under > 0 && l.tops.every((t) => t >= l.under - 0.5), JSON.stringify({ under: l.under, tops: l.tops }));
   }
   await phone(412, 900); await fresh(); const top0 = (await line()).cityTop;
   // clearing one hides it and survives a reload (localStorage); the header count says 1
@@ -256,7 +263,8 @@ try {
   await ev(`document.querySelector('#status-line [data-clear-all]').click()`); await sleep(300);
   const kept = await home();
   await ev(`document.querySelector('#banners [data-thin]').click()`); await sleep(200);
-  const thin = await ev(`(() => { const b = document.querySelector('#banners .redbar'); const r = b.getBoundingClientRect(); return { thin: b.classList.contains('thin'), h: r.height, w: r.width, text: b.textContent.trim() }; })()`);
+  const thin = await ev(`(() => { const b = document.querySelector('#banners .redbar'); const r = b.getBoundingClientRect(); return { thin: b.classList.contains('thin'), h: r.height, w: r.width, top: Math.round(r.top * 10) / 10, under: Math.round(${UNDER} * 10) / 10, text: b.textContent.trim() }; })()`);
+  check('ThinBar_BelowHeaderStripe: the thin red bar starts at or below the header\'s stripe and its shadow, so none of its 28 px is hidden (D-3)', thin.under > 0 && thin.top >= thin.under - 0.5, JSON.stringify(thin));
   await shot(`home-412-dark-${label}-thin-bar.png`);
   await ev(`document.querySelector('#banners .redbar.thin').click()`); const opened = await until(`document.getElementById('notice-sheet').open`, 3000);
   const bs = await ev(`({ text: document.querySelector('#notice-body .notice-text')?.textContent || '', act: document.querySelector('#notice-body [data-set]')?.dataset.set || null, clear: !!document.querySelector('#notice-body [data-clear-notice]') })`);

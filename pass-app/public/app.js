@@ -1103,13 +1103,14 @@ function fold(el, axis, then) {
   const r = el.getBoundingClientRect(), size = axis === 'x' ? 'width' : 'height';
   const from = { [size]: (axis === 'x' ? r.width : r.height) + 'px', opacity: 1 }, to = { [size]: '0px', opacity: 0 };
   if (axis === 'x') Object.assign(from, { paddingLeft: getComputedStyle(el).paddingLeft, paddingRight: getComputedStyle(el).paddingRight, minWidth: '0px' }), Object.assign(to, { paddingLeft: '0px', paddingRight: '0px', minWidth: '0px', borderWidth: '0px' });
-  else Object.assign(from, { paddingTop: getComputedStyle(el).paddingTop, paddingBottom: getComputedStyle(el).paddingBottom }), Object.assign(to, { paddingTop: '0px', paddingBottom: '0px' });
+  else Object.assign(from, { paddingTop: getComputedStyle(el).paddingTop, paddingBottom: getComputedStyle(el).paddingBottom, marginTop: getComputedStyle(el).marginTop }), Object.assign(to, { paddingTop: '0px', paddingBottom: '0px', marginTop: '0px' });   // the margin too: under the pixel header the line starts 6 px down (app.css)
   NOTE.busy = true; const a = el.animate([from, to], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' });
   a.finished.catch(() => { }).then(() => { NOTE.busy = false; then(); a.cancel(); });
 }
 function unfold(el) {
   if (still() || !el.animate) return;
-  const h = el.getBoundingClientRect().height; el.animate([{ height: '0px', opacity: 0 }, { height: h + 'px', opacity: 1 }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  const h = el.getBoundingClientRect().height, m = getComputedStyle(el).marginTop;
+  el.animate([{ height: '0px', marginTop: '0px', opacity: 0 }, { height: h + 'px', marginTop: m, opacity: 1 }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
 }
 const redraw = () => { NOTE.v++; renderBanners(); };
 function clearNotice(key) {

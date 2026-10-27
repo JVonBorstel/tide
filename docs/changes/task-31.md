@@ -32,20 +32,21 @@
 
 | | before | after |
 |---|---|---|
-| status line | 2 rows (wrapped) | 1 row, 32 px |
-| City top | 181 px | 111 px |
+| status line | 2 rows (wrapped) | 1 row, 32 px (starts 6 px down, below the header's stripe) |
+| City top | 181 px | 117 px |
 | City top, all notices cleared | (not possible) | about 80 px (line 0 px; read off `home-412-dark-after-cleared.png`, not measured) |
 
 **Why:** after #53 the chips wrapped to two rows at 412 px (about a tenth of the screen) and could not be cleared. Jordan said "We lose so much screen with them" (D-12). The home lists showed bare ids ("J357", "B-48") and raw markdown, and the brief's stuck notes were a loose bullet list (D-11).
 
 **Tests:**
-- **`pass-app/test-status-line.mjs`** (run by `tests/Test-PassApp.ps1`): 42 checks, 42 passed. New checks, one per acceptance line:
+- **`pass-app/test-status-line.mjs`** (run by `tests/Test-PassApp.ps1`): 45 checks, 45 passed. New checks, one per acceptance line:
   - `OneRow412x900_ThreeNotices`, `OneRow360x740_ThreeNotices`;
   - `ClearOne_SurvivesReload`, `TickingClock_StaysCleared`, `ChangedNotice_Reappears`, `SwipeUp_ClearsChip`;
   - `ClearAll_LineGone_BadgeCount`. `Clear_Animates_NoJump` samples every frame: the height folds over several frames, and the City only moves up;
   - `BadgeSheet_ListsAndRestores`, `BrokenBar_NotClearable_ShrinksTo28`, `NewBreakage_FullSize`, `StorageBlocked_StillWorks`;
   - three node checks of `notices.js` (`NoticeKey_*`);
   - `Home412_ChipsAreSmall` now asks for 24-28 px chips (it asked for 44-48 px).
+  - `OneRow412x900_ChipsBelowHeaderStripe`, `OneRow360x740_ChipsBelowHeaderStripe`, `ThinBar_BelowHeaderStripe` (review round 1, D-3): the pixel header's hazard stripe and its shadow cover the top 6 px under the header. They cut off the chips' top border and the top 6 px of the thin red bar. The first thing under the header now starts 6 px lower; the margin sits outside the 32 px line and folds with it. These checks failed on the earlier head: chips at 79 px and the thin bar at 77 px, with the stripe ending at 83 px.
 - **`pass-app/test-board-rows.mjs`** (new, run by `tests/Test-PassApp.ps1`): 10 checks, 10 passed:
   - `RowTitles_NoBareIdNoMarkdown`: no row text matches `^[A-Z]\d+$`, contains `**` or starts with "- ";
   - `StuckNotes_AreRows`;
