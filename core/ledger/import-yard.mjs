@@ -30,16 +30,16 @@ export const STAGE_OF_STATUS = /** @type {Record<string, string>} */ ({ pending:
 /**
  * @param {string} state the state folder (a scratch copy in tests and in shadow)
  * @param {{ now?: Date }} [opt]
- * @returns {{ events: any[], report: { jobs: number, archived: number, indexJobs: number | null, skipped: string[], unreadable: string[], paused: boolean } }}
+ * @returns {{ events: any[], report: { jobs: number, archived: number, indexJobs: number | null, skipped: string[], unreadable: string[], paused: boolean, repoPaths: string[] } }}
  */
 export function importYard(state, opt = {}) {
   const now = (opt.now || new Date()).toISOString();
-  const report = { jobs: 0, archived: 0, indexJobs: /** @type {number | null} */ (null), skipped: /** @type {string[]} */ ([]), unreadable: /** @type {string[]} */ ([]), paused: false };
+  const report = { jobs: 0, archived: 0, indexJobs: /** @type {number | null} */ (null), skipped: /** @type {string[]} */ ([]), unreadable: /** @type {string[]} */ ([]), paused: false, repoPaths: /** @type {string[]} */ ([]) };
   if (!fs.existsSync(path.join(state, 'jobs'))) throw new Error(`no jobs folder in ${state}: is this a Yard state folder?`);
   const index = readJson(path.join(state, 'jobs-index.json'));
   report.indexJobs = index?.jobs && typeof index.jobs === 'object' ? Object.keys(index.jobs).length : null;
   // close, kill and quarantine facts from the Yard's own log (the last one per job wins)
-  const closedBy = new Map(), quarantine = new Map();
+  const closedBy = new Map(), quarantine = new Map(), undone = new Map();
   for (const e of readJsonl(path.join(state, 'events.jsonl'))) {
     const j = String(e?.job || ''); if (!/^J\d+$/.test(j)) continue;
     if (e.type === 'job.closed' || e.type === 'job.killed') {
@@ -49,8 +49,9 @@ export function importYard(state, opt = {}) {
       closedBy.set(j, { type: e.type.slice(4), at: isoOrNull(e.ts), reason, replacedBy, dropped: e.dropped === true, by: text(e.by, 40), proof: e.proof ? text(e.proof, 300) : null });
     }
     if (e.type === 'job.quarantined') quarantine.set(j, text(e.reason, 500));
+    if (e.type === 'merge.undone' && !undone.has(j)) undone.set(j, isoOrNull(e.ts) || 'unknown');   // a merge undone in one tap (undo-merge.ps1)
   }
-  /** @type {any[]} */ const events = [];
+  /** @type {any[]} */ const events = []; const repoPaths = new Set();
   /** @param {string} key @param {string} at @param {string} kind @param {string} wo @param {object} data @param {string | null} [proof] */
   const add = (key, at, kind, wo, data, proof = null) => events.push({ key, at, actor: 'import', kind, wo, data, proof });
   // an observation that can change and change back: written only when it differs from the family's last value (store.mjs)
@@ -70,7 +71,13 @@ export function importYard(state, opt = {}) {
     const lastAt = isoOrNull(hist[hist.length - 1]?.at) || isoOrNull(j.ended) || c?.at || created;
     const replacedBy = /^J\d+$/.test(String(j.replacedBy || '')) ? String(j.replacedBy) : c?.replacedBy || null;
     const facts = { status, recipe: text(j.recipe, 60) || 'unknown', attempt: Number(j.attempt) || 0, code: archived ? j.code === true : isCode(j), parent: /^J\d+$/.test(String(j.parent || '')) ? String(j.parent) : null,
-      archived, ...(c ? { closed: c } : {}), ...(replacedBy ? { replacedBy } : {}) };
+      // an archived order's summary line has no goal; it names its idea instead (kitchen/jobs-lib.ps1 Get-JobArchiveLine)
+      ...(/^I\d+$/.test(String(j.idea || '')) ? { idea: String(j.idea) } : {}),
+      archived, name: text(j.name, 300), ...(c ? { closed: c } : {}), ...(replacedBy ? { replacedBy } : {}),
+      // a roadmap item's order (recipe roadmap-item) names its item and its repo checkout; the roadmap importer joins on them
+      ...(j.vars?.item || j.item ? { item: text(j.vars?.item || j.item, 20) } : {}), ...(j.vars?.repo || j.repo ? { repoPath: text(j.vars?.repo || j.repo, 300) } : {}) };
+    if (undone.has(id)) facts.undoneAt = undone.get(id);
+    if (facts.repoPath) repoPaths.add(facts.repoPath);
     obs(`yard:${id}:status`, hashOf(facts), lastAt, 'x.yard.status', wo, facts);
     const stage = STAGE_OF_STATUS[status];
     if (stage) obs(`yard:${id}:stage`, stage, lastAt, 'stage.entered', wo, { stage });
@@ -100,6 +107,6 @@ export function importYard(state, opt = {}) {
   const pausedFile = path.join(state, 'PAUSED'); const paused = fs.existsSync(pausedFile);
   let pausedAt = null; if (paused) { try { pausedAt = isoOrNull(fs.readFileSync(pausedFile, 'utf8').trim()) || fs.statSync(pausedFile).mtime.toISOString(); } catch { } }
   obs('yard:site', paused ? `paused:${pausedAt}` : 'running', pausedAt || now, 'x.yard.site', /** @type {any} */ (null), { paused, pausedAt });
-  report.paused = paused;
+  report.paused = paused; report.repoPaths = [...repoPaths].sort();
   return { events, report };
 }

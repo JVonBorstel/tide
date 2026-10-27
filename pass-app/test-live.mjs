@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { LIVE, newMemory, track, agentsOf, spotOf, pin, quietDue, voiceLine, screenOf, treeOf, callsOf, tagOf, headHtml, deskHtml, screenHtml, treeHtml, sheetHtml,
   benchOf, callHtml, tickerHtml, drawDesk, drawCam, dur, floorStep } from './public/live.js';
 import { makeKit, makeLoop, COOK_COLORS } from './public/scene.js';
+import { CLOCK } from './public/frame.js';
 import * as P from './public/sprites.js';
 
 const out = [];
@@ -155,6 +156,10 @@ for (const a of [busyA, one([tool(0, 'Bash', 'x', 'start')], T0 + 61000), one([t
 check(`desk art: every state draws inside its 48x32 desk on whole pixels, at most ${LIVE.maxDraws} draws (${worst})${errors.length ? ' ' + errors[0] : ''}`, errors.length === 0 && worst > 3 && worst <= LIVE.maxDraws);
 check('desk art: the desk, laptop, typing hands and wall are sprites.js sprites in the cook palette', ['desk', 'laptop', 'laptop-shut', 'work-type', 'desk-wall'].every((n) => P.SPRITES[n]) && P.framesOf('laptop').length === 4 && P.framesOf('work-type').length === 4);
 check('desk art: the presenter camera draws the spotlight cook', drawCam(mk(16, 14).getContext(), kit, busyA, 0) === 2);
+// the desk loop draws only for a new picture: each desk notes its next animation step on the frame clock; the loop sleeps until then
+CLOCK.next = Infinity; drawDesk(mk(48, 32).getContext(), kit, busyA, 1000); const typingNext = CLOCK.next; CLOCK.next = Infinity; drawDesk(mk(48, 32).getContext(), kit, left, 1000);
+check(`desk loop: a desk notes when its next step is due (typing: in ${Math.round(typingNext - 1000)} ms, at most 120), and the loop sleeps until then, redrawing only a changed desk`,
+  typingNext > 1000 && typingNext <= 1120 && CLOCK.next > 1000 && CLOCK.next < Infinity && src.includes('frame: (dt) => { t += dt; if (t >= next) drawAll(); return Math.max(0, next - t); }') && src.includes('if (ds !== deskSig)') && !src.includes('frame: (dt) => { t += dt; drawAll(); }'));
 const css = fs.readFileSync(new URL('./public/app.css', import.meta.url), 'utf8'); const lv = css.slice(css.indexOf('/* ---- Live: the call (live.js)'), css.indexOf('/* ---- the order page'));
 const inPal = new Set([...Object.values(P.PALETTE), ...Object.values(P.SKIES).flat()].map((h) => h.toLowerCase()));
 const hexes = [...new Set((lv.match(/#[0-9a-fA-F]{6}\b/g) || []).map((h) => h.toLowerCase()))];

@@ -10,6 +10,8 @@ import { openStore, StoreError } from './store.mjs';
 import { importYard } from './import-yard.mjs';
 import { importGithub } from './import-github.mjs';
 import { importLocal } from './import-local.mjs';
+import { importIdeas } from './import-ideas.mjs';
+import { importRoadmaps, importLobe } from './import-roadmap.mjs';
 import { buildView, exportLedgerJson } from './view.mjs';
 import { compareLedgers } from './parity.mjs';
 import { readSwitches } from '../contracts/upgrade.mjs';
@@ -91,7 +93,13 @@ async function build(o, say, live = []) {
       const g = importGithub({ repos, state: o.state, out, now, last: (f) => store.lastValue(f) }); report.github = g.report; report.added.github = store.append(g.events).added;
     } else report.github = { state: 'skipped (--no-github)' };
     const repos = (o.repo.length ? o.repo : [`tide=${REPO_ROOT}`]).map((/** @type {string} */ s) => { const i = s.indexOf('='); if (i < 1) throw new UsageError(`--repo is name=path, not ${s}`); return { name: s.slice(0, i), path: s.slice(i + 1) }; });
+    // the Yard's own repos (vars.repo of its orders) are read too, as kitchen/ledger.ps1 does: for proof on main and for roadmaps
+    const seen = new Set(repos.map((/** @type {any} */ r) => path.resolve(r.path).toLowerCase()));
+    for (const p of y.report.repoPaths) { const abs = path.resolve(p); if (!seen.has(abs.toLowerCase()) && fs.existsSync(abs)) { seen.add(abs.toLowerCase()); repos.push({ name: path.basename(abs), path: abs }); } }
     const l = importLocal({ repos, plans: o.plans, work: o.work, now }); report.local = l.report; report.added.local = store.append(l.events).added;
+    const ideas = importIdeas(o.state, { now }); report.ideas = ideas.report; report.added.ideas = store.append(ideas.events).added;
+    const rms = importRoadmaps({ repos, now }); report.roadmaps = rms.report; report.added.roadmaps = store.append(rms.events).added;
+    const lobe = importLobe(o.state, { now }); report.lobe = lobe.report; report.added.lobe = store.append(lobe.events).added;
     const events = store.events();
     const view = buildView(events, { now, flagDefaults: readJson(flagsFile(o)) });
     const { internal, ...work } = view;
@@ -99,7 +107,7 @@ async function build(o, say, live = []) {
     writeAtomic(path.join(out, 'ledger.next.json'), exportLedgerJson(view));
     report.store = store.info(); report.top = view.top; report.rows = view.rows.length;
     say(view.top);
-    say(`events: ${report.store.events} (added: yard ${report.added.yard}, github ${report.added.github ?? 0}, local ${report.added.local}); rows ${view.rows.length}; wrote ${path.join(out, 'work.json')} and ledger.next.json`);
+    say(`events: ${report.store.events} (added: yard ${report.added.yard}, github ${report.added.github ?? 0}, local ${report.added.local}, ideas ${report.added.ideas}, roadmaps ${report.added.roadmaps}, lobe ${report.added.lobe}); rows ${view.rows.length}; wrote ${path.join(out, 'work.json')} and ledger.next.json`);
     if (report.github?.state && report.github.state !== 'ok') say(`GitHub: ${report.github.state}${report.github.lastGoodAt ? ` (last good read ${report.github.lastGoodAt})` : ''}`);
     return report;
   } finally { store.close(); }

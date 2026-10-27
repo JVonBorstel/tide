@@ -1936,6 +1936,7 @@ async function openSettings() {
       <div><dt>Updates</dt><dd>${S.updateReady ? 'New version ready, loads when you leave the app' : 'Automatic, when you are not using it'}</dd></div>
       ${(() => { const f = frameStats(); return f ? `<div><dt>Scene frame</dt><dd class="mono">p95 ${f.p95} ms · p50 ${f.p50} ms · ${f.n} frames</dd></div>` : ''; })()}
       <div><dt>Supervisor</dt><dd>${tickAge() == null ? 'never ran' : 'last pass ' + words(tickAge()) + ' ago'}</dd></div></dl>
+    <div class="set-group"><label class="switch-row" data-css="margin:0;border-top:0"><span><b>Frame meter</b><small>Frames a second and frame time over the page, to check the scene runs at your screen's rate</small></span><input type="checkbox" role="switch" id="meter-switch" ${sceneMeter() ? 'checked' : ''}><i aria-hidden="true"></i></label></div>
     <div class="set-group" data-css="margin-top:24px"><button class="set-row danger" data-set="stop-all"><i class="set-ic" aria-hidden="true">■</i><span>Stop everything<small>Every running and waiting work order stops now</small></span></button></div>`;
   openSheet('menu-sheet');
   const [a, w] = await Promise.all([api('/api/audit'), api('/api/whoami')]);
@@ -1961,6 +1962,7 @@ document.addEventListener('click', async (e) => {
   else if (a === 'notify' && 'Notification' in window) { const p = await Notification.requestPermission(); toast(p === 'granted' ? 'Alerts are on' : 'Alerts are off'); openSettings(); }
 });
 $('menu-body').addEventListener('change', async (e) => {
+  if (e.target.id === 'meter-switch') return void sceneMeter(e.target.checked);   // the scene's frame meter (scene.js), this phone only
   if (e.target.id !== 'live-switch') return; const on = e.target.checked;
   if (on && !await confirmLive()) { e.target.checked = false; return; }
   const r = await act({ op: on ? 'live-on' : 'live-off' }, { ok: on ? 'AI crews are on' : 'AI crews are off' }); if (!r.ok) e.target.checked = !on;
@@ -2085,7 +2087,7 @@ daypart(); setInterval(daypart, 600000);
 })();
 
 // ---------- the animated building site at the top of the Board and Live tabs (scene.js) ----------
-import { sceneHtml, activityWord, mountScene, cookOf, COOK_COLORS, stepWord, applyCss, sceneLegend, frameStats, sceneApproved } from './scene.js';
+import { sceneHtml, activityWord, mountScene, cookOf, COOK_COLORS, stepWord, applyCss, sceneLegend, frameStats, sceneApproved, sceneMeter } from './scene.js';
 import { startLive, floorStep } from './live.js';
 import { mainStatusBanners } from './main-status.js';   // TD-EH-03a main-is-red banner
 import { ciBudgetBanners } from './ci-budget.js';   // TD-11 CI budget per Site
