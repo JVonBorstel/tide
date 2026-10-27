@@ -11,8 +11,8 @@ const NEEDS = (j) => j.status === 'waiting-approval' || j.status === 'needs-huma
 // the station a crew stands at, in site words (scene.js stations: board, stove, taste, sink, plate)
 export const TOOL = { board: 'survey', stove: 'build', taste: 'inspect', sink: 'test', plate: 'handover' };
 export const CAP = { cranes: 3, crews: 3, pallets: 5, cityPx: 80, full: 22, bands: 20 };
-// one shared height scale for every tower on a level, so heights compare: the City packs k floors in each 2 px row, the smallest k
-// of 1, 2, 5, 10, 20, 50, 100 that keeps the tallest within 80 art px (the Board's City is 136 art px tall); a Tower draws its newest 22 floors whole and older ones in bands of k
+// one height scale for every tower on a level: k floors a 2 px row, the smallest k that keeps the tallest within 80 art px; a Tower's
+// own level bands its older floors
 const live = (T) => (T?.floors || []).filter((f) => !f.undone);
 export function scaleOf(towers) {
   const max = Math.max(0, ...(towers || []).filter((x) => x.kind === 'tower').map((x) => live(x).length));
@@ -83,7 +83,7 @@ function gateOf(s, towers, ev, now) {
   else if (age !== null && age > 10 * MS.min) g.github = { err: false, text: `GitHub read ${age < MS.hour * 2 ? Math.round(age / MS.min) + ' min' : Math.round(age / MS.hour) + ' h'} ago` };
   return g;
 }
-// cityOf: the whole City at one moment. towers = GET /api/towers; s = the live state; ev = recent events; opts.lastSeen = the phone's last look
+// cityOf: the whole City at one moment (GET /api/towers, the live state, recent events; opts.lastSeen: the phone's last look)
 export function cityOf(towers, s, ev = [], now = Date.now(), opts = {}) {
   const list = Array.isArray(towers?.towers) ? towers.towers : []; const k = scaleOf(list);
   const keys = new Set(list.map((x) => x.key)); const yard = (s?.jobs || []).filter((j) => !j.tower || !keys.has(j.tower));
@@ -96,7 +96,7 @@ export function cityOf(towers, s, ev = [], now = Date.now(), opts = {}) {
     loading: !towers, error: towers && towers.ok === false ? String(towers.error || 'the City could not be read') : null,
   };
 }
-// ---- moments due: only from real changes and events under 2 minutes old; at most 2 at once, one announce line each ----
+// ---- moments due: only from real changes and events under 2 minutes old ----
 export const FRESH_MS = 2 * MS.min;
 const EVENT_MOMENT = { 'approval.requested': 'beacon-on', 'approval.granted': 'beacon-off', 'merge.undone': 'take-down', 'step.started': 'hoist', 'job.quarantined': 'crate' };
 export function momentsDue(prev, next, ev = [], now = Date.now(), jobs = []) {
@@ -117,7 +117,7 @@ export function momentsDue(prev, next, ev = [], now = Date.now(), jobs = []) {
 }
 // the horizon strip on the other tabs: quiet unless something needs Jordan (a beacon, a red main, PAUSED)
 export const needsYou = (c) => !!(c && (c.gate.paused || c.yard.waiting || c.lots.some((l) => l.waiting || l.scaffold === 'red')));
-// the text twin of the canvas: one sentence per building, numbers only (a screen reader reads these; the canvas is aria-hidden)
+// the canvas's text twin: one sentence per building, numbers only
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 export function sentence(l) {
   const name = l.name + (l.private ? ' (private)' : '');
@@ -132,12 +132,12 @@ export function sentence(l) {
   return `${name}: ${bits.join(', ')}`;
 }
 
-// ---- drawing: one pixel buffer per frame, put on the canvas with one drawImage (far under the stage's 120 draws) ----
-// H: the City is 136 art px tall (ground at 122); a building's own level is 200 tall, its tower 46 wide (big)
+// ---- drawing: one pixel buffer per frame, one drawImage ----
+// the City is 136 art px tall (ground 14 px up); a building's own level 200, its tower 46 wide
 export const ART = { H: 136, bigH: 200, tw: 26, bigTw: 46, lobby: 3, level: 4, plinthDiv: 20, mast: 9, jib: 13 };
 const SLOT = { gate: 30, yard: 24, tower: 36, lot: 22, office: 28 };
 export const minWidth = (c) => 2 + SLOT.gate + SLOT.yard + (c?.lots || []).reduce((n, l) => n + (SLOT[l.kind] || 24), 0);
-// left to right: the gate and cabin, the Yard lot, then every building in its fixed order; the spare width is shared out
+// left to right: the gate, the Yard lot, then every building in its fixed order; spare width shared out
 export function layoutCity(c, W) {
   const items = [{ kind: 'gate', key: 'gate' }, { kind: 'yard', key: 'yard' }, ...(c?.lots || []).map((l) => ({ kind: l.kind, key: l.key, l }))];
   const min = items.reduce((n, it) => n + (SLOT[it.kind] || 24), 0); const gap = Math.max(0, Math.floor((W - min) / items.length)); let x = Math.max(0, Math.floor((W - min - gap * items.length) / 2));
@@ -145,7 +145,7 @@ export function layoutCity(c, W) {
   return items;
 }
 const pack = (h) => { const n = parseInt(String(h).slice(1), 16); return ((255 << 24) | ((n & 255) << 16) | (n & 0xff00) | (n >> 16)) >>> 0; };
-// the palette for the hour (sprites.js paletteFor: the sky in X Y Z, the dusk and night tint) and one per crew colour
+// the hour's palette (sprites.js paletteFor) and one per crew colour
 export function palettes(sky) {
   const p = { ...paletteFor({ sky }), ...PAINT }; const out = {}; for (const k of Object.keys(p)) out[k] = pack(p[k]);
   out.crew = {}; for (const [n, c] of Object.entries(COOK_COLORS)) { const q = paletteFor({ sky, cook: c }); out.crew[n] = { 4: pack(q[4]), 5: pack(q[5]), 6: pack(q[6]), 2: pack(q[2]) }; }
@@ -179,8 +179,7 @@ function crew(g, c, x, feet, step) {
 }
 function beacon(g, x, y, kind, on) { const k = on ? BEACON[kind] : 'q'; g.R(x, y, 3, 3, k); g.R(x, y + 3, 3, 1, 'a'); if (on) { g.P(x - 1, y + 1, k); g.P(x + 3, y + 1, k); } }
 function plus(g, n, x, y) { if (n > 0) { const s = '+' + n; g.R(x - 1, y - 1, g.tw(s) + 2, 7, 'p'); g.T(s, x, y, 'r'); } }
-// a tower's rows, bottom up, each { h, lit, pub } over floors [from, to]: the City packs k floors in each 2 px row; a building's own
-// level (big) draws its newest 22 floors 4 px each and bands the older ones (c.band floors per 2 px row)
+// a tower's rows, bottom up ({ h, lit, pub }): k floors a 2 px row; big: the newest 22 floors 4 px each, older ones in bands of c.band
 export function rowsOf(l, c, big) {
   const n = l.floors; const full = big ? Math.min(n, CAP.full) : 0; const k = big ? c.band : c.k; const out = [];
   const add = (from, to, h) => out.push({ h, lit: to >= n - l.lit, pub: l.publicAt !== null && l.publicAt > from && l.publicAt <= to + 1 && l.publicAt < n });
@@ -188,8 +187,7 @@ export function rowsOf(l, c, big) {
   for (let f = n - full; f < n; f++) add(f, f, 4);
   return out;
 }
-// a tower: stone base, lobby, its rows (lit windows: merged in the last 24 h), roof, the "public from" line, the planned outline, then
-// cranes (one scaffold level each), crews, the beacon, pallets, scaffolding, tape, the skip
+// a tower: stone base, lobby, rows, roof, the public line, the outline, cranes, crews, beacon, pallets, scaffolding, tape, skip
 function tower(g, it, l, i, c, ph, big) {
   const { R, P, S } = g; const G = g.G; const w = big ? ART.bigTw : ART.tw; const x = it.x + ((it.w - w) >> 1); const [d0, d1, d2] = RAMPS[i % RAMPS.length];
   const pl = l.plinth ? Math.max(1, Math.ceil(l.plinth / ART.plinthDiv)) : 0;
@@ -252,8 +250,7 @@ function yard(g, it, c, ph) {
   for (let i = 0; i < Math.min(5, y.queued); i++) S(PALLET, x + w + 1, G - 3 - i * 3);
   if (y.beacon) beacon(g, x + w - 5, top - 5, y.beacon, ph.blink); if (y.private) S(LOCK, x + 1, top - 6);
 }
-// the whole City into a fresh buffer; ph = { blink, step, focus } (blink and step still under reduced motion: the beacon steady and lit;
-// focus: the building the route is on, marked at once so a tap feels instant)
+// the whole City into a fresh buffer; ph = { blink, step, focus, big } (focus: the route's building, marked at once)
 export function paintCity(c, W, hour, ph = { blink: 1, step: 0 }, pal = palettes(c.sky)) {
   const one = ph.big && c.lots.find((l) => l.key === ph.big && l.kind === 'tower');   // a building's own level: that tower alone, large
   const g = painter(W, one ? ART.bigH : ART.H, pal); sky(g, hour); const items = one ? [{ kind: 'tower', key: one.key, l: one, x: (W >> 1) - 30, w: 60, slot: [0, W] }] : layoutCity(c, W); const boxes = {};
@@ -268,8 +265,7 @@ export function paintCity(c, W, hour, ph = { blink: 1, step: 0 }, pal = palettes
   if (f) { for (let y = 8; y < g.G; y += 2) { g.P(f.slot[0], y, 't'); g.P(f.slot[1] - 1, y, 't'); } g.R(f.x + (f.w >> 1) - 3, g.G + 1, 7, 1, 't'); }
   return { g, items, boxes };
 }
-// the horizon strip (40 CSS px on the other tabs): every building's height on one scale, a lit top for today's floors, a beacon, red
-// tape for a red main, PAUSED at the left; quiet (no beacon, no tape, no word) when nothing needs Jordan
+// the horizon strip (other tabs): heights on one scale, today's lit tops; a beacon, red tape or PAUSED only when they need Jordan
 export function paintStrip(c, W, ph = { blink: 1 }, pal = palettes(c.sky)) {
   const g = painter(W, 20, pal); const [X, Y] = pal.sky; g.R(0, 0, W, 10, pack(X)); g.R(0, 10, W, 9, pack(Y)); g.R(0, 19, W, 1, 'k');
   const max = Math.max(1, ...c.lots.map((l) => l.floors)); if (c.gate.paused) { g.R(1, 6, 27, 9, 'a'); g.T('PAUSED', 2, 8, 'B'); }
@@ -286,8 +282,7 @@ export function paintStrip(c, W, ph = { blink: 1 }, pal = palettes(c.sky)) {
 }
 
 // ---- in the page: the City at the top of the Board tab, the strip under the header on the other tabs ----
-// o: { home, strip, names, cap, api, get: () => ({ s, ev, view, lastSeen }), legend(html), go(hash) }. The canvas is aria-hidden; the
-// names row and the caption carry the words. Drawn only while seen; one still frame (redrawn each minute) under reduced motion.
+// o: { home, strip, names, cap, api, get, legend, go, buzz }; the canvas is aria-hidden (the names row and caption carry the words)
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 export function legendRows(c) {
@@ -320,7 +315,7 @@ export function mountCity(o) {
       M.failed = r?.error || 'the City could not be read'; M.v = null; const ms = Math.min(3e5, 3e4 * 2 ** M.tries++); M.after = Date.now() + ms - 50; setTimeout(update, ms);
     }).finally(() => { M.busy = false; M.key = ''; update(); });
   }
-  // frame() returns the wait (frame.js): to the next blink or step while a beacon blinks or a crew works (PAUSED alone is still), else Infinity
+  // frame() returns the wait (frame.js): the next blink or step while a beacon blinks or a crew works, else Infinity
   const moving = (c) => !!c && !!(c.yard.beacon || c.lots.some((l) => l.beacon || l.crews.length || l.cranes.some((x) => x.crew || x.beacon)));
   function frame() {
     if (M.moving) return Infinity;   // the camera's done() draws and starts the loop again
@@ -341,9 +336,9 @@ export function mountCity(o) {
       const deep = !T ? '' : rt.level >= 2 ? floorHtml(T, rt.pr, !!rt.old, esc) : cutawayHtml(T, esc, M.n);
       const html = crumbsHtml(rt, nameOf, esc) + (on && rt.level < 2 ? `<p class="city-cap">${esc(sentence(on))}</p>` : '') + deep + `<ul class="city-names">${c.lots.map((l) => `<li data-kind="${esc(l.kind)}"><a href="#/city/${esc(l.key)}"${l.key === rt.key ? ' aria-current="page"' : ''} aria-label="${esc(sentence(l))}"><b>${esc(l.name)}</b><span aria-hidden="true">${l.kind === 'tower' ? l.floors : l.kind === 'lot' ? 'lot' : 'office'}</span></a></li>`).join('')}</ul>`
         + `<p class="city-cap"${cap ? '' : ' hidden'} role="status">${esc(cap)}</p>` + (!c.loading && !c.lots.length ? '<p class="city-cap">No projects yet: the City fills in as work merges.</p>' : '');
-      if (o.names.innerHTML !== html) {   // rebuilt: the focus stays on the link it was on, else the building the route is on
-        const a = document.activeElement; const h = o.names.contains(a) ? a.getAttribute('href') || '' : null; o.names.innerHTML = html;
-        if (h !== null) (o.names.querySelector(`a[href="${h}"]`) || o.names.querySelector('a[aria-current="page"]') || o.names.querySelector('a'))?.focus();
+      if (o.names.innerHTML !== html) {   // rebuilt: the focus stays on its link (or Show more), else the building the route is on
+        const a = document.activeElement; const q = o.names.contains(a) ? (a.hasAttribute('href') ? `a[href="${a.getAttribute('href')}"]` : '[data-city-more]') : ''; o.names.innerHTML = html;
+        if (q) (o.names.querySelector(q) || o.names.querySelector('a[aria-current="page"]') || o.names.querySelector('a'))?.focus();
       }
     } else if (s && !c.loading) {
       const cv = o.strip.querySelector('canvas') || o.strip.appendChild(Object.assign(document.createElement('canvas'), { className: 'city-canvas' })); cv.setAttribute('aria-hidden', 'true');
@@ -353,7 +348,7 @@ export function mountCity(o) {
     return wait;
   }
   const loop = makeLoop({ raf: (f) => requestAnimationFrame(f), ok: () => !document.hidden && !reducedMotion() && M.visible, frame });
-  // a new route: the camera moves toward the building (in) or away from it (out), then the new level is drawn crisp
+  // a new route: the camera moves in or out, then the new level is drawn
   function follow() {
     const r = routeOf(location.hash); const was = M.r; if (hashOf(r) === hashOf(was)) return;
     M.n = r.key === was.key ? M.n : 20; if (r.level !== was.level) M.depth = r.level > was.level ? M.depth + 1 : Math.max(0, M.depth - 1); M.r = r;

@@ -26,5 +26,12 @@ it; the canvas tap at this level is left for later) and the frame time on Jordan
 sheet, its work order, an old floor, an open PR, a missing number, the `/old` route, the big rows, the big level, a stalled camera);
 `tests/Test-PassApp.ps1` 1 new wiring check (City_TowerLevel). PassApp counts in the PR.
 
+**Review fixes (review of the City chain, 2026-10-26; G4's and G5's fixes merged in):**
+- F3 at a building's level: a private repo's floor sheet has no GitHub link (its URL would carry the repo's name); its cutaway and
+  sheets show the neutral name and no titles (towers.mjs sends none). Test `Private_BuildingLevel`.
+- F5: after "Show more" the focus stays on that button (else the building the route is on).
+- Budget: the review fixes cost about 540 bytes brotli across the chain, so long comments in `city.js` and `city-nav.js` are shortened
+  (no code change): 15,858 of 16,000 bytes brotli (LF, as CI measures it).
+
 **L1-L4:** person: Jordan opens a project and reads its whole history floor by floor, down to one PR and its work order.
 Business: none. MSP: none. Community: none.

@@ -483,7 +483,7 @@ async function cityLoop({ towers, s, rm = false, ms = 2000, api = async () => to
       const hit = links.find((l) => !m[1] || (m[1] === 'href' ? l.href === m[2] : l.cur)); return hit ? { focus: () => { N.focused = hit.href; } } : null; } }; return N; };
   const two = { ok: true, towers: [...towers.towers, { key: 'side', name: 'Side', kind: 'lot', folder: 'side', floors: [], open: [] }] };
   const follow = (activeElement) => async ({ city, loc }) => { globalThis.document.activeElement = activeElement; loc.hash = '#/city/side'; city.update(); };
-  const viaLink = fakeNames(); await cityLoop({ towers: two, s: { towersV: 'v1', jobs: [] }, names: viaLink, ms: 50, act: follow({ inNames: true, getAttribute: () => '#/city/side' }) });
+  const viaLink = fakeNames(); await cityLoop({ towers: two, s: { towersV: 'v1', jobs: [] }, names: viaLink, ms: 50, act: follow({ inNames: true, hasAttribute: () => true, getAttribute: () => '#/city/side' }) });
   const viaCanvas = fakeNames(); await cityLoop({ towers: two, s: { towersV: 'v1', jobs: [] }, names: viaCanvas, ms: 50, act: follow({ inNames: false }) });
   check(`City_FocusKept: after following the "Side" link the focus is back on it in the rebuilt row (${viaLink.focused}); after a tap on the canvas it is not moved`, viaLink.focused === '#/city/side' && /aria-current="page"[^>]*><b>Side/.test(viaLink.html) && viaCanvas.focused === null);
   check('Strip_HiddenUntilRead: on the other tabs the strip button stays hidden until the City is read (never an empty button with no name), then shows', off.stripHidden === true && on.stripHidden === false);
@@ -510,6 +510,12 @@ async function cityLoop({ towers, s, rm = false, ms = 2000, api = async () => to
   check('Floor_Old: a floor under the line is the old history and has no GitHub link (the public repo may reuse its number)', old.includes('PR #40: Old forty') && old.includes('the older history') && !old.includes('github.com'));
   check('Floor_OpenPr: an open PR is under construction with its CI', op.includes('Under construction') && op.includes('<dd>red</dd>'));
   check('Floor_Missing: a number with no floor says so', N.floorHtml(T, 77, false, esc).includes('No floor or open PR #77') && N.floorHtml(T, 40, false, esc).includes('No floor'));
+  // review F3 at the building's level: a private repo's row as towers.mjs sends it (neutral name and key, no titles; folder and repo kept
+  // only for matching records) shows no repo name anywhere, and its floor sheet has no GitHub link (the link would carry the name)
+  const P = { key: 'private', name: 'Private project', private: true, folder: 'secret-folder', repo: 'demo-owner/secret-demo', floors: [{ pr: 1, at: at(20), by: 'github' }], open: [{ pr: 2, ci: 'green', createdAt: at(21) }] };
+  const pv = N.cutawayHtml(P, esc) + N.floorHtml(P, 1, false, esc) + N.floorHtml(P, 2, false, esc);
+  check('Private_BuildingLevel: a private repo\'s cutaway and floor sheets name no repo and link nowhere outside the City (no GitHub link); a public one keeps its link',
+    !/secret|github\.com/.test(pv) && pv.includes('Private project: floors') && pv.includes('PR #1') && f1.includes('github.com'));
   check('Nav_OldRoute: #/city/<key>/f/<pr>/old is an old floor, and goes both ways', N.routeOf('#/city/td/f/9/old').old === true && N.hashOf(N.routeOf('#/city/td/f/9/old')) === '#/city/td/f/9/old' && !N.routeOf('#/city/td/f/9').old);
   const NOW = Date.parse(at(26)); const C = CJ.cityOf({ ok: true, towers: [{ ...T, kind: 'tower', folder: 'tide', plinth: { commits: 40 } }] }, {}, [], NOW); const l = C.lots[0];
   const rows = CJ.rowsOf(l, C, true), small = CJ.rowsOf(l, C, false);

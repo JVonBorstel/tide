@@ -1,10 +1,9 @@
 // The City's navigation (semantic zoom): the routes, the breadcrumb, the camera move between levels, and the gestures on the canvas.
-// Used by public/city.js (mountCity); tested by pass-app/test-city.mjs. Each level is a hash route, so Back (Android's, the browser's, Esc)
-// zooms out one level. Levels: #/pass or #/city = the City; #/city/<key> = one building; #/city/<key>/f/<pr>[/old] = a floor or an open
-// PR (/old: a floor under the "public from" line, whose number the public repo may reuse).
+// Used by public/city.js (mountCity); tested by pass-app/test-city.mjs. Each level is a hash route (Back and Esc zoom out): #/pass or
+// #/city, #/city/<key>, #/city/<key>/f/<pr>[/old] (/old: a floor under the "public from" line)
 import { windowed, WINDOW_FIRST, WINDOW_STEP } from './rows.js';
 const KEY = /^[a-z0-9][a-z0-9._-]{0,47}$/;
-// the City's route from a location hash: { level, key, pr } (level 0 for #/pass and anything that is not a City route)
+// the City's route from a hash: { level, key, pr } (level 0: the City, also for anything else)
 export function routeOf(hash) {
   const p = String(hash || '').replace(/^#\/?/, '').split('/');
   if (p[0] !== 'city' || !KEY.test(p[1] || '')) return { level: 0, key: null, pr: null };
@@ -14,7 +13,7 @@ export function routeOf(hash) {
 export const hashOf = (r) => (!r?.key ? '#/pass' : r.level >= 2 && r.pr ? `#/city/${r.key}/f/${r.pr}${r.old ? '/old' : ''}` : `#/city/${r.key}`);
 // one level up (what Back and Esc do)
 export const upOf = (r) => (r.level >= 2 ? { level: 1, key: r.key, pr: null } : { level: 0, key: null, pr: null });
-// the neighbour building for a sideways swipe on a building (it wraps around); the gate and the Yard lot are not in the ring
+// the next building for a sideways swipe (it wraps; not the gate or the Yard lot)
 export function neighbourOf(keys, key, dir) { const i = keys.indexOf(key); return i < 0 || !keys.length ? null : keys[(i + dir + keys.length) % keys.length]; }
 // the breadcrumb: City › Tide › Floor 121 (each crumb but the last is a link, at least 44 px tall)
 export function crumbsHtml(r, nameOf, esc) {
@@ -30,8 +29,7 @@ export function gestureTo(g, r, hit, keys) {
   if (g.gesture === 'swipe' && r.level === 1) { const k = neighbourOf(keys, r.key, g.dx < 0 ? 1 : -1); return k ? { level: 1, key: k, pr: null } : null; }
   return null;
 }
-// pointer input on the canvas (Pointer Events only; touch-action pan-y keeps the page scrolling): tap, sideways swipe, pinch, long-press.
-// el is the City's box; only a pointer that starts on its canvas is a gesture (the (i) key, names, crumbs and sheets keep their own taps)
+// tap, swipe, pinch and long-press on the City's canvas only (the (i) key, names and crumbs keep their taps); pan-y keeps the page scrolling
 export function attachGestures(el, { at, onGesture, onLong, buzz = () => {} }) {
   el.style.touchAction = 'pan-y';
   const pts = new Map(); let down = null; let pinch0 = 0; let longT = 0; const onCanvas = (e) => e.target?.tagName === 'CANVAS';
@@ -61,15 +59,15 @@ export function attachGestures(el, { at, onGesture, onLong, buzz = () => {} }) {
   el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
   el.addEventListener('contextmenu', (e) => { if (onCanvas(e)) e.preventDefault(); });
 }
-// the camera move: the old picture scales toward the tapped building (zoom in 280 ms, out 220 ms, ease-out), then the new level is drawn
-// crisp at its whole-number scale. Under reduced motion it is an instant cut. A timer ends a move whose clock stalls (a hidden page).
+// the camera: the old picture scales toward the building (in 280 ms, out 220 ms), then the new level is drawn; a cut under reduced
+// motion; a timer ends a move whose clock stalls
 export function cameraMove(canvas, atX, zoomIn, reduced, done) {
   if (reduced || !canvas?.animate) { done(); return; }
   const s = zoomIn ? 2.2 : 0.6; const origin = `${Math.round(atX * 100)}% 85%`; const ms = zoomIn ? 280 : 220; let fin = 0;
   const a = canvas.animate([{ transform: 'scale(1)', transformOrigin: origin }, { transform: `scale(${s})`, transformOrigin: origin }], { duration: ms, easing: 'cubic-bezier(.2,.7,.3,1)' });
   const end = () => { if (!fin++) { a.cancel?.(); done(); } }; a.onfinish = a.oncancel = end; setTimeout(end, ms + 150);
 }
-// ---- a building's own level: the cutaway (one row per floor, newest first, open PRs on top; windowed by rows.js: 20, then 50 more a tap) and a floor's sheet; T = one /api/towers row
+// ---- a building's own level (T = one /api/towers row): the cutaway (newest first, open PRs on top; 20, then 50 more a tap), a floor's sheet
 const day = (iso) => String(iso || '').slice(5, 10);
 const BY = { yard: 'by the Yard', auto: 'by the Yard (auto-merged)', session: 'by a Claude session', github: 'on GitHub' };
 const wo = (id) => (/^J\d{1,6}$/.test(id || '') ? `WO-${id.slice(1).padStart(4, '0')}` : '');
@@ -84,6 +82,6 @@ export function floorHtml(T, pr, old, esc) {
   const f = (T?.floors || []).filter((x) => x.pr === pr && !!x.past === old).pop(); const o = !old && (T?.open || []).find((x) => x.pr === pr);
   if (!f && !o) return `<p class="city-cap" role="status">No floor or open PR #${pr} on this building.</p>`;
   const x = f || o; const dd = (k, v) => (v ? `<dt>${k}</dt><dd>${v}</dd>` : '');
-  const gh = T.repo && !old && /^[\w.-]+\/[\w.-]+$/.test(T.repo) ? `<a href="https://github.com/${esc(T.repo)}/pull/${pr}" target="_blank" rel="noopener noreferrer">PR #${pr} on GitHub</a>` : '';
+  const gh = T.repo && !old && !T.private && /^[\w.-]+\/[\w.-]+$/.test(T.repo) ? `<a href="https://github.com/${esc(T.repo)}/pull/${pr}" target="_blank" rel="noopener noreferrer">PR #${pr} on GitHub</a>` : '';
   return `<section class="city-sheet"><h2>PR #${pr}${x.title ? ': ' + esc(x.title) : ''}</h2><dl>${f ? dd('Merged', esc(String(f.at).replace('T', ' ').slice(0, 16)) + ' ' + esc(BY[f.by] || '')) + dd('Pour', f.pour ? `${esc(f.pour)}: ${T.floors.filter((y) => y.pour === f.pour).length} floors tested together` : '') + dd('Taken down', esc(day(f.undone))) + dd('Before the line', f.past ? 'yes (the older history)' : '') : dd('Under construction', `since ${esc(day(o.createdAt))}${o.draft ? ', a draft' : ''}`) + dd('CI', esc(o.ci || 'unknown'))}${dd('Work order', wo(x.job) ? `<a href="#/job/${esc(x.job)}">${wo(x.job)}</a>` : '')}</dl>${gh}</section>`;
 }
