@@ -9,7 +9,9 @@
   - a 5th open build stream;
   - a stream with 3 cards waiting on Jordan;
   - Board files on a branch not based on main;
-  - art files with `decision: none`, or with a decision Jordan has not answered (when a decisions log is given);
+  - art files with `decision: none`;
+  - art files with a decision id but no decisions log to check it against;
+  - art files with a decision Jordan has not answered;
   - open streams or changed files that are unknown.
 - **The command line:**
   ```
@@ -27,8 +29,12 @@
 - Build-way 3.3 and Jordan's answers in section 9: WIP limits and "decide before build" are enforced in code.
 
 **Tests:**
-- Adopt 30/0, run through run-bounded on Windows.
-- The 3 refusal kinds each have named tests (no BRIEF: 5; WIP: 6; art: 4).
+- Adopt 31/0, run through run-bounded on Windows.
+- Review fixes (verifier, 2026-10-26):
+  - art files with a decision id and no decisions log are refused, not adopted unchecked;
+  - path globs match without regard to case;
+  - `--write` uses the sink's one-lock `appendAll` when it has one.
+- The 3 refusal kinds each have named tests (no BRIEF: 5; WIP: 6; art: 5).
 - Event shape: 4 tests, and every event is checked against the contract.
 - The command line, the activity and the git path have their own tests.
 - `--write` was also run with WO-UPG-L2-1's `events.mjs` copied in: it appends 2 events. Its test checks whichever case applies.

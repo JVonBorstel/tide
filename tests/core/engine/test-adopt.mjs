@@ -63,7 +63,8 @@ function testArt() {
   const none = base(brief(), { files: art });
   check('refuses with no decision for art paths (adopt.json artPaths)', !none.ok && has(none, /decide before build/), none.refusals.join(' | '));
   const withD = base(brief({ decision: 'D-7' }), { files: art });
-  check('art paths with a decision id in the BRIEF are adopted', withD.ok, withD.refusals.join(' | '));
+  check('art paths with a decision id but no decisions log are refused, not adopted unchecked', !withD.ok && has(withD, /cannot be checked/), withD.refusals.join(' | '));
+  check('globs are case-insensitive: Pass-App/Public/... is still an art path', !base(brief(), { files: ['Pass-App/Public/sprites/x.png'] }).ok);
   const yes = [{ kind: 'decision.answered', actor: 'jordan', data: { decision: 'D-7', answer: 'B' } }];
   const no = [{ kind: 'decision.answered', actor: 'jordan', data: { decision: 'D-7', answer: 'No' } }];
   check('art paths: with a decisions log, the decision must be answered by Jordan (a choice counts; No does not)',

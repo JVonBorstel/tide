@@ -20,7 +20,7 @@ export const CONFIG = JSON.parse(fs.readFileSync(path.join(here, 'adopt.json'), 
 // A glob as a regex: ** any number of path parts, * one part's characters, ? one character; everything else literal.
 export function globRe(glob) {
   const re = String(glob).split('**').map((part) => part.split('*').map((s) => s.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\?/g, '[^/]')).join('[^/]*')).join('.*');
-  return new RegExp(`^${re}$`);
+  return new RegExp(`^${re}$`, 'i'); // case-insensitive: Windows paths are, so Pass-App/Public/x.png must not dodge the art rule
 }
 const matchAny = (file, globs) => globs.some((g) => globRe(g).test(file.replace(/\\/g, '/')));
 
@@ -78,6 +78,7 @@ export function decideAdopt(o) {
   const board = files.filter((f) => matchAny(f, c.boardPaths)); const art = files.filter((f) => matchAny(f, c.artPaths));
   if (board.length && b.base !== 'main') refusals.push(`Board stack depth 0: ${board.length} Board file(s) (${board.slice(0, 3).join(', ')}) on a branch based on ${b.base}, not main`);
   if (art.length && b.decision === 'none') refusals.push(`decide before build: ${art.length} art file(s) (${art.slice(0, 3).join(', ')}) and the BRIEF says decision: none`);
+  if (art.length && b.decision !== 'none' && !o.decisions) refusals.push(`decide before build: ${art.length} art file(s) and ${b.decision} cannot be checked (pass --decisions, the event log with Jordan's answers); unknown is not yes`);
   if (art.length && b.decision !== 'none' && o.decisions && !decisionAnswered(o.decisions, b.decision)) refusals.push(`decide before build: ${b.decision} is not answered yes (or a choice) by Jordan in the given decisions`);
   if ((o.pr && !o.head) || (!o.pr && o.head)) refusals.push('--pr and --head go together (the PR and the sha it was adopted at)');
   if (refusals.length) return { ok: false, wo: b.wo, refusals, events: [] };
@@ -127,7 +128,9 @@ export async function main(argv, say = console.log, now = () => new Date()) {
     const { fileSink } = await import(pathToFileURL(sinkFile).href);
     const sink = fileSink(o.write);
     if (sink.forWo(r.wo).some((e) => e.kind === 'wo.created')) { say(JSON.stringify({ ...r, ok: false, refusals: [`${r.wo} is already in ${o.write}; nothing written`] })); return 3; }
-    r.events = r.events.map(({ v, ...e }) => sink.append(e));
+    // One locked write for both events (appendAll), so a failure never leaves wo.created alone.
+    const drafts = r.events.map(({ v, ...e }) => e);
+    r.events = sink.appendAll ? sink.appendAll(drafts) : drafts.map((e) => sink.append(e));
   }
   say(JSON.stringify(r));
   return r.ok ? 0 : 3;
