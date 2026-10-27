@@ -49,7 +49,7 @@ A damaged or missing settings file falls back to the safe defaults.
 | Audit log grows | Rotated at 20 MB; old logs are kept |
 | Disk fills up | `doctor` alerts below 5 GB free |
 | Settings file broken | Safe defaults |
-| Phone channel down or off | Alerts still land in `alerts.jsonl` and the status page; each line says whether it reached the phone (`sent`: ok, off, failed with the HTTP status, limited, or held until the Walkround lets go of its lock, then an `alert.sent` event). While phone alerts are off the Board shows "Phone alerts are off: N alerts since <time> were not sent" and the Toolbox talk has the same line |
+| Phone channel down or off | Alerts still land in `alerts.jsonl` and the status page; each line says whether it reached the phone (`sent`: ok, off, failed with the HTTP status, limited, or held until the Walkround lets go of its lock, then an `alert.sent` event). While phone alerts are off the Board's Settings (Push alerts row) says "N alerts since <time> were not sent" (never a banner on the home: off is a choice) and the Toolbox talk has the same line |
 
 ## Work order options
 Every `cook` request may add these values to `vars`: `cook` (auto, claude, gemini, local: which crew the Spec's (code: `recipe`) AI steps use; auto lets the Dispatcher (code: `sous-chef.ps1`) pick), `private` (yes: the work order never leaves this PC; a step only a Cloud crew could do waits for Jordan), `size` (S, M or L; L lets the Dispatcher use the strong tier for the plan and build) and `night` (yes: night shift; the work order waits until the next 22:00 local time, or starts right away when ordered between 22:00 and 06:00; default no).

@@ -1008,33 +1008,71 @@ function renderBanners() {
   b.push(...mainStatusBanners(s?.mainStatus));   // TD-EH-03a: a Tower's main is red, said first (public/main-status.js; separate from other banners)
   b.push(...undoPushBanners(s?.undoUnpushed)); const amp = autoMergePauseBanner(s?.automergePause); if (amp) b.push(amp);   // TD-EH-10/11 (public/undo-pause.js)
   // paused on purpose (kitchen.ps1 pause) is a calm line, never the alarm; 10+ minutes without a tick means the scheduled task stopped
-  if (s?.paused) b.push(`<div class="banner calm">Paused by you: nothing new starts until you resume it. Running work and the watchers are still watched.<button class="btn" data-set="kitchen-resume">Resume</button></div>`);
+  if (s?.paused) b.push(`<div class="banner calm" data-chip="Yard paused">Paused by you: nothing new starts until you resume it. Running work and the watchers are still watched.<button class="btn" data-set="kitchen-resume">Resume</button></div>`);
   else if (s && tickAge() !== null && tickAge() > 600) b.push(`<div class="banner">The Yard stopped ticking ${words(tickAge())} ago. Its scheduled task may not be starting (scripts/install-tasks.ps1 fixes it).<button class="btn" data-set="tick">Run now</button></div>`);
-  else if (s && tickAge() !== null && tickAge() > 150) b.push(`<div class="banner">Supervisor quiet for ${words(tickAge())}.<button class="btn" data-set="tick">Run now</button></div>`);
+  else if (s && tickAge() !== null && tickAge() > 150) b.push(`<div class="banner" data-warn data-chip="Supervisor quiet">Supervisor quiet for ${words(tickAge())}.<button class="btn" data-set="tick">Run now</button></div>`);
   b.push(...siteStopBanners(s?.siteStops));   // TD-8: per Site (public/site-stop.js); the global pause above still wins
   // merge freeze windows (kitchen.repo.json "freeze", and a Site's "closed" windows in the Sites registry, TD-9, which name the Site):
   // a calm read-only line; the window itself is the switch, nothing to tap here
   for (const r of s?.freeze?.repos || []) for (const w of r.windows) {
     const now = Date.now(); const from = new Date(w.from).getTime(); const to = new Date(w.to).getTime(); const st = w.site ? `Site ${esc(w.site)}` : 'Site';
-    if (from <= now && now < to) b.push(`<div class="banner calm">${st} closed: ${esc(r.name)} takes no merges until ${esc(w.toText)}: ${esc(w.why)}. Building, testing and pull requests go on.</div>`);
-    else if (from > now && from - now < 7 * 86400000) b.push(`<div class="banner calm">${st} closing ahead for ${esc(r.name)}: no merges ${esc(w.fromText)} to ${esc(w.toText)} (${esc(w.why)}).</div>`);
+    if (from <= now && now < to) b.push(`<div class="banner calm" data-chip="${st} closed">${st} closed: ${esc(r.name)} takes no merges until ${esc(w.toText)}: ${esc(w.why)}. Building, testing and pull requests go on.</div>`);
+    else if (from > now && from - now < 7 * 86400000) b.push(`<div class="banner calm" data-chip="${st} closing ahead">${st} closing ahead for ${esc(r.name)}: no merges ${esc(w.fromText)} to ${esc(w.toText)} (${esc(w.why)}).</div>`);
   }
   b.push(...ciBudgetBanners(s?.ciBudget));   // TD-11: CI runs and minutes per Site this month; over budget = new PRs wait (public/ci-budget.js)
   for (const e of s?.freeze?.errors || []) b.push(`<div class="banner">${esc(e.name)}: ${e.source === 'kitchen.json' ? `Site ${esc(e.site)}'s closed windows in kitchen.json cannot be read` : 'its kitchen.repo.json cannot be read'}, so the site stays closed and nothing merges into it: ${esc(e.error)}</div>`);
   if (s?.breaker) b.push(`<div class="banner">Stop-work order: most recent steps failed, so new work waits${s.breakerUntil && new Date(s.breakerUntil) > Date.now() ? ` ${minWords(-since(s.breakerUntil))} more` : '; one trial step runs first'}.</div>`);
-  if (s?.lead?.mode === 'away' && S.view === 'talk') b.push(`<div class="banner calm moon">Claude is resting until ${s.lead.resetsAt ? esc(dayTime(s.lead.resetsAt)) : 'the weekly reset'}. Gemini and the Home crew answer here.</div>`);
-  const ao = alertsOffBanner(s); if (ao) b.push(ao);   // TD-EH-04
-  if (s && !s.live && !['activity', 'talk'].includes(S.view)) b.push(`<div class="banner calm">AI crews are off: AI steps only show what they'd do.<button class="btn" data-set="live-on">Turn on</button></div>`);
-  const html = b.join(''); if ($('banners').innerHTML !== html) $('banners').innerHTML = html;
+  if (s?.lead?.mode === 'away' && S.view === 'talk') b.push(`<div class="banner calm moon" data-chip="Claude is resting">Claude is resting until ${s.lead.resetsAt ? esc(dayTime(s.lead.resetsAt)) : 'the weekly reset'}. Gemini and the Home crew answer here.</div>`);
+  // TD-EH-04 the alerts-off line is not a notice: push alerts stay off by the Owner's choice (D-10), so it lives in Settings only
+  if (s && !s.live && !['activity', 'talk'].includes(S.view)) b.push(`<div class="banner calm" data-chip="AI crews off">AI crews are off: AI steps only show what they'd do.<button class="btn" data-set="live-on">Turn on</button></div>`);
+  renderNotices(b);
 }
-// TD-EH-04 "Sent or not": while phone alerts are off, every view says how many alerts did not reach the phone (alerts.jsonl `sent`,
-// counted by the server as alertsUnsent) and links to the alerts list (Activity). Plain .banner, no new style. Turning push on stays
-// the Owner's own tap in Settings.
-function alertsOffBanner(s) {
+// D-1 the status line: the banner list above is the one notice list. A broken thing (an alarm banner: the Yard unreachable, the
+// supervisor stopped, a red main, an undo not pushed, a Stop-work order, a registry that cannot be read) keeps a full-width red bar;
+// every other notice is a chip under the header (icon + 2-4 words) whose full text and action open in a sheet with one tap. A new alarm
+// banner is a red bar unless it says otherwise, so nothing broken can turn quiet by accident. data-warn and a Site's CI budget are limits
+// that hold work (a warn chip); data-chip names the chip, else the helper's own marker does, else the words before the first ':' or '.'.
+const WARN = '[data-warn],[data-ci-budget="over"]';
+const CHIP_OF = [['[data-automerge-pause]', () => 'Auto-merge paused'], ['[data-site-stop]', (el) => `Site ${el.dataset.siteStop} stopped`],
+  ['[data-ci-budget="over"]', () => 'CI budget over'], ['[data-ci-budget="count"]', () => 'CI this month'], ['[data-ci-budget="problem"]', () => 'CI budget problem']];
+const NOTICE_TPL = document.createElement('template');
+function noticesOf(markup) {
+  NOTICE_TPL.innerHTML = markup.join('');
+  return [...NOTICE_TPL.content.children].map((el) => {
+    const act = [...el.querySelectorAll('.btn')].map((x) => { x.remove(); return x.outerHTML; }).join('');
+    const text = el.textContent.replace(/\s+/g, ' ').trim();
+    const tone = el.classList.contains('calm') ? 'calm' : el.matches(WARN) ? 'warn' : 'broken';
+    const named = el.dataset.chip || CHIP_OF.find(([q]) => el.matches(q))?.[1](el);
+    const chip = named || text.split(/[:.](?:\s|$)/)[0].split(' ').slice(0, 4).join(' ');
+    return { tone, text, act, chip, moon: el.classList.contains('moon') };
+  });
+}
+function renderNotices(markup) {
+  const list = S.notices = noticesOf(markup);
+  const bars = list.filter((n) => n.tone === 'broken').map((n) => `<div class="redbar"><span>${esc(n.text)}</span>${n.act}</div>`).join('');
+  const chips = list.map((n, i) => (n.tone === 'broken' ? '' : `<button class="notice-chip" type="button" data-notice="${i}" data-tone="${n.tone}"${n.moon ? ' data-moon' : ''} aria-haspopup="dialog"><i aria-hidden="true"></i>${esc(n.chip)}</button>`)).join('');
+  if ($('banners').innerHTML !== bars) $('banners').innerHTML = bars;
+  if ($('status-line').innerHTML !== chips) $('status-line').innerHTML = chips;
+  $('status-line').hidden = !chips;
+  if ($('notice-sheet').open) { const o = list.find((n) => n.chip === S.noticeOpen); if (o) fillNotice(o); }   // live: the open sheet keeps its words current
+}
+function fillNotice(n) {
+  $('notice-title').textContent = n.chip;
+  const html = `<p class="notice-text">${esc(n.text)}</p>${n.act ? `<div class="notice-act">${n.act}</div>` : ''}`;
+  if ($('notice-body').innerHTML !== html) $('notice-body').innerHTML = html;
+}
+$('status-line').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-notice]'); const n = c && S.notices?.[Number(c.dataset.notice)]; if (!n) return;
+  S.noticeOpen = n.chip; fillNotice(n); openSheet('notice-sheet');
+});
+// the notice's own action (Run now, Resume, Turn on, a link) runs through the page's usual handlers; the sheet steps aside for it
+$('notice-body').addEventListener('click', (e) => { if (e.target.closest('[data-set],a[href]')) closeSheet('notice-sheet'); });
+// TD-EH-04 "Sent or not", in Settings (D-10: never a banner while push alerts are off by choice): how many alerts did not reach the
+// phone (alerts.jsonl `sent`, counted by the server as alertsUnsent). Turning push on stays the Owner's own tap.
+function alertsOffLine(s) {
   if (!s || s.push !== false) return '';
   const n = Number(s.alertsUnsent?.n) || 0; const since = s.alertsUnsent?.since;
-  const said = n && since ? `${n} ${n === 1 ? 'alert' : 'alerts'} since ${esc(dayTime(since))} ${n === 1 ? 'was' : 'were'} not sent` : 'new alerts will not reach your phone';
-  return `<div class="banner">Phone alerts are off: ${said}.<a class="btn" href="#/activity">See alerts</a></div>`;
+  return n && since ? `${n} ${n === 1 ? 'alert' : 'alerts'} since ${esc(dayTime(since))} ${n === 1 ? 'was' : 'were'} not sent.` : 'New alerts will not reach your phone.';
 }
 function renderChrome() {
   const s = S.state; const needs = s ? s.jobs.filter(NEEDS).length : 0;
@@ -1115,7 +1153,8 @@ function connect() {
     // short drops (a restart, a phone waking up) only change the pulse; the banner comes after 10 s, 30 s for a planned restart
     S.conn = 'retry'; renderPulse();
     const wait = S.restartAt && Date.now() - S.restartAt < 30000 ? 30000 : 10000;
-    clearTimeout(S.downT); S.downT = setTimeout(() => { if (!es || es.readyState !== 1) { S.conn = 'down'; renderBanners(); renderPulse(); renderAll(); } }, wait);
+    // one timer per drop: the stream's own retries (an error every few seconds while the Yard is down) must not push the bar back for ever
+    if (!S.downT) S.downT = setTimeout(() => { S.downT = null; if (!es || es.readyState !== 1) { S.conn = 'down'; renderBanners(); renderPulse(); renderAll(); } }, wait);
     if (src.readyState === 2) scheduleRetry();
   };
 }
@@ -1177,7 +1216,7 @@ function renderPulse() {
 const feed = makeFeed({ onState: (s) => onState(s), resync: () => reconnect() });
 function onState(s) {
   const first = S.first; S.state = s; S.v = s.v; S.recv = (S.recv || 0) + 1; S.first = false;
-  if (S.conn !== 'live') { S.conn = 'live'; clearTimeout(S.downT); renderBanners(); }
+  if (S.conn !== 'live') { S.conn = 'live'; clearTimeout(S.downT); S.downT = null; renderBanners(); }
   if (!S.build) S.build = s.build; else if (s.build && s.build !== S.build && !S.updateReady) { S.updateReady = true; updateCheck(); }
   s.recvAt = Date.now(); S.stale = false; renderPulse();
   S.savedAt = Date.now();
@@ -1926,7 +1965,7 @@ async function openSettings() {
       <button class="set-row" data-set="lead-toggle"><i class="set-ic" aria-hidden="true">☾</i><span>${s.lead?.mode === 'away' ? 'Claude is back' : 'Claude is out'}<small>${s.lead?.mode === 'away' ? 'Ends away mode now' : 'Shows the away card until the weekly reset'}${s.lead?.week ? ` · week ${Math.round(100 * s.lead.week)}% used` : ''}</small></span></button>
       <button class="set-row" data-set="tick"><i class="set-ic" aria-hidden="true">↻</i><span>Run the supervisor now<small>One pass: checks every work order and starts what's next</small></span></button>
       <button class="set-row" data-set="doctor"><i class="set-ic" aria-hidden="true">✚</i><span>Run the doctor<small>Self-check, backups, damaged files</small></span></button>
-      <button class="set-row" data-set="push"><i class="set-ic" aria-hidden="true">◉</i><span>Push alerts<small>${s.push ? 'On: alerts reach your phone even when the Board is closed.' : 'Off. Get alerts even when the Board is closed (free ntfy app).'}</small></span></button>
+      <button class="set-row" data-set="push"><i class="set-ic" aria-hidden="true">◉</i><span>Push alerts<small>${s.push ? 'On: alerts reach your phone even when the Board is closed.' : `Off. ${alertsOffLine(s)} Get alerts even when the Board is closed (free ntfy app).`}</small></span></button>
       ${s.push ? '<button class="set-row" data-set="push-test"><span>Send a test push</span></button>' : ''}
       <button class="set-row" data-set="notify"><i class="set-ic" aria-hidden="true">◔</i><span>Phone alerts<small>${perm === 'granted' ? 'On while the Board is open in the background (only the work-order number, never the words). Push alerts reach you when the Board is closed.' : perm === 'denied' ? 'Blocked in your browser settings.' : perm === 'unsupported' ? 'Not supported here.' : 'Get an alert when a work order needs your sign-off.'}</small></span></button>
     </div>
@@ -2088,7 +2127,7 @@ daypart(); setInterval(daypart, 600000);
 })();
 
 // ---------- the animated building site at the top of the Board and Live tabs (scene.js) ----------
-import { sceneHtml, activityWord, mountScene, cookOf, COOK_COLORS, stepWord, applyCss, sceneLegend, frameStats, sceneApproved, sceneMeter } from './scene.js';
+import { sceneHtml, activityWord, mountScene, cookOf, COOK_COLORS, stepWord, applyCss, sceneLegend, frameStats, sceneApproved, sceneMeter, skyAt } from './scene.js';
 import { startLive, floorStep } from './live.js';
 import { mainStatusBanners } from './main-status.js';   // TD-EH-03a main-is-red banner
 import { ciBudgetBanners } from './ci-budget.js';   // TD-11 CI budget per Site
@@ -2108,6 +2147,7 @@ import { syncList, windowed, WINDOW_FIRST, WINDOW_STEP } from './rows.js';
 import('./city.js').then((m) => { S.city = m.mountCity({ home: $('city'), names: $('city-names'), strip: $('city-strip'), cap: $('city-key'), api, go, buzz,
   get: () => ({ s: S.stale ? null : S.state, ev: S.events, view: S.view, lastSeen: S.sinceFrom }), legend: (html) => { $('legend-body').innerHTML = html; openSheet('legend-sheet'); } }); renderScene(); }).catch(() => {});
 function renderScene() {
+  const sky = skyAt(new Date().getHours()); if (city.dataset.sky !== sky) city.dataset.sky = sky;   // D-3: the City frame follows the City's own sky
   S.city?.update();
   const s = S.state; const el = S.view === 'cooks' ? $('scene-live') : null; if (!el || !s) return;
   mountScene(el, s, S.events, { compact: false });
