@@ -46,6 +46,7 @@
 </header>
 <button class="city-strip" id="city-strip" type="button" aria-label="The City: open the Board" hidden></button>
 <div id="banners" class="banners"></div>
+<div id="status-line" class="status-line" aria-label="Notices" hidden></div>
 <p class="sr-only" id="announce" aria-live="polite"></p>
 
 <div class="ptr" id="ptr" aria-hidden="true"><svg><use href="#i-down"/></svg><span id="ptr-text">Pull to refresh</span></div>
@@ -141,6 +142,11 @@
   <div class="grab" aria-hidden="true"></div>
   <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Close"><svg><use href="#i-x"/></svg></button><h2 id="legend-title">What am I looking at?</h2><span></span></div>
   <div class="sheet-scroll" id="legend-body"></div>
+</dialog>
+<dialog class="sheet" id="notice-sheet" aria-labelledby="notice-title">
+  <div class="grab" aria-hidden="true"></div>
+  <div class="sheet-bar"><button class="icon-btn" data-close aria-label="Close"><svg><use href="#i-x"/></svg></button><h2 id="notice-title"></h2><span></span></div>
+  <div class="sheet-scroll" id="notice-body"></div>
 </dialog>
 <dialog class="sheet" id="chats-sheet" aria-labelledby="chats-title">
   <div class="grab" aria-hidden="true"></div>

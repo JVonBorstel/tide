@@ -1342,3 +1342,32 @@ html.lobe-px .lobe-box{border:12px solid transparent;border-image:var(--lobe-dlg
 .site-chip[data-site="GW"]{--site:var(--px-ember)}.site-chip[data-site="JH"]{--site:var(--px-tape-lo)}.site-chip[data-site="ZG"]{--site:var(--px-focus)}
 .site-bar{margin:0 var(--gutter) 10px;min-width:0}.site-count{margin:0 0 6px;font:600 13px/18px var(--mono);color:var(--ink-2);overflow-wrap:anywhere}
 .site-seg button{font-family:var(--mono);letter-spacing:.04em;padding:0 4px;transition:none}
+
+/* D-1 the status line (app.js renderNotices): notices are chips under the header, one tap opens the full text and its action in a sheet;
+   only a broken thing keeps a full-width red bar (no card, no radius). Tokens only; the chip's icon is shape + word (calm dot, warn triangle,
+   moon). Every chip and button is 44 px to tap; the line wraps, so it never scrolls sideways. */
+.banners{display:block;padding:0}
+.redbar{display:flex;align-items:center;gap:12px;margin:0;padding:10px var(--gutter);background:var(--fault);color:var(--on-ember);font:600 14px/20px var(--sans);border:0;border-radius:0;box-shadow:none;overflow-wrap:anywhere}
+.redbar+.redbar{border-top:1px solid color-mix(in srgb,var(--on-ember) 30%,transparent)}
+.redbar span{flex:1;min-width:0}
+.redbar .btn{flex:none;min-height:44px;padding:0 12px;color:inherit;background:transparent;border:2px solid currentColor;border-radius:0;font:700 14px/1 var(--mono);white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center}
+.status-line{display:flex;flex-wrap:wrap;gap:6px;padding:6px var(--gutter) 2px;min-width:0}
+.notice-chip{display:inline-flex;align-items:center;gap:7px;min-height:44px;max-height:48px;padding:0 12px;font:700 13px/16px var(--mono);color:var(--ink);background:var(--surface);border:2px solid var(--line-strong);border-radius:0;cursor:pointer;white-space:nowrap}
+.notice-chip i{flex:none;width:8px;height:8px;border-radius:50%;background:var(--ink-3)}
+.notice-chip[data-tone="warn"]{border-color:var(--amber)}
+.notice-chip[data-tone="warn"] i{width:10px;height:9px;border-radius:0;background:var(--amber);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.notice-chip[data-moon] i{width:10px;height:10px;background:none;box-shadow:inset -3px 1px 0 0 var(--ink-2)}
+.notice-chip:focus-visible{outline:3px solid var(--focus);outline-offset:1px}
+html.px .notice-chip{clip-path:var(--px-notch-s)}
+.notice-text{margin:4px 0 12px;font-size:16px;line-height:24px;color:var(--ink);overflow-wrap:anywhere}
+.notice-act{display:flex;flex-wrap:wrap;gap:8px}.notice-act .btn{min-height:44px;text-decoration:none;display:inline-flex;align-items:center}
+/* the City gets the space back: edge to edge (city.js scales the picture to the box), its words keep the gutter, every name whole
+   (names wrap to a second row or line, never an ellipsis); D-3: Look A (crisp pixels as drawn) by day, lit at dusk and night (B's lighting) */
+.city{margin:2px 0 10px}
+/* until city.js draws, hold the picture's usual room (half the width: a City of about six buildings) so the Board below does not jump */
+.city:not([data-drawn]){min-height:calc(min(100vw,600px) / 2)}
+#city-names{padding:0 var(--gutter)}
+.city-names{flex-wrap:wrap}
+.city-names li{flex:1 1 auto}
+.city-names b{overflow:visible;white-space:normal;text-overflow:clip;overflow-wrap:anywhere}
+.city[data-sky="night"] .city-canvas,.city[data-sky="dusk"] .city-canvas{filter:brightness(1.06) contrast(1.18) saturate(1.4)}

@@ -1131,6 +1131,11 @@ console.log(JSON.stringify({ banners: siteStopBanners(items, { when }), rows: si
     Check 'city: test-city.mjs exits 0 (a node crash is a failure, not silence)' ($cityExit -eq 0)
     Check 'city: test-city.mjs reported at least 25 checks' (@($cityTest).Count -ge 25)
     foreach ($t in @($cityTest)) { if ($t) { Check "city: $($t.name)" ($t.pass -eq $true) } }
+    # D-1 the status line, D-10 alerts off, the City given the space (pass-app/test-status-line.mjs: a throwaway server and headless Chrome or Edge)
+    $slOut = & node (Join-Path $repo 'pass-app\test-status-line.mjs') 2>$null; $slExit = $LASTEXITCODE; $slTest = $null
+    try { $slTest = ($slOut -join "`n") | ConvertFrom-Json } catch { $slTest = $null }
+    Check 'status line: test-status-line.mjs exits 0 and reported at least 25 checks' ($slExit -eq 0 -and @($slTest).Count -ge 25)
+    foreach ($t in @($slTest)) { if ($t) { Check "status line: $($t.name)" ($t.pass -eq $true) } }
     Check 'City_TowersNeedsKey: /api/towers needs the key' ((Get-Code "$base/api/towers") -eq 401)
     $twRaw = (Invoke-WebRequest "$base/api/towers" -Headers $auth).Content; $tw = $twRaw | ConvertFrom-Json
     Check 'City_TowersRoute: ok, this repo as its one building (no bootRepos here), with a 12-hex version' ($tw.ok -and @($tw.towers).Count -eq 1 -and $tw.v -match '^[0-9a-f]{12}$' -and @($tw.towers)[0].kind -in @('tower', 'lot'))
@@ -1722,17 +1727,17 @@ console.log(JSON.stringify(checks));
     $stU2 = Invoke-RestMethod "$base/api/state" -Headers $auth
     Check 'SentOrNot_Board: a failed send counts as not sent; state carries a count and a time, no alert words' ($stU2.alertsUnsent.n -eq 1 -and (($stU2.alertsUnsent | ConvertTo-Json -Compress) -notmatch 'SECRET|ntfy|text'))
     if ($null -ne $apKeep) { Set-Content $apP $apKeep -NoNewline } else { Remove-Item $apP }
-    # the banner words in node (alertsOffBanner and alertNotSent from app.js, with app.js's own dayTime and an escaper)
-    $aoFn = [regex]::Match($appS, '(?ms)^function alertsOffBanner\(s\) \{.*?^\}').Value
+    # the Settings words in node (alertsOffLine and alertNotSent from app.js, with app.js's own dayTime and an escaper); D-10: never a banner
+    $aoFn = [regex]::Match($appS, '(?ms)^function alertsOffLine\(s\) \{.*?^\}').Value
     $nsFn = [regex]::Match($appS, '(?m)^function alertNotSent\(e\) .*$').Value; $dtFn = [regex]::Match($appS, '(?m)^function dayTime\(iso\) .*$').Value
     $aoTest = @'
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const checks = []; const ok = (name, pass) => checks.push({ name, pass: !!pass });
-const since = '2026-10-23T08:00:00Z'; const when = esc(dayTime(since)); const link = '<a class="btn" href="#/activity">See alerts</a>';
-ok('banner: "Phone alerts are off: N alerts since <time> were not sent", plain banner, link to the alerts list', alertsOffBanner({ push: false, alertsUnsent: { n: 3, since } }) === `<div class="banner">Phone alerts are off: 3 alerts since ${when} were not sent.${link}</div>`);
-ok('banner: one alert reads "1 alert ... was not sent"', alertsOffBanner({ push: false, alertsUnsent: { n: 1, since } }) === `<div class="banner">Phone alerts are off: 1 alert since ${when} was not sent.${link}</div>`);
-ok('banner: off with nothing unsent yet still shows, plainly', alertsOffBanner({ push: false, alertsUnsent: { n: 0, since: null } }) === `<div class="banner">Phone alerts are off: new alerts will not reach your phone.${link}</div>`);
-ok('banner: none while phone alerts are on, or before the state arrives', alertsOffBanner({ push: true, alertsUnsent: { n: 4, since } }) === '' && alertsOffBanner(null) === '' && alertsOffBanner({}) === '');
+const since = '2026-10-23T08:00:00Z'; const when = esc(dayTime(since));
+ok('settings: "N alerts since <time> were not sent"', alertsOffLine({ push: false, alertsUnsent: { n: 3, since } }) === `3 alerts since ${when} were not sent.`);
+ok('settings: one alert reads "1 alert ... was not sent"', alertsOffLine({ push: false, alertsUnsent: { n: 1, since } }) === `1 alert since ${when} was not sent.`);
+ok('settings: off with nothing unsent yet still says so, plainly', alertsOffLine({ push: false, alertsUnsent: { n: 0, since: null } }) === 'New alerts will not reach your phone.');
+ok('settings: nothing while phone alerts are on, or before the state arrives', alertsOffLine({ push: true, alertsUnsent: { n: 4, since } }) === '' && alertsOffLine(null) === '' && alertsOffLine({}) === '');
 ok('activity: an unsent alert is marked with its reason; a sent or held one is not', alertNotSent({ sent: 'off', why: 'phone alerts are off' }) === ' · <b>not sent</b> (phone alerts are off)' && alertNotSent({ sent: 'limited', why: '<x>' }) === ' · <b>not sent</b> (&lt;x&gt;)' && alertNotSent({ sent: 'ok' }) === '' && alertNotSent({ sent: 'held' }) === '' && alertNotSent({}) === '');
 console.log(JSON.stringify(checks));
 '@
@@ -1740,9 +1745,9 @@ console.log(JSON.stringify(checks));
     ($dtFn + "`n" + $nsFn + "`n" + $aoFn + "`n" + $aoTest) | Set-Content $aoFile -Encoding utf8
     $aoOut = & node $aoFile; $aoExit = $LASTEXITCODE; Remove-Item $aoFile -Force -ErrorAction SilentlyContinue
     $aoRes = $null; try { $aoRes = ($aoOut -join "`n") | ConvertFrom-Json } catch { }
-    Check 'SentOrNot_Board: the banner node check ran (exit 0, 5 results)' ($aoExit -eq 0 -and @($aoRes).Count -eq 5)
+    Check 'SentOrNot_Board: the Settings words node check ran (exit 0, 5 results)' ($aoExit -eq 0 -and @($aoRes).Count -eq 5)
     foreach ($r in @($aoRes)) { Check "SentOrNot_Board: $($r.name)" $r.pass }
-    Check 'SentOrNot_Board wiring: renderBanners shows it on every view, Activity marks alerts, the link uses the existing a.btn rule' ($appS -match 'const ao = alertsOffBanner\(s\); if \(ao\) b\.push\(ao\);' -and $appS -match "'alert': \[[^\]]*alertNotSent\(e\)" -and (Get-Content (Join-Path $repo 'pass-app\public\app.css') -Raw) -match '\.pack-actions a\.btn,\.banner a\.btn\{text-decoration:none')
+    Check 'SentOrNot_Board wiring: Settings shows it in the push row and no banner does (D-10), Activity marks alerts' ($appS -match 'Off\. \$\{alertsOffLine\(s\)\}' -and $appS -cnotmatch 'alertsOffBanner|Phone alerts are off' -and $appS -match "'alert': \[[^\]]*alertNotSent\(e\)" -and (Get-Content (Join-Path $repo 'pass-app\public\app.css') -Raw) -match '\.pack-actions a\.btn,\.banner a\.btn\{text-decoration:none')
 } finally {
     if ($srv -and -not $srv.HasExited) { & taskkill.exe /PID $srv.Id /T /F 2>&1 | Out-Null }
     $env:BRAIN_KITCHEN = $null; $env:PASS_PORT = $null; $env:PASS_NO_TAILSCALE = $null; $env:PASS_HOSTS = $null; $env:PASS_NO_KICK = $null; $env:KITCHEN_OLLAMA_URL = $null; $env:KITCHEN_AGY_EXE = $null
