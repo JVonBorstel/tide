@@ -83,6 +83,8 @@ const HITS = 'privacy hits = the number of entries in the JSON\'s "hits" array (
 const sameHead = (a, b) => !!a && !!b && a.length >= 7 && b.length >= 7 && (a.startsWith(b) || b.startsWith(a))
 // text that goes into a CLI argument inside a prompt: no quotes, $, backticks or backslashes for a shell to read
 const shellSafe = (s, n) => String(s).replace(/["'`$\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n)
+// a PR title goes inside "..." on a command line: the same, but an apostrophe is harmless there and stays
+const titleSafe = (s) => String(s).replace(/["`$\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200)
 const PLAN = { type: 'object', properties: { milestone: int, raised: { type: 'array', items: int }, milestoneDone: bool, why: str }, required: ['milestone', 'raised', 'milestoneDone', 'why'] }
 const DONE = { type: 'object', properties: { ok: bool, why: str }, required: ['ok', 'why'] }
 
@@ -99,7 +101,7 @@ const RULES = `House rules (the repo's AGENTS.md, kitchen/CREED.md, kitchen/BUIL
 - no installs, no new remotes, no settings changes; report counts, not adjectives (CREED 5); unknown is written "unknown".`
 const wtOf = (t) => `${ctx.wtRoot}\\task-${t.id}`
 const branchOf = (t) => t.branch || `task/${t.id}`
-const titleOf = (t) => `WO-TASK-${t.id}: ${t.public_title || `task ${t.id}`}`
+const titleOf = (t) => `WO-TASK-${t.id}: ${titleSafe(t.public_title || '') || `task ${t.id}`}`
 
 // ---- PICK ---------------------------------------------------------------------------------------------------------------------------
 function pickPrompt(first) {
@@ -138,10 +140,15 @@ If a finding is wrong, do not "fix" it: say why in "blocked" only if you cannot 
 2. The worktree: ${wt} on branch ${br}. ${t.resume || t.pr ? `This task is being RESUMED (PR #${t.pr || 'none yet'}): reuse the worktree if it exists (\`git -C ${wt} status\`);
    if only the branch exists, \`git -C ${ctx.checkout} worktree add ${wt} ${br}\`; then continue from where it stopped. If the PR is
    open and the work is complete and pushed, change nothing and return its details.`
-   : `\`git -C ${ctx.checkout} fetch origin main\` then \`git -C ${ctx.checkout} worktree add ${wt} -b ${br} origin/main\` (if the branch already exists, add the worktree on it instead).`}
-3. Build it there, tests first: every acceptance line gets a test named after it. Touch only the task's paths (CREED 4); anything else
-   must be minimal and listed in outsidePaths with the reason. Add docs/changes/task-${t.id}.md (what, why, tests with counts, L1-L4 effect)
-   in public words only. Keep README/docs true where a neighbour option is documented.`
+   : `\`git -C ${ctx.checkout} fetch origin main\` then \`git -C ${ctx.checkout} worktree add --no-track ${wt} -b ${br} origin/main\` (if the branch already exists, add the worktree on it instead;
+   --no-track: the branch gets its own upstream at its first push, never main).`}
+3. Build it there, tests first: every acceptance line gets a test, named in public words for the behaviour it checks (test names are
+   public: never the task's own wording). A task with no acceptance lines: test what its goal asks and say so in the change note.
+   Touch only the task's paths (CREED 4); docs/changes/task-${t.id}.md is part of every task's paths. Anything else must be minimal and
+   listed in outsidePaths with the reason. Add docs/changes/task-${t.id}.md (what, why, tests with counts, L1-L4 effect) in public words
+   only. Keep README/docs true where a neighbour option is documented.
+   Never start another orchestrator from inside this run (/task-start, /task-orchestrate or the Workflow tool): the lock refuses it. If the
+   task asks for a live run of the orchestrator, this run is that live run: work from what it shows you.`
   return `${start}
 ${RULES}
 ${PRIVATE}
@@ -316,7 +323,8 @@ function planPrompt() {
    (\`${cli()} list --json\`, those with that milestone), the repo as it is now (\`git -C ${ctx.checkout} log --oneline -15 origin/main\`, \`gh pr list -R ${O.repo}\`).
 3. If everything the milestone asks for is done or merged: \`${cli()} set <id> status=done\`, milestoneDone=true, raised=[].
 4. Otherwise raise at most ${O.planBatch} tasks that can START NOW (their dependencies done or in this batch), no duplicates of existing ones:
-   for each, write a body file (## Goal, ## Why (L1-L4), ## Done means (each line becomes a named test), ## Do not touch, ## Stop and ask when)
+   for each, write a body file (## Goal, ## Why (L1-L4), ## Done means (each line becomes a test name, so write it in public words: no
+   private names or plans), ## Do not touch, ## Stop and ask when)
    and run \`${cli()} new --title "<private title>" --public-title "<neutral public title, no private names>" --milestone <id> --paths <narrow comma list of files or globs> [--depends <numbers>] [--priority 1-9] --body-file <file>\`,
    then delete the body file. Paths must be narrow and honest: lanes run tasks in parallel only when their paths do not clash.
    Work that needs Jordan (a decision, an install, a setting, money, a publish) becomes a task with --depends jordan, saying exactly what he must decide.
