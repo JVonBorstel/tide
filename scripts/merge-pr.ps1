@@ -1,7 +1,9 @@
 # How a Claude session merges a pull request: only after GitHub's CI reports green, pinned to the commit that was checked, and logged
 # as a session merge. (2026-10-22: brain-monitor PR #27 merged 44 s before its CI finished, and every merge shows Jordan's account, so a
 # session merge and Jordan's own tap looked the same.)
-#   pwsh -File scripts/merge-pr.ps1 -Repo owner/name -Pr N [-Why text] [-DryRun] [-FixesRed]
+#   pwsh -File scripts/merge-pr.ps1 -Repo owner/name -Pr N [-Why text] [-DryRun] [-FixesRed] [-ExpectHead sha]
+# -ExpectHead (the task orchestrator, 2026-10-27): the commit a reviewer approved (7 to 64 hex). The PR's head must be that commit, or it
+# refuses; the rest below then pins the merge to it, so what merges is exactly what was reviewed.
 # Site closed when red (TD-EH-03c): first of all, the Tower's main status (kitchen/main-status.ps1, written by the verify step) is read
 # from the kitchen state folder. While it is red, or a status file cannot be read (unknown is not green), it refuses and names the
 # suites and why: a merge onto a red main inherits the blame. -FixesRed merges anyway, for the PR that is the fix; that merge says so in
@@ -25,7 +27,8 @@ param(
     [Parameter(Mandatory)][ValidateRange(1, 999999)][int]$Pr,
     [string]$Why = '',
     [switch]$DryRun,
-    [switch]$FixesRed
+    [switch]$FixesRed,
+    [ValidatePattern('^$|^[0-9a-fA-F]{7,64}$')][string]$ExpectHead = ''
 )
 $ErrorActionPreference = 'Stop'
 $kitchenDir = Join-Path $PSScriptRoot '..\kitchen'
@@ -63,6 +66,7 @@ if ($p.draft -eq $true) { Refuse 'the pull request is a draft' }
 $sha = [string]$p.head.sha; $base = [string]$p.base.ref
 if ($sha -notmatch '^[0-9a-f]{40,64}$' -or -not $base) { Refuse 'GitHub did not say which commit the pull request is at' }
 $short = $sha.Substring(0, 7)
+if ($ExpectHead -and -not $sha.StartsWith($ExpectHead.ToLowerInvariant())) { Refuse "the pull request is at $short, not at the reviewed commit $($ExpectHead.Substring(0, 7).ToLowerInvariant()) (-ExpectHead): nobody reviewed $short" }
 
 # 2. a merge freeze on the base branch's kitchen.repo.json (no file there = no freeze; a file that will not load = refuse), plus its Site's
 #    closed windows (TD-9) when it names a Site; a registry that will not read then refuses too (nobody can say whether one covers now)

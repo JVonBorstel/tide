@@ -86,6 +86,10 @@ try {
     Scenario @{ total = 150 }; $r = Run
     Check 'more checks than one read sees refuses' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match '150 checks')
 
+    Scenario @{}; $r = Run @{ ExpectHead = $A.Substring(0, 12) }
+    Check '-ExpectHead at the head: merges exactly that commit' ($r.Code -eq 0 -and $r.Merged -and (MergeCommit) -like "$M $A|*")
+    Scenario @{}; $r = Run @{ ExpectHead = $B }
+    Check '-ExpectHead not the head: refuses (a commit nobody reviewed), nothing merged or logged' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'not at the reviewed commit' -and $r.Log.Count -eq 0)
     Scenario @{ heads = @($A, $B) }; $r = Run
     Check 'a head sha that moved refuses' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match "moved from $($A.Substring(0, 7)) to $($B.Substring(0, 7))")
 
