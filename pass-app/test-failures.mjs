@@ -80,6 +80,7 @@ try {
   await ev(`document.querySelector('#sec-aside li[data-row="J60"] [data-do="why"]').click()`); await settle(400);
   const v2 = await view(); const w60 = v2.items.find((x) => x.id === 'J60');
   check('FailuresList_SeeWhy: See why opens the raw detail in the row with one tap (and says Hide why)', w60?.why === 'fail: exit 1: tests: FAILED: Test-Example (J60)' && w60.btns[2] === 'Hide why' && v2.sw <= v2.vw, JSON.stringify(w60));
+  await ev(`(() => { document.querySelector('#sec-aside li[data-row="J60"]')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -120); })()`); await settle(400);
   await shot(`why-412-dark-${label}.png`);
   await ev(`document.querySelector('#sec-aside li[data-row="J60"] [data-do="why"]').click()`); await settle(300);
   check('FailuresList_SeeWhy: a second tap closes it', !(await view()).items.find((x) => x.id === 'J60')?.why);
