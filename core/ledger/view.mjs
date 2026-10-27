@@ -273,7 +273,8 @@ export function exportLedgerJson(v, o = {}) {
     since: new Date(Date.parse(v.at) - r.ageH * 3600000).toISOString(), ageDays: Math.round(r.ageH / 2.4) / 10,
     chain: [{ id: r.alias || r.id, status: r.stage, proof: r.proof || '', note: r.next || '', replacedBy: r.state === 'replaced' && r.next ? r.next.replace(/^continues as /, '') : '' }],
   }));
-  const items = [...lg.items, ...rowItems].slice(0, 400);
+  // no cap: the old file had none, and a cap would drop items silently (the Board's reader takes the first 400 itself)
+  const items = [...lg.items, ...rowItems];
   const ruleOwner = /** @type {Record<string,[string, number]>} */ ({ lost: ['Claude', 1], stale: ['Claude', 2], 'stack-too-deep': ['Claude', 2], 'no-plan': ['Claude', 3], 'no-decision': ['Jordan', 2], 'over-wip': ['Jordan', 2] });
   // the view's own flags for rows that are not Yard orders (the old rules flag those), Jordan's cards, then the old flags
   const flags = v.flags.filter((f) => !f.wo || !jobOfWo(f.wo)).map((f) => ({ id: f.wo || f.flag, rule: f.flag, owner: ruleOwner[f.flag]?.[0] || 'Claude', pri: ruleOwner[f.flag]?.[1] || 3, say: f.detail }))

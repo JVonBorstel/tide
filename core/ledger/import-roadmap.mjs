@@ -44,7 +44,7 @@ export function importRoadmaps(o) {
     const rm = roadmapOf(r.path, r.name);
     report.push({ repo: r.name, ok: rm.ok, why: rm.why, items: rm.items.length });
     if (!rm.ok && /^no (kitchen\.repo\.json|roadmap)$/.test(rm.why)) continue;   // not opted in: nothing to say
-    events.push({ family: `roadmap:${r.name}`, value: hash(rm), at, actor: 'import', kind: 'x.local.roadmap', wo: null, data: { ...rm, path: r.path }, proof: null });
+    events.push({ family: `roadmap:${r.name}`, value: hash(rm), at, actor: 'import', kind: 'x.local.roadmap', wo: null, data: rm, proof: null });
   }
   return { events, report };
 }

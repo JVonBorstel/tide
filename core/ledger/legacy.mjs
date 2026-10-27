@@ -53,7 +53,8 @@ export function legacyLedger(v) {
   const items = /** @type {any[]} */ ([]); const inChain = new Set();
   // ---- ideas: the idea's own order, every order whose goal says "(Idea I12:", then their replacements
   const byIdea = new Map();
-  for (const w of wos.values()) { const m = /\(Idea (I\d+):/.exec(String(w.goal || '')); if (m && w.alias) { if (!byIdea.has(m[1])) byIdea.set(m[1], []); byIdea.get(m[1]).push(w.alias); } }
+  // the goal's "(Idea I12:" text, or an archived order's own idea field (its summary line has no goal)
+  for (const w of wos.values()) { const idea = /\(Idea (I\d+):/.exec(String(w.goal || ''))?.[1] || w.yard?.idea; if (idea && w.alias) { if (!byIdea.has(idea)) byIdea.set(idea, []); byIdea.get(idea).push(w.alias); } }
   const links = snap.links || {}; const drops = snap.drops || {};
   for (const i of snap.ideas?.items || []) {
     const ch = chain([i.job, ...(byIdea.get(i.id) || [])]); for (const c of ch) inChain.add(c.id);

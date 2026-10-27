@@ -71,6 +71,8 @@ export function importYard(state, opt = {}) {
     const lastAt = isoOrNull(hist[hist.length - 1]?.at) || isoOrNull(j.ended) || c?.at || created;
     const replacedBy = /^J\d+$/.test(String(j.replacedBy || '')) ? String(j.replacedBy) : c?.replacedBy || null;
     const facts = { status, recipe: text(j.recipe, 60) || 'unknown', attempt: Number(j.attempt) || 0, code: archived ? j.code === true : isCode(j), parent: /^J\d+$/.test(String(j.parent || '')) ? String(j.parent) : null,
+      // an archived order's summary line has no goal; it names its idea instead (kitchen/jobs-lib.ps1 Get-JobArchiveLine)
+      ...(/^I\d+$/.test(String(j.idea || '')) ? { idea: String(j.idea) } : {}),
       archived, name: text(j.name, 300), ...(c ? { closed: c } : {}), ...(replacedBy ? { replacedBy } : {}),
       // a roadmap item's order (recipe roadmap-item) names its item and its repo checkout; the roadmap importer joins on them
       ...(j.vars?.item || j.item ? { item: text(j.vars?.item || j.item, 20) } : {}), ...(j.vars?.repo || j.repo ? { repoPath: text(j.vars?.repo || j.repo, 300) } : {}) };

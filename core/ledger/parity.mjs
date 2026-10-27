@@ -56,7 +56,10 @@ export function compareLedgers(old, view, events) {
     const ex = exported.get(`${kind}|${id}`);
     if (ex && (kind === 'idea' || kind === 'roadmap')) {
       out.new = ex.wo || ex.id; out.newState = ex.state;
-      if (ex.state === oldState) { out.verdict = 'same'; out.reason = `the export's own ${kind} item`; items.push(out); continue; }
+      // the same state is not enough: an idea's chain (its orders, in order) must match too
+      const ids = (/** @type {any} */ x) => (Array.isArray(x?.chain) ? x.chain.map((/** @type {any} */ c) => String(c?.id || '')).join(',') : '');
+      if (ex.state === oldState && (kind !== 'idea' || ids(it) === ids(ex))) { out.verdict = 'same'; out.reason = `the export's own ${kind} item`; items.push(out); continue; }
+      if (ex.state === oldState) { out.reason = `same state, but the chain differs: old ${ids(it) || 'none'}, new ${ids(ex) || 'none'}`; items.push(out); continue; }
       if (ex.state === 'shipped') { out.verdict = 'explained'; out.reason = `new proof the old ledger does not read: ${ex.proof}`; items.push(out); continue; }
       out.reason = `the old ledger says ${oldState}, the export's own ${kind} item says ${ex.state}${ex.why ? ` (${ex.why})` : ''}: no known reason`; items.push(out); continue;
     }

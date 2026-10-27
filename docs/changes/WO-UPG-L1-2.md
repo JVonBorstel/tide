@@ -19,9 +19,18 @@
   format (ISO time vs PowerShell's local date text).
 - With a read-only GitHub read: 307 same, 5 explained (merge proof from GitHub the old ledger does not read), 0 unexplained.
 
+**Review fixes (verifier on #36: SHIP AFTER FIXES, audits/review-tide-36-2026-10-26.md):**
+- F1: an archived order keeps its idea link (its summary line's `idea` field), so an idea shipped through an archived order stays
+  shipped. Parity now also compares each idea's chain of orders: on the scratch copy 312 of 312 are the same, chains included.
+- F2: no cap on `ledger.next.json` items (the old file had none; 434 items on the scratch copy). The Board's reader still takes 400.
+- F3: `core/ledger/share.mjs` drops `x.*` event data and strips local paths before any record leaves the PC; the roadmap event no
+  longer stores the checkout path.
+- F4: the test fixture repo is `roadmap-repo`.
+- F5: `OTHER` (PRs no branch rule places) never counts toward the limit of 4 build streams; it is listed, not limited.
+
 **L1-L4:**
 - Person: none yet (switched off). When it serves, the Board's Ledger tab keeps every idea, roadmap item and post-mortem it shows today.
 - Business: none. MSP: none.
 - Community: the old ledger's rules now live in plain, tested Node next to the new event store.
 
-**Tests:** `tests/core/ledger/test-ledger.mjs`: 150/0 (with the #31 review fixes merged in) (26 new, named `l2: ...`; ideas, roadmap and lobe snapshots are observations, so A -> B -> A is kept).
+**Tests:** `tests/core/ledger/test-ledger.mjs`: 156/0 (with the #31 review fixes merged in) (32 new, named `l2: ...`; ideas, roadmap and lobe snapshots are observations, so A -> B -> A is kept).
