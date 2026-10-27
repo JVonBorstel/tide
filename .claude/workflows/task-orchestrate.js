@@ -332,6 +332,8 @@ for (let first = true; ; first = false) {
   phase('Pick')
   const p = await agent(pickPrompt(first), { label: first ? 'pick (resume)' : 'pick', phase: 'Pick', model: 'haiku', effort: 'low', schema: PICK })
   if (!p) { stopped = 'the pick agent stopped (usage cap or error); run again after the reset'; break }
+  // a model can return an empty field as a quoted empty string ("\"\""); that is not a stop reason
+  for (const k of ['stop', 'reason']) if (!String(p[k] ?? '').replace(/["'\s]/g, '')) p[k] = ''
   if (!ctx) {
     if (p.visibility !== 'PUBLIC') { stopped = p.reason || `${O.repo} is not public (${p.visibility || 'unknown'}); this orchestrator works public repos only`; break }
     ctx = { checkout: p.checkout, cli: p.cli, store: p.store, wtRoot: p.wtRoot, run: p.run || '' }; gateBase = p.mainSha || ''; log(`task store: ${p.store}`)
