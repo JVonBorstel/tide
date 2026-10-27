@@ -53,6 +53,8 @@ const minWords = (sec) => Math.max(1, Math.ceil((Number(sec) || 0) / 60)) + ' mi
 // "waiting 8 min before retry" for a pending order still in its back-off (TD-EH-08); '' when it is not waiting to retry
 const retryWaitText = (j) => (j?.retry && j.notBefore && new Date(j.notBefore) > Date.now() ? `waiting ${minWords(-since(j.notBefore))} before retry` : '');
 const since = (ts) => (Date.now() - new Date(ts).getTime()) / 1000;
+// task 30 (D-11): a time in words ("3 min ago"); a tap shows the exact time, a second tap the words again (the 1 s ticker keeps either)
+const agoTag = (ts) => (ts ? `<time class="ago" datetime="${esc(ts)}" data-ago="${esc(ts)}" title="${esc(exactTime(ts))}">${agoWords(ts)}</time>` : '');
 const human = (s) => String(s || '').replace(/[-_]+/g, ' ');
 const cap = (s) => { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); };
 const who = (j) => j.station === 'agent' ? (j.cook || j.supplier || 'Dispatcher picks') : human(j.station);
@@ -276,7 +278,7 @@ function row(j, kind) {
   const meta = [siteChip(j) + withFloor(`<span class="mono">${ticket(j.id)}</span>`, j), stuckChip(j)];
   let glyph = 'g-queue', side = '', extra = '', swipe = '', cls = 'row';
   if (kind === 'need') {
-    glyph = 'g-need'; meta.push(esc(who(j)), `waiting <span data-ago="${esc(j.updated || '')}">${ago(j.updated)}</span>`);
+    glyph = 'g-need'; meta.push(esc(who(j)), `asked ${agoTag(j.updated)}`);
     extra = `${j.approval?.text ? `<div class="row-ask">${esc(askText(j))}</div>` : ''}${j.approval?.gate === 'merge' && PROTECTED(j) ? `<div class="row-ask">${protectedMark(j)}</div>` : ''}${ciLookMark(j)}<div class="row-buttons"><button class="btn primary" data-do="approve" data-id="${j.id}">Approve</button><button class="btn" data-do="reject" data-id="${j.id}">Reject</button></div>`;
   } else if (kind === 'cook') {
     return cookCard(j);
@@ -284,13 +286,13 @@ function row(j, kind) {
     cls += ' compact'; meta.push(esc(who(j)));
     const wait = j.notBefore && new Date(j.notBefore) > Date.now(); const rw = retryWaitText(j);
     side = `<span class="pos">${wait ? 'in ' + words(-since(j.notBefore)) : ord(j.pos) + ' up'}</span>`;
-    if (rw) extra = `<div class="row-reason">${esc(cap(rw))}${j.last ? ' · ' + esc(reason(j.last)) : ''}</div>`;
+    if (rw) extra = `<div class="row-reason">${esc(cap(rw))}${j.last ? ' · ' + esc(plainDetail(reason(j.last))) : ''}</div>`;
     swipe = `<button class="swipe-act danger" data-do="stop" data-id="${j.id}" tabindex="-1">Cancel</button>`;
   } else if (kind === 'aside') {
-    glyph = 'g-fail'; meta.push(esc(statusLabel(j).toLowerCase()), ago(j.updated));
-    extra = j.last ? `<div class="row-reason">${esc(reason(j.last))}</div>` : '';
+    glyph = 'g-fail'; meta.push(esc(statusLabel(j).toLowerCase()), agoTag(j.updated));
+    extra = j.last ? `<div class="row-reason">${esc(plainDetail(reason(j.last)))}</div>` : '';
     swipe = `<button class="swipe-act" data-do="retry" data-id="${j.id}" tabindex="-1">Retry</button>`;
-  } else { glyph = 'g-done'; cls += ' compact'; meta.push(esc(who(j)), j.cost ? money(j.cost) : '', ago(j.updated)); }
+  } else { glyph = 'g-done'; cls += ' compact'; meta.push(esc(who(j)), j.cost ? money(j.cost) : '', agoTag(j.updated)); }
   const more = kind !== 'need' && kind !== 'done' ? `<button class="icon-btn row-more" data-do="menu" data-id="${j.id}" aria-label="Actions for ${ticket(j.id)}">${icon('more')}</button>` : '';
   return `<li class="${cls}" data-row="${j.id}" ${swipe ? 'data-swipe' : ''}>${swipe}<div class="row-inner">
     <a class="row-link" href="#/job/${j.id}" aria-label="${esc(ticket(j.id) + ', ' + nameOf(j).text)}"></a>
@@ -343,22 +345,27 @@ function renderPass() {
   const jobs = bySite(s.jobs, siteF); const byId = (a, b) => parseInt(a.id.slice(1)) - parseInt(b.id.slice(1));
   const needs = jobs.filter(NEEDS).sort(byId), cooking = jobs.filter((j) => j.status === 'running').sort(byId);
   const rail = jobs.filter((j) => j.status === 'pending').sort(byId).map((j, i) => ({ ...j, pos: i + 1 }));
-  const aside = jobs.filter(ASIDE).sort(newest);
   const plated = jobs.filter((j) => j.status === 'done').sort(newest);
-  // the headline says the state of the kitchen in one sentence; the line under it counts the rest (each a jump to its section)
+  // task 30 (Jordan's phone 10-27): the failed number counts what needs him now (failed or stopped in the last day); older ones are one
+  // tap away under "Cleared / older" in the same section
+  const hs = homeStats(jobs); const aside = S.showOlder ? [...hs.recent, ...hs.older] : hs.recent; const anyAside = hs.recent.length + hs.older.length;
+  // the headline says the state of the Yard in one sentence, with its one action under it (the sign-off); then one grid of equal stats
+  // (each a jump), then one plain-words line of its own
   const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
   const L = STATUS_LABEL, low = (s) => s.toLowerCase(), asideWord = `${low(L.failed)} or ${low(L.killed)}`;
   const head = needs.length ? [`hot`, `${n(needs.length, 'work order needs', 'work orders need')} your sign-off.`]
     : cooking.length ? ['', `${n(cooking.length, 'work order', 'work orders')} ${low(L.running)}.`]
     : rail.length ? ['', `${n(rail.length, 'work order', 'work orders')} ${low(L.pending)}.`] : ['', 'All quiet.'];
-  const parts = [];
-  if (needs.length && cooking.length) parts.push(`<a href="#/pass" data-jump="cooking">${cooking.length} ${low(L.running)}</a>`);
-  if ((needs.length || cooking.length) && rail.length) parts.push(`<a href="#/pass" data-jump="rail">${rail.length} ${low(L.pending)}</a>`);
-  if (aside.length) parts.push(`<a href="#/pass" data-jump="aside" class="bad">${aside.length} ${asideWord}</a>`);
+  const sign = needs.length ? `<button class="btn primary signoff-btn" type="button" data-signoff="${needs.length === 1 ? esc(needs[0].id) : ''}">${needs.length === 1 ? 'Open the sign-off' : `Open the ${needs.length} sign-offs`}${icon('chev')}</button>` : '';
+  const stat = (num, words, attrs, bad = false) => `<a href="#/pass" class="stat${bad ? ' bad' : ''}" ${attrs}><b>${num}</b> <span>${words}</span></a>`;
+  const stats = [stat(cooking.length, low(L.running), 'data-jump="cooking"'), stat(rail.length, low(L.pending), 'data-jump="rail"'),
+    stat(hs.recent.length, `${asideWord} in the last day`, 'data-jump="aside"', hs.recent.length > 0),
+    s.leads ? stat(Number(s.leads), s.leads > 1 ? 'leads' : 'lead', 'data-clients-open') : stat('', 'Clients', 'data-clients-open'),
+    s.ideas ? stat(Number(s.ideas), s.ideas > 1 ? 'ideas' : 'idea', 'data-ideas-open') : stat('', 'Ideas', 'data-ideas-open'), stat('', 'Brief', 'data-brief-open')];
   const platedToday = plated.filter((j) => isToday(j.updated)).length;
-  if (s.due) parts.unshift(`<a href="#/pass" data-hunt class="bad">${Number(s.due)} follow-up${s.due > 1 ? 's' : ''} due</a>`);
-  parts.push(platedToday ? `<a href="#/pass" data-jump="plated">${platedToday} ${low(L.done)} today</a>` : `Nothing ${low(L.done)} today`);
-  setHtml($('summary'), `<p class="headline-text ${head[0]}">${head[1]}</p><p class="headline-sub">${[...parts, (s.leads ? `<a href="#/pass" data-clients-open>${Number(s.leads)} lead${s.leads > 1 ? 's' : ''}</a>` : '<a href="#/pass" data-clients-open>Clients</a>'), `<a href="#/pass" data-ideas-open>${s.ideas ? Number(s.ideas) + ' idea' + (s.ideas > 1 ? 's' : '') : 'Ideas'}</a>`, '<a href="#/pass" data-brief-open>Brief</a>'].join('<span class="sep" aria-hidden="true">·</span>')}</p>`);
+  const note = [s.due ? `<a href="#/pass" data-hunt class="bad">${Number(s.due)} follow-up${s.due > 1 ? 's' : ''} due</a>` : '',
+    platedToday ? `<a href="#/pass" data-jump="plated">${platedToday} ${low(L.done)} today</a>` : `Nothing ${low(L.done)} today`].filter(Boolean).join('<span class="sep" aria-hidden="true"> · </span>');
+  setHtml($('summary'), `<p class="headline-text ${head[0]}">${head[1]}</p>${sign}<nav class="home-stats" aria-label="The Yard in numbers">${stats.join('')}</nav><p class="home-note">${note}</p>`);
   const railW = windowed(rail, S.win.rail), asideW = windowed(aside, S.win.aside);
   const platedW = S.showPlated ? windowed(plated, S.win.plated) : { shown: plated.slice(0, 3), more: 0 };
   const quiet = !needs.length && !cooking.length && !rail.length;
@@ -367,7 +374,9 @@ function renderPass() {
     needs: needs.length && { title: L['waiting-approval'], hot: true, list: needs, kind: 'need', after: nAsk ? `<button class="btn primary approve-all" id="approve-all">Approve all ${nAsk}</button>` : '' },
     cooking: cooking.length && { title: L.running, list: cooking, kind: 'cook' },
     rail: rail.length && { title: L.pending, list: railW.shown, count: rail.length, kind: 'rail', after: moreLine('rail', railW.shown.length, rail.length) },
-    aside: aside.length && { title: cap(asideWord), list: asideW.shown, count: aside.length, kind: 'aside', after: moreLine('aside', asideW.shown.length, aside.length) + (aside.some(OLD_ASIDE) ? `<button class="btn approve-all" id="clear-aside">Clear old (${aside.filter(OLD_ASIDE).length})</button>` : '') },
+    aside: anyAside && { title: cap(asideWord), list: asideW.shown, count: aside.length, kind: 'aside', empty: `Nothing ${low(L.failed)} or ${low(L.killed)} in the last day.`,
+      after: moreLine('aside', asideW.shown.length, aside.length) + (hs.older.length ? `<button class="show-all" type="button" data-older aria-expanded="${!!S.showOlder}">${S.showOlder ? 'Hide' : 'Show'} cleared / older (${hs.older.length})${icon('chev')}</button>` : '')
+        + (S.showOlder && hs.older.some(OLD_ASIDE) ? `<button class="btn approve-all" id="clear-aside">Clear old (${hs.older.filter(OLD_ASIDE).length})</button>` : '') },
     plated: { title: L.done, list: platedW.shown, count: plated.length, kind: 'done', empty: `Nothing ${low(L.done)} yet.`,
       after: (S.showPlated ? moreLine('plated', platedW.shown.length, plated.length) : '') + (plated.length > 3 ? `<button class="show-all" id="toggle-plated">${S.showPlated ? 'Show fewer' : `Show all ${plated.length} ${low(L.done)}`}${icon('chev')}</button>` : '') },
   };
@@ -398,8 +407,14 @@ $('board').addEventListener('click', (e) => {
   if (e.target.closest('#toggle-plated')) { S.showPlated = !S.showPlated; S.win.plated = WINDOW_FIRST; S.sig.pass = ''; renderAll(); }
   if (e.target.closest('[data-more]')) showMore(e.target.closest('[data-more]').dataset.more);
   if (e.target.closest('[data-quiet-order]')) openOrder();
+  if (e.target.closest('[data-older]')) { S.showOlder = !S.showOlder; S.win.aside = WINDOW_FIRST; S.sig.pass = ''; renderAll(); }
 });
-$('summary').addEventListener('click', (e) => { if (e.target.closest('[data-hunt]')) { e.preventDefault(); return openHunt(); } if (e.target.closest('[data-ideas-open]')) { e.preventDefault(); return openIdeas(); } if (e.target.closest('[data-clients-open]')) { e.preventDefault(); return openClients(); } if (e.target.closest('[data-brief-open]')) { e.preventDefault(); S.briefOpen = true; loadBrief(); return; } const a = e.target.closest('[data-jump]'); if (!a) return; e.preventDefault(); $('sec-' + a.dataset.jump)?.scrollIntoView({ behavior: 'smooth' }); });
+// a time in words: a tap shows the exact time instead (and back); it sits above the row's link, so the tap does not open the order
+document.addEventListener('click', (e) => {
+  const t = e.target.closest?.('time.ago[data-ago]'); if (!t) return; e.preventDefault(); e.stopPropagation();
+  if (t.dataset.exact) delete t.dataset.exact; else t.dataset.exact = '1'; t.textContent = t.dataset.exact ? exactTime(t.dataset.ago) : agoWords(t.dataset.ago);
+}, true);
+$('summary').addEventListener('click', (e) => { const so = e.target.closest('[data-signoff]'); if (so) { e.preventDefault(); if (so.dataset.signoff) go('#/job/' + so.dataset.signoff); else $('sec-needs')?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); return; } if (e.target.closest('[data-hunt]')) { e.preventDefault(); return openHunt(); } if (e.target.closest('[data-ideas-open]')) { e.preventDefault(); return openIdeas(); } if (e.target.closest('[data-clients-open]')) { e.preventDefault(); return openClients(); } if (e.target.closest('[data-brief-open]')) { e.preventDefault(); S.briefOpen = true; loadBrief(); return; } const a = e.target.closest('[data-jump]'); if (!a) return; e.preventDefault(); $('sec-' + a.dataset.jump)?.scrollIntoView({ behavior: 'smooth' }); });
 
 // swipe left on a row to reveal its one action (a tap on the revealed action commits; the ⋯ menu has the same actions)
 let sw = null;
@@ -629,20 +644,23 @@ $('job-listen').addEventListener('click', () => { if (S.jobSpeech) speaker.toggl
 
 // ---------- job detail ----------
 async function openJob(id) {
-  S.openJob = id; S.openSig = ''; $('job-ticket').textContent = ticket(id);
+  S.openJob = id; S.openSig = ''; $('job-ticket').textContent = 'Work order ' + ticket(id);
   if (!$('job-sheet').open) { $('job-body').innerHTML = '<div class="skeleton" aria-label="Loading the work order"><i></i><i></i><i></i></div>'; $('job-actions').innerHTML = ''; openSheet('job-sheet'); }
   await loadJob(id);
 }
 const isImprove = (j) => j.recipe === 'improve' || /^improve:/i.test(j.name || '');
+// a step's note in plain words (task 30): its settings ("Role: plan, Supplier: claude") read as its crew ("Crew: Claude"); anything else as
+// plainDetail (paths and JSON out; the full text is in the step's own log, one tap away)
+const stepSum = (s) => { const m = /^Role:\s*[\w-]+,\s*Supplier:\s*([\w-]+)$/i.exec(String(s || '').trim()); return m ? `Crew: ${cookLabel(m[1].toLowerCase())}` : plainDetail(s, 200); };
 function stateSentence(j) {
   if (NEEDS(j)) return ['need', j.approval?.kind === 'hold' ? 'Held for you: this step looks private and only a Cloud crew can do it.' : 'Waiting for your sign-off.'];
   if (j.status === 'running') return ['', `${statusLabel(j)}: step ${Number(j.step)} of ${j.steps.length}${j.since ? ` for <span data-words="${esc(j.since)}">${words(since(j.since))}</span>` : ''}.`];
   const rw = j.status === 'pending' ? retryWaitText(j) : '';
-  if (rw) return ['', `${STATUS_LABEL.pending}. ${esc(cap(rw))}${j.retry.cls === 'wait' ? ' (it was waiting on CI, GitHub or the network)' : ''}.${j.last ? ' Last try: ' + esc(reason(j.last)) : ''}`];
+  if (rw) return ['', `${STATUS_LABEL.pending}. ${esc(cap(rw))}${j.retry.cls === 'wait' ? ' (it was waiting on CI, GitHub or the network)' : ''}.${j.last ? ' Last try: ' + esc(plainDetail(reason(j.last))) : ''}`];
   if (j.status === 'pending') return ['', j.notBefore && new Date(j.notBefore) > Date.now() ? `${STATUS_LABEL.pending}. Tries again in ${words(-since(j.notBefore))}.` : `${STATUS_LABEL.pending}. Starts when a crew is free.`];
   if (j.status === 'done') return ['', `${j.autoMerged && isImprove(j) ? 'Merged on its own · ' : ''}${STATUS_LABEL.done} at ${j.updated ? clock(j.updated) : ''}${j.costUsd ? ` · ${money(j.costUsd)}` : ''}.`];
   if (j.status === 'killed') return ['fail', `${STATUS_LABEL.killed}. Retry puts it back in the queue.`];
-  return ['fail', `${esc(statusLabel(j))} after ${(j.attempt || 0) + 1} ${j.attempt ? 'tries' : 'try'}.${j.last ? ' ' + esc(reason(j.last)) : ''}`];
+  return ['fail', `${esc(statusLabel(j))} after ${(j.attempt || 0) + 1} ${j.attempt ? 'tries' : 'try'}.${j.last ? ' ' + esc(plainDetail(reason(j.last))) : ''}`];
 }
 // a merge gate on the ticket: its Phone Diff is filled in after the ticket paints (git runs off the server loop, so it can take a moment)
 const PD_GATE = (j) => NEEDS(j) && j.approval?.gate === 'merge';
@@ -656,7 +674,7 @@ async function loadJob(id) {
   const j = r.data; const [cls, sentence] = stateSentence(j);
   S.jobSpeech = jobSpeech(j, nameOf(j).text, sentence); syncListen();
   const created = j.created ? `${clock(j.created)}${isToday(j.created) ? '' : ' ' + new Date(j.created).toLocaleDateString()}` : '';
-  $('job-ticket').textContent = `${ticket(j.id)}${created ? ' · ' + created : ''}`;
+  $('job-ticket').textContent = `Work order ${ticket(j.id)}${created ? ' · ' + created : ''}`;
   const hist = j.history || [];
   const stepEnd = (i) => hist.filter((x) => x.step === i && x.outcome === 'done').pop()?.at;
   const current = j.steps.findIndex((x) => x.state !== 'done');
@@ -675,7 +693,7 @@ async function loadJob(id) {
     return `<li class="step"><span class="node ${node}" aria-hidden="true"></span>
       <button class="step-btn" data-step-run="${esc(latest?.run || '')}" aria-expanded="false" ${latest ? '' : 'disabled'}>
         <span class="step-line"><span class="step-name">${i + 1}. ${esc(floorStep({ station: st.station, role: st.role }))}</span><span class="step-dur">${dur}</span></span>
-        ${st.summary ? `<span class="step-sum">${esc(st.summary)}</span>` : ''}
+        ${st.summary ? `<span class="step-sum">${esc(stepSum(st.summary))}</span>` : ''}
         ${st.approve ? '<span class="step-why" data-css="display:block">Waits for your sign-off before it runs.</span>' : ''}
         ${runs ? `<span class="step-runs">${runs}</span>` : ''}</button><div class="step-peek"></div></li>`;
   }).join('');
@@ -686,7 +704,7 @@ async function loadJob(id) {
   const total = j.created && endAt ? words(Math.max(0, (new Date(endAt) - new Date(j.created)) / 1000)) : '';
   const cooksUsed = [...new Set(j.steps.flatMap((st) => st.runs.map((x) => x.cost?.supplier).filter(Boolean)))];
   $('job-body').innerHTML = `
-    <div class="ticket job-hero ${pill[0]}"><span class="status-pill ${pill[0]}">${pill[1]}</span><h2>${nameHtml(j)}</h2><p class="state ${cls}">${sentence}</p>
+    <div class="ticket job-hero ${pill[0]}"><span class="status-pill ${pill[0]}">${pill[1]}</span><h2>${nameHtml(j)}</h2><p class="state ${cls}">${sentence}</p>${j.last && plainDetail(reason(j.last)) !== reason(j.last) ? `<details class="more full-detail"><summary>The full detail</summary><pre class="prompt" data-detail>${esc(j.last)}</pre></details>` : ''}
       <div class="job-progress" aria-hidden="true">${j.steps.map((st, i) => `<i class="${st.state === 'done' ? 'done' : i === current ? (ASIDE(j) ? 'fail' : NEEDS(j) ? 'need' : 'now') : ''}"></i>`).join('')}</div>
       <div class="stat-chips">${total ? `<span><b>${esc(total)}</b> on the line</span>` : ''}<span><b>${Number(j.step)}/${j.steps.length}</b> steps</span><span><b>${Number(j.attempt || 0) + 1}</b> ${j.attempt ? 'tries' : 'try'}</span>${cooksUsed.length ? `<span>${cooksUsed.map((c) => `<em data-css="--cook:${COOK_COLORS[cookOf({ cook: c, station: 'agent' })] || 'var(--ink-3)'}">${esc(cookLabel(c))}</em>`).join('')}</span>` : ''}${j.costUsd ? `<span><b>${money(j.costUsd)}</b> pay-per-use</span>` : ''}</div></div>
     ${NEEDS(j) && j.approval?.text ? `<div class="ask-block"><b>Asking</b><br>${esc(askText(j))}</div>` : ''}
@@ -837,16 +855,23 @@ $('log-jump').addEventListener('click', () => { const p = $('log-text'); p.scrol
 $('log-wrap').addEventListener('click', (e) => { const on = $('log-text').classList.toggle('wrap'); e.currentTarget.setAttribute('aria-pressed', String(on)); });
 
 // ---------- activity: plain sentences ----------
+// task 30 (D-11): a work order in a sentence is its title (the one helper), with its number as small secondary text; one the Board no
+// longer holds reads "Work order WO-0123"
+S.jobNames = new Map();
+function jobRef(id) {
+  if (!/^J\d{1,6}$/.test(String(id || ''))) return esc(ticket(id));
+  const j = S.jobNames.get(id); return j ? `<a href="#/job/${id}">${esc(nameOf(j).text)}</a> <small class="mono ref-id">${ticket(id)}</small>` : `<a href="#/job/${id}">Work order ${ticket(id)}</a>`;
+}
 function sentence(e) {
   if (e.src === 'lobe') return lobeSentence(e);   // ZG-30: the lobe's lines (public/lobe.js): counts, ids and kinds only
   if (e.job === 'talk') return ['', `<b>${esc(cookLabel(e.supplier))}</b> answered in <a href="#/talk">Talk</a>${e.ok === false ? ' · it failed' : ''}`];
-  const t = String(e.type || ''); const tk = e.job ? jobLink(e.job) : ''; const d = esc(e.detail || e.text || e.reason || '');
+  const t = String(e.type || ''); const tk = e.job ? jobRef(e.job) : ''; const d = esc(plainDetail(e.detail || e.text || e.reason || ''));
   const step = e.step != null ? ` step ${(Number(e.step) || 0) + 1}` : '';   // numbers coerced: a string field never lands in the markup
   const map = {
     'job.added': ['', `<b>New work order</b> ${tk} ${esc(titleOf({ id: e.job, name: e.name }).text)}`], 'job.done': ['', `${tk} <b>${STATUS_LABEL.done.toLowerCase()}</b>`],
     'step.started': ['', `${tk} started${step}${e.attempt ? `, try ${(Number(e.attempt) || 0) + 1}` : ''}`], 'step.done': ['', `${tk} finished${step}`],
     'step.retry': ['', `${tk} failed${step}; waiting ${minWords(Number(e.inSec) || 0)} before retry`], 'job.quarantined': ['fail', `${tk} <b>${STATUS_LABEL.quarantined.toLowerCase()}</b>${(() => { const m = /^(\w+) x(\d+)$/.exec(e.reason || ''); return m ? ` after ${m[2]} ${m[2] === '1' ? 'try' : 'tries'} (${esc((FAIL_WORD[m[1]] || m[1]).toLowerCase())})` : e.reason ? ': ' + esc(e.reason) : ''; })()}`],
-    'approval.requested': ['ask', `${tk} <b>needs your sign-off</b>: ${esc(e.text || '')}`], 'approval.granted': ['', `<b>You</b> approved ${tk}`],
+    'approval.requested': ['ask', `${tk} <b>needs your sign-off</b>${e.text ? ': ' + esc(plainDetail(e.text)) : ''}`], 'approval.granted': ['', `<b>You</b> approved ${tk}`],
     'approval.auto': ['', `${tk} <b>merged on its own</b>${e.why || d ? ': ' + esc(e.why || e.detail || e.text || e.reason || '') : ''}`],
     'merge.undone': [e.undoPushed === false ? 'fail' : '', `${tk} merge <b>undone</b>${d ? ': ' + d : ''}${e.undoPushed === false ? ` · <b>not on GitHub</b>${e.undoPushWhy ? ' (' + esc(e.undoPushWhy) + ')' : ''}` : ''}`],   // TD-EH-10
     'undo.pushed': ['', `${tk} undo <b>is on GitHub</b>${e.how ? ': ' + esc(e.how) : ''}`],
@@ -868,7 +893,7 @@ function sentence(e) {
   };
   if (map[t]) return map[t];
   if (/^step\.(fail|crash|timeout|memcap|logflood|hung|taster)$/.test(t)) {
-    const [w, ...rest] = reason(t.slice(5) + (e.detail ? ': ' + e.detail : '')).split(': ');
+    const [w, ...rest] = reason(t.slice(5) + (e.detail ? ': ' + plainDetail(e.detail) : '')).split(': ');
     return ['fail', `${tk}${step}: <b>${esc(w)}</b>${rest.length ? ' · ' + esc(rest.join(': ')) : ''}`];
   }
   return ['', `<b>${esc(t)}</b> ${tk} ${d}`];
@@ -876,7 +901,7 @@ function sentence(e) {
 // TD-EH-04: an alert that did not reach the phone says so, with notify.ps1's reason (fixed words, e.g. "phone alerts are off")
 function alertNotSent(e) { return ['off', 'failed', 'limited'].includes(e.sent) ? ` · <b>not sent</b>${e.why ? ' (' + esc(e.why) + ')' : ''}` : ''; }
 function renderActivity() {
-  const q = S.feedQuery.toLowerCase(); const f = S.feedFilter;
+  const q = S.feedQuery.toLowerCase(); const f = S.feedFilter; S.jobNames = new Map((S.state?.jobs || []).map((j) => [j.id, j]));
   // an alert that only repeats an approval request is shown once (as the request)
   const rows = S.events.filter((e) => !(e.job === 'talk' && e.type === 'cost')).filter((e) => !(e.type === 'alert' && /needs your yes|quarantined/.test(e.text || ''))).map((e) => [e, ...sentence(e)]).filter(([, c]) => f === 'all' || (f === 'act' && c === 'ask') || (f === 'fail' && c === 'fail'))
     .filter(([e, , html]) => !q || (html + ' ' + (e.job || '')).replace(/<[^>]+>/g, '').toLowerCase().includes(q)).slice(-400).reverse();
@@ -886,7 +911,7 @@ function renderActivity() {
   const seenWait = new Set();   // a waiting order shows only its newest "waiting for a free crew"
   for (const [e, c, html] of rows) { if (e.type === 'step.wait') { if (seenWait.has(e.job)) continue; seenWait.add(e.job); } const gg = group(e.ts); if (gg !== g) { g = gg; out.push(`<h2 class="day">${gg}</h2>`); } out.push(`<div class="ev ${c} t-${tone(e, c)}"><time datetime="${esc(e.ts)}">${clock(e.ts)}</time><p class="say">${html}</p></div>`); }
   const lobeEv = S.state?.lobeGlass?.events;   // ZG-30: a missing or unreadable lobe events file is unknown with its reason, never an empty feed
-  if (lobeEv && !lobeEv.ok) out.unshift(`<div class="ev ask"><p class="say"><b>Lobe events</b>: unknown, ${esc(lobeEv.why || 'no reason given')}</p></div>`);
+  if (lobeEv && !lobeEv.ok) out.unshift(`<div class="ev ask"><p class="say"><b>Lobe events</b>: unknown, ${esc(plainDetail(lobeEv.why || 'no reason given').replace(/\s*\((?:[A-Z]{1,3}-){1,2}[A-Z]?\d+\)/g, ''))}</p></div>`);
   $('feed').innerHTML = out.join('') || `<p class="empty-line">${q || f !== 'all' ? 'Nothing matches.' : 'Nothing has happened yet.'}</p>`;
   document.querySelectorAll('#feed-filter button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.ff === f)));
 }
@@ -1210,7 +1235,7 @@ setInterval(() => {   // clocks tick in place; nothing else re-renders
   document.querySelectorAll('[data-since]').forEach((el) => { if (el.dataset.since) el.textContent = mmss(since(el.dataset.since)); });
   document.querySelectorAll('[data-words]').forEach((el) => { el.textContent = words(since(el.dataset.words)); });
   document.querySelectorAll('[data-pct]').forEach((el) => { const p = Math.min(100, since(el.dataset.pct) / Number(el.dataset.limit) * 100); el.style.width = p + '%'; el.parentElement?.classList.toggle('warn', p > 75); });
-  document.querySelectorAll('[data-ago]').forEach((el) => { if (el.dataset.ago) el.textContent = ago(el.dataset.ago); });
+  document.querySelectorAll('[data-ago]').forEach((el) => { if (!el.dataset.ago) return; const t = el.tagName === 'TIME' ? (el.dataset.exact ? exactTime(el.dataset.ago) : agoWords(el.dataset.ago)) : ago(el.dataset.ago); if (el.textContent !== t) el.textContent = t; });
   document.querySelectorAll('[data-until]').forEach((el) => { const w = untilWords(el.dataset.until); if (el.textContent !== w) el.textContent = w; });
   renderPulse(); renderBanners();
 }, 1000);
@@ -1902,9 +1927,9 @@ function renderLedger() {
   const row = (x) => `<li class="lg-row"><div class="t"><b>${esc(plainTitle(x.title || x.id))}</b><span class="st${LG_HOT.has(x.state) ? ' hot' : ''}">${esc(LG_WORD[x.state] || x.state)}</span></div>
     <div class="why">${esc(x.id)} · ${esc(x.kind)}${x.from ? ' · from ' + esc(x.from) : ''}${x.ageDays != null ? ' · ' + esc(String(x.ageDays)) + ' d' : ''}${x.why ? ' · ' + esc(x.why) : ''}</div>
     ${x.proof ? `<div class="why">Proof: ${esc(x.proof)}</div>` : ''}
-    ${x.chain?.length ? `<details><summary>History (${x.chain.length})</summary><ol>${x.chain.map((s) => `<li><a href="#/job/${esc(s.id)}">${esc(s.id)}</a> ${esc(s.status)}${s.proof ? ' · ' + esc(s.proof) : ''}${s.note ? ' · ' + esc(s.note) : ''}${s.replacedBy ? ' → ' + esc(s.replacedBy) : ''}</li>`).join('')}</ol></details>` : ''}
+    ${x.chain?.length ? `<details><summary>History (${x.chain.length})</summary><ol>${x.chain.map((s) => `<li><a href="#/job/${esc(s.id)}">${esc(/^J\d{1,6}$/.test(s.id || '') ? 'Work order ' + ticket(s.id) : s.id)}</a> ${esc(statusLabel({ status: s.status }).toLowerCase())}${s.proof ? ' · ' + esc(s.proof) : ''}${s.note ? ' · ' + esc(s.note) : ''}${s.replacedBy ? ' → ' + esc(s.replacedBy) : ''}</li>`).join('')}</ol></details>` : ''}
     ${x.kind === 'idea' && ['lost', 'claimed', 'not-started'].includes(x.state) ? `<div class="acts">${x.listed === 'new' || x.listed === 'failed' ? `<button class="btn primary" data-lg-build="${esc(x.id)}">Build again</button>` : ''}<button class="btn" data-lg-drop="${esc(x.id)}">Drop</button></div>` : ''}
-    ${x.kind === 'order' && x.chain?.length ? `<div class="acts"><a class="btn" href="#/job/${esc(x.chain.at(-1).id)}">Open ${esc(x.chain.at(-1).id)}</a></div>` : ''}</li>`;
+    ${x.kind === 'order' && x.chain?.length ? `<div class="acts"><a class="btn" href="#/job/${esc(x.chain.at(-1).id)}">Open ${esc(/^J\d{1,6}$/.test(x.chain.at(-1).id || '') ? ticket(x.chain.at(-1).id) : x.chain.at(-1).id)}</a></div>` : ''}</li>`;
   el.innerHTML = `${alarm}${ok}<div class="lg-counts">${counts}</div><div class="lg-progs">${progs}${watchList}</div>
     ${items.length ? `<ul class="lg-list">${items.map(row).join('')}</ul>` : `<p class="empty-line">Nothing here.</p>`}`;
 }
@@ -1988,7 +2013,7 @@ function stuckAlarm(jobs) {
 }
 const stuckChip = (j) => (j.stuck ? `<span class="chip-stuck">stuck ×${Number(j.stuck.times)}</span>` : '');
 function retryLabel(j) {
-  const base = isOldRecipe(j) ? 'Order it again (current spec)' : 'Retry'; const why = retryWhy(j, reason);
+  const base = isOldRecipe(j) ? 'Order it again (current spec)' : 'Retry'; const why = retryWhy(j, (x) => plainDetail(reason(x)));
   return why ? `${base}<small class="btn-why">${esc(why)}</small>` : base;
 }
 function briefSinceLines(b, lines) {
@@ -2233,7 +2258,8 @@ import { sceneHtml, activityWord, mountScene, cookOf, COOK_COLORS, stepWord, app
 import { startLive, floorStep } from './live.js';
 import { mainStatusBanners } from './main-status.js';   // TD-EH-03a main-is-red banner
 import { markNotices, keysOf } from './notices.js';   // D-12 cleared notices and thin red bars, keyed so a change shows again
-import { titleOf, cleanTitle, splitName } from './titles.js';   // D-11 the one title helper (every list's titles)
+import { titleOf, cleanTitle, splitName, plainDetail } from './titles.js';   // D-11 the one title helper (every list's titles), and details in plain words
+import { homeStats, agoWords, exactTime } from './plain.js';   // task 30: what the home counts (recent failures only), times in words
 import { ciBudgetBanners } from './ci-budget.js';   // TD-11 CI budget per Site
 import { undoPushBanners, autoMergePauseBanner } from './undo-pause.js';   // TD-EH-10 undo not pushed, TD-EH-11 auto-merge paused
 import { siteStopBanners, siteStopRows } from './site-stop.js';   // TD-8: a Site stopped by you, a Site's own Stop-work order

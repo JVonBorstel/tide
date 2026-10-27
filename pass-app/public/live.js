@@ -14,6 +14,7 @@
 // pass-app/test-live.mjs; startLive is the page glue.
 import { COOK_COLORS, cookOf, lookOf, hashId, applyCss, makeKit, makeLoop } from './scene.js';
 import { at as step, CLOCK } from './frame.js';
+import { titleOf } from './titles.js';   // task 30 (D-11): every title through the one helper
 
 export const LIVE = { stuckSec: 60, quietSec: 180, leaveSec: 120, fadeMs: 1400, pinSec: 25, teamQuietSec: 60, fps: 8, maxDraws: 8, recent: 30, lines: 14 };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -246,7 +247,7 @@ export function deskClass(a, spotKey) { return `lv-desk${a.key === spotKey ? ' l
 export function deskBodyHtml(a) {
   if (a.idle) return `<span class="lv-tag">${esc(a.tag)}</span><div class="lv-who"><b>${esc(a.label)}</b><span class="mono faint">${esc(a.model || 'not on the call')}</span></div><span class="lv-flags">${a.tokens ? `<span title="Tokens today">⚡${fmtTokens(a.tokens)}</span>` : ''}</span>`;
   return `<span class="lv-tag">${esc(a.tag)}</span><div class="lv-who"><b>${esc(a.label)}</b><span class="mono faint">${ticket(a.id)} · step ${a.step}/${a.steps}</span></div><span class="lv-flags">${flagsHtml(a)}</span>
-    <p class="lv-job">${esc(a.name)}</p>${tickerHtml(a)}`;
+    <p class="lv-job">${esc(titleOf({ id: a.id, name: a.name }).text)}</p>${tickerHtml(a)}`;
 }
 export function deskHtml(a, spotKey) {
   const say = a.idle ? `${a.label}, ${a.tag}` : `${a.label} on ${ticket(a.id)}, ${a.tag}${a.stuck ? ', a tool has run over a minute' : ''}${a.quiet ? ', quiet for 3 minutes' : ''}. Show details`;
@@ -261,7 +262,7 @@ export function footHtml(f) {
 export function screenHtml(a) {
   if (!a) return `<div class="lv-screen off"><div class="lv-scr"><p class="lv-l faint">The screen is dark. A crew shares theirs as soon as they start a step.</p></div></div>`;
   const sc = screenOf(a);
-  const top = `<div class="lv-scr-top"><span class="lv-cam-sm" aria-hidden="true"><canvas class="lv-pc" width="16" height="14"></canvas></span><span class="lv-share">● Sharing</span><b>${esc(a.label)}</b><a class="lv-scr-job mono" href="#/job/${esc(a.id)}">${ticket(a.id)}</a></div>`;
+  const top = `<div class="lv-scr-top"><span class="lv-cam-sm" aria-hidden="true"><canvas class="lv-pc" width="16" height="14"></canvas></span><span class="lv-share">● Sharing</span><b>${esc(a.label)}</b><a class="lv-scr-job" href="#/job/${esc(a.id)}"><span>${esc(titleOf({ id: a.id, name: a.name }).text)}</span> <small class="mono">${ticket(a.id)}</small></a></div>`;
   let body;
   if (sc.kind === 'editor') body = `<div class="lv-tab"><span class="lv-file">${esc(sc.file)}</span><span class="faint">${esc(sc.dir)}</span><em>${esc(sc.word)}</em></div>`
     + sc.lines.map((l) => `<p class="lv-code ${l.cls}">${l.ln ? `<span class="ln">${l.ln}</span>` : ''}${esc(l.text)}</p>`).join('');
@@ -272,7 +273,7 @@ export function screenHtml(a) {
 export function treeHtml(tree) {
   if (!tree.length) return '';
   const st = { now: '◐', done: '✓', fail: '✗', wait: '·' };
-  return `<details class="lv-tree" open><summary>Who works on what</summary><ul>${tree.map((o) => `<li><a class="lv-order" href="#/job/${esc(o.id)}"><span class="mono">${ticket(o.id)}</span> ${esc(o.name)}</a>
+  return `<details class="lv-tree" open><summary>Who works on what</summary><ul>${tree.map((o) => `<li><a class="lv-order" href="#/job/${esc(o.id)}">${esc(titleOf({ id: o.id, name: o.name }).text)} <span class="mono">${ticket(o.id)}</span></a>
     <ul>${o.steps.map((x) => `<li class="lv-st ${x.state}"><span class="mk" aria-hidden="true">${st[x.state]}</span><span>${x.n}. ${esc(x.word)}</span>${x.who ? `<span class="who" data-css="--cook:${esc(colorOf(x.cook))}">${esc(x.who)}</span>` : ''}</li>`).join('')}</ul></li>`).join('')}</ul></details>`;
 }
 // the desk sheet: prompt summary (fetched by the caller, never for a private order), tools used, recent calls, last report

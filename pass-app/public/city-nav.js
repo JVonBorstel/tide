@@ -2,6 +2,7 @@
 // Used by public/city.js (mountCity); tested by pass-app/test-city.mjs. Each level is a hash route (Back and Esc zoom out): #/pass or
 // #/city, #/city/<key>, #/city/<key>/f/<pr>[/old] (/old: a floor under the "public from" line)
 import { windowed, WINDOW_FIRST, WINDOW_STEP } from './rows.js';
+import { cleanTitle } from './titles.js'; import { dayWords, openWords, floorWords } from './plain.js';   // task 30: rows in words
 const KEY = /^[a-z0-9][a-z0-9._-]{0,47}$/;
 // the City's route from a hash: { level, key, pr } (level 0: the City, also for anything else)
 export function routeOf(hash) {
@@ -68,14 +69,18 @@ export function cameraMove(canvas, atX, zoomIn, reduced, done) {
   const end = () => { if (!fin++) { a.cancel?.(); done(); } }; a.onfinish = a.oncancel = end; setTimeout(end, ms + 150);
 }
 // ---- a building's own level (T = one /api/towers row): the cutaway (newest first, open PRs on top; 20, then 50 more a tap), a floor's sheet
-const day = (iso) => String(iso || '').slice(5, 10);
+const day = dayWords;
 const BY = { yard: 'by the Yard', auto: 'by the Yard (auto-merged)', session: 'by a Claude session', github: 'on GitHub' };
 const wo = (id) => (/^J\d{1,6}$/.test(id || '') ? `WO-${id.slice(1).padStart(4, '0')}` : '');
+// a row's title: the PR's own (markdown out), else what it is in words (a private work order's title never leaves the PC)
+const titleOfRow = (x, open) => cleanTitle(x?.title || '') || (x?.job ? 'Private work order' : open ? 'Untitled pull request' : 'Untitled change');
 export function cutawayHtml(T, esc, n = WINDOW_FIRST) {
   if (!T) return '';
-  const floors = (T.floors || []).slice().reverse(); const { shown, more } = windowed(floors, n); const row = (h, b, t, m) => `<li><a href="${h}"><b>${b}</b><span>${esc(t || '')}</span><i>${esc(m)}</i></a></li>`;
-  const open = (T.open || []).map((o) => row(`#/city/${T.key}/f/${o.pr}`, `#${o.pr}`, o.title, `building${o.draft ? ', draft' : ''}${o.ci ? ', CI ' + o.ci : ''}`));
-  let line = !!T.publicFrom; const rows = shown.map((f) => { const div = line && f.past ? ((line = false), `<li class="city-line">public from ${esc(day(T.publicFrom))}</li>`) : ''; return div + (f.pr ? row(`#/city/${T.key}/f/${f.pr}${f.past ? '/old' : ''}`, `#${f.pr}`, f.title, `${day(f.at)}${f.undone ? ', taken down' : ''}`) : `<li><span class="city-nopr"><b>${esc(wo(f.job) || 'merge')}</b><i>${esc(day(f.at))}, no PR</i></span></li>`); });
+  const floors = (T.floors || []).slice().reverse(); const { shown, more } = windowed(floors, n);
+  // one row: the whole title (it wraps, never cut), then what it was and when, then its number as small secondary text
+  const row = (h, num, t, m) => `<li><a href="${h}"><span class="city-t">${esc(t)}</span><span class="city-m">${esc(m)}</span><span class="city-n">${esc(num)}</span></a></li>`;
+  const open = (T.open || []).map((o) => row(`#/city/${T.key}/f/${o.pr}`, `#${o.pr}`, titleOfRow(o, true), openWords(o)));
+  let line = !!T.publicFrom; const rows = shown.map((f) => { const div = line && f.past ? ((line = false), `<li class="city-line">public from ${esc(day(T.publicFrom))}</li>`) : ''; return div + (f.pr ? row(`#/city/${T.key}/f/${f.pr}${f.past ? '/old' : ''}`, `#${f.pr}`, titleOfRow(f), floorWords(f)) : `<li><span class="city-nopr"><span class="city-t">Merged without a pull request</span><span class="city-m">${esc(floorWords(f))}</span><span class="city-n">${esc(wo(f.job))}</span></span></li>`); });
   return `<ol class="city-cut" aria-label="${esc(T.name)}: floors, newest first">${open.join('')}${rows.join('')}</ol>${more > 0 ? `<button class="city-more" type="button" data-city-more>Show ${Math.min(more, WINDOW_STEP)} more of ${floors.length} floors</button>` : ''}`;
 }
 export function floorHtml(T, pr, old, esc) {
@@ -83,5 +88,5 @@ export function floorHtml(T, pr, old, esc) {
   if (!f && !o) return `<p class="city-cap" role="status">No floor or open PR #${pr} on this building.</p>`;
   const x = f || o; const dd = (k, v) => (v ? `<dt>${k}</dt><dd>${v}</dd>` : '');
   const gh = T.repo && !old && !T.private && /^[\w.-]+\/[\w.-]+$/.test(T.repo) ? `<a href="https://github.com/${esc(T.repo)}/pull/${pr}" target="_blank" rel="noopener noreferrer">PR #${pr} on GitHub</a>` : '';
-  return `<section class="city-sheet"><h2>PR #${pr}${x.title ? ': ' + esc(x.title) : ''}</h2><dl>${f ? dd('Merged', esc(String(f.at).replace('T', ' ').slice(0, 16)) + ' ' + esc(BY[f.by] || '')) + dd('Pour', f.pour ? `${esc(f.pour)}: ${T.floors.filter((y) => y.pour === f.pour).length} floors tested together` : '') + dd('Taken down', esc(day(f.undone))) + dd('Before the line', f.past ? 'yes (the older history)' : '') : dd('Under construction', `since ${esc(day(o.createdAt))}${o.draft ? ', a draft' : ''}`) + dd('CI', esc(o.ci || 'unknown'))}${dd('Work order', wo(x.job) ? `<a href="#/job/${esc(x.job)}">${wo(x.job)}</a>` : '')}</dl>${gh}</section>`;
+  return `<section class="city-sheet"><h2>PR #${pr}: ${esc(titleOfRow(x, !f))}</h2><dl>${f ? dd('Merged', esc(String(f.at).replace('T', ' ').slice(0, 16)) + ' ' + esc(BY[f.by] || '')) + dd('Pour', f.pour ? `${esc(f.pour)}: ${T.floors.filter((y) => y.pour === f.pour).length} floors tested together` : '') + dd('Taken down', esc(day(f.undone))) + dd('Before the line', f.past ? 'yes (the older history)' : '') : dd('Under construction', `since ${esc(day(o.createdAt))}${o.draft ? ', a draft' : ''}`) + dd('CI', esc(o.ci || 'unknown'))}${dd('Work order', wo(x.job) ? `<a href="#/job/${esc(x.job)}">${wo(x.job)}</a>` : '')}</dl>${gh}</section>`;
 }

@@ -40,7 +40,7 @@ $cd = Join-Path $root 'career'; New-Item -ItemType Directory -Force (Join-Path $
 Get-ChildItem (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'gemini-brain\projects\career\scout') -Filter '*-openings.md' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1 | Copy-Item -Destination (Join-Path $cd 'scout')
 @{ items = @(@{ id = 'A1'; company = 'ExampleCo'; role = 'Software Engineer, AI'; where = 'Springfield hybrid'; link = 'https://example.com/a'; status = 'applied'; appliedAt = (Get-Date).AddDays(-8).ToString('yyyy-MM-dd'); followUp = (Get-Date).AddDays(-1).ToString('yyyy-MM-dd'); notes = ''; savedAt = (Get-Date).AddDays(-9).ToString('o') }) } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $cd 'tracker.json')
 $env:PASS_CAREER_DIR = $cd
-$env:PASS_PORT = "$Port"; $env:PASS_NO_KICK = '1'
+$env:PASS_PORT = "$Port"; $env:PASS_NO_KICK = '1'; $env:PASS_CITY_ALIAS = '1'   # demo mode: a private repo reads "Private project" (task 30)
 Start-Process node -ArgumentList ('"' + (Join-Path $PSScriptRoot 'server.mjs') + '"') -WindowStyle Hidden `
   -RedirectStandardOutput (Join-Path $root 'srv-out.txt') -RedirectStandardError (Join-Path $root 'srv-err.txt')
 foreach ($i in 1..20) { try { $h = Invoke-RestMethod "http://127.0.0.1:$Port/api/health" -TimeoutSec 2; break } catch { Start-Sleep -Milliseconds 300 } }

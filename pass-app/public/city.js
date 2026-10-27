@@ -265,6 +265,8 @@ export function paintCity(c, W, hour, ph = { blink: 1, step: 0 }, pal = palettes
   if (f) { for (let y = 8; y < g.G; y += 2) { g.P(f.slot[0], y, 't'); g.P(f.slot[1] - 1, y, 't'); } g.R(f.x + (f.w >> 1) - 3, g.G + 1, 7, 1, 't'); }
   return { g, items, boxes };
 }
+// task 30: a building's own level starts just above its cranes, tags and crews (no tall empty sky)
+export const fitTop = (g, top) => { const y = Math.max(0, Math.min(g.H - 1, top - 23)); return y ? { ...g, buf: g.buf.slice(y * g.W), H: g.H - y, G: g.G - y } : g; };
 // the horizon strip (other tabs): heights on one scale, today's lit tops; a beacon, red tape or PAUSED only when they need Jordan
 export function paintStrip(c, W, ph = { blink: 1 }, pal = palettes(c.sky)) {
   const g = painter(W, 20, pal); const [X, Y] = pal.sky; g.R(0, 0, W, 10, pack(X)); g.R(0, 10, W, 9, pack(Y)); g.R(0, 19, W, 1, 'k');
@@ -329,7 +331,10 @@ export function mountCity(o) {
     if (home) {
       const box = o.home.clientWidth || 343; const dev = Math.max(200, Math.floor(box * dpr)); const scale = Math.max(1, Math.floor(dev / minWidth(c))); const W = Math.floor(dev / scale);
       const cv = o.home.querySelector('canvas') || o.home.insertBefore(Object.assign(document.createElement('canvas'), { className: 'city-canvas' }), o.home.firstChild); cv.setAttribute('aria-hidden', 'true');
-      const p = paintCity(c, W, new Date(now).getHours() + new Date(now).getMinutes() / 60, { ...ph, focus: rt.key, big: rt.level ? rt.key : null }); M.items = p.items; M.W = W; blit(cv, p.g, scale, dpr);
+      const hour = new Date(now).getHours() + new Date(now).getMinutes() / 60; const big = rt.level ? rt.key : null; let sc = scale, w = W, p;
+      // task 30: a building's own level is cut to its tower and crew, at most 40% of the screen tall (a smaller whole scale if need be)
+      for (;;) { p = paintCity(c, w, hour, { ...ph, focus: rt.key, big }); if (!big || !p.boxes[big]) break; p.g = fitTop(p.g, p.boxes[big].top); const m = Math.floor(0.4 * (globalThis.innerHeight || 800) * dpr / p.g.H); if (m < 1 || m >= sc) break; sc = m; w = Math.floor(dev / sc); }
+      M.items = p.items; M.W = w; blit(cv, p.g, sc, dpr);
       const cap = c.loading ? (M.failed ? 'The City could not be read: ' + M.failed : 'Reading the City…') : M.failed ? `Showing the last read: ${M.failed}` : c.gate.github ? c.gate.github.text : '';
       const nameOf = (k) => c.lots.find((l) => l.key === k)?.name || (k === 'yard' ? 'Yard lot' : k); const on = c.lots.find((l) => l.key === rt.key);
       const T = rt.level && M.towers?.towers?.find((x) => x.key === rt.key && x.kind === 'tower');   // a building's own level: its cutaway or a floor's sheet

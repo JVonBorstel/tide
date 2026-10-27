@@ -289,27 +289,30 @@ function blueprints(root) {
 const untitled = ({ title, ...rest }) => rest;
 const scrub = (x, priv) => (x.title && x.job && priv(x.job) ? untitled(x) : x);
 // A private repo on the City (Jordan's privacy bar, review F3): a Site whose GitHub repo is private, or whose visibility is not known yet
-// (fail closed: before the first git and GitHub reads), is drawn as "Private project" with counts only: no name, no PR title, no GitHub
-// link, and a neutral key (so its name is in no route or link either). A Site with no GitHub home (git read, no origin on GitHub) is not.
+// (fail closed: before the first git and GitHub reads), is marked private: a padlock, no GitHub link, and a neutral key (so its name is in
+// no route or link). A Site with no GitHub home (git read, no origin on GitHub) is not. Task 30 (D-11, Jordan 10-27): on his own signed-in
+// Board (tailnet and key only) a private repo keeps its real name and its PR titles; only demo, fixture and screenshot mode (alias: true,
+// the server reads PASS_CITY_ALIAS=1) draws it as "Private project" with counts only. A private work order's title stays out either way.
 // vis(slug) -> true (private), false (public), undefined (not read yet); slugs lower-case
 export const isPrivateSite = (s, g, vis) => { const slug = s.slug || g?.remoteSlug; return slug ? vis(slug.toLowerCase()) !== false : !g; };
-// the key and name each Site shows: its own, or private, private-2 ... and "Private project", "Private project 2" ... in bootRepos order
-export function shownAs(sites, priv) {
+// the key and name each Site shows: its own, or private, private-2 ... (and, with alias, "Private project", "Private project 2" ...) in
+// bootRepos order
+export function shownAs(sites, priv, alias = true) {
   const out = new Map(); const taken = new Set(sites.filter((s) => !priv(s)).map((s) => s.key)); let n = 0;
   for (const s of sites) {
     if (!priv(s)) { out.set(s.key, { key: s.key, name: s.name }); continue; }
     let k; do { n++; k = n > 1 ? `private-${n}` : 'private'; } while (taken.has(k));
-    out.set(s.key, { key: k, name: n > 1 ? `Private project ${n}` : 'Private project', private: true });
+    out.set(s.key, { key: k, name: alias ? (n > 1 ? `Private project ${n}` : 'Private project') : s.name, private: true });
   }
   return out;
 }
 export function buildTowers({ sites, errors = [] }, rec, gitBy = new Map(), extra = {}) {
-  const bp = extra.blueprints || new Map(); const priv = extra.isPrivateJob || (() => false); const vis = extra.repoPrivate || (() => undefined); const rows = [];
-  const shown = shownAs(sites, (s) => isPrivateSite(s, gitBy.get(s.key), vis));
+  const bp = extra.blueprints || new Map(); const priv = extra.isPrivateJob || (() => false); const vis = extra.repoPrivate || (() => undefined); const rows = []; const alias = !!extra.alias;
+  const shown = shownAs(sites, (s) => isPrivateSite(s, gitBy.get(s.key), vis), alias);
   for (const s of sites) {
     const g = gitBy.get(s.key) || {}; const as = shown.get(s.key); const oldPriv = !!s.history && vis(s.history.slug.toLowerCase()) !== false;
     // a private Site's floors and cranes carry no title; nor do the old floors from a private history repo (under the "public from" line)
-    const hide = (x) => (as.private || (x.past && oldPriv) ? untitled(x) : x);
+    const hide = (x) => (alias && (as.private || (x.past && oldPriv)) ? untitled(x) : x);
     const floors = (rec.floors.get(s.key) || []).map((f) => hide(scrub(f, priv))); const open = (rec.open.get(s.key) || []).map((o) => hide(scrub(o, priv)));
     const kind = s.office ? 'office' : floors.length || open.length ? 'tower' : 'lot';
     // folder and repo stay on a private row only so the phone can match the state's own records (main status, freeze), which already
@@ -335,7 +338,7 @@ export const versionOf = (body) => crypto.createHash('sha1').update(JSON.stringi
 
 // makeTowers: the server's one instance. run(file, args, opts) -> {err, out} is the server's off-thread runner.
 // github: { everyMs, off, log } for the GitHub reads (tests pass their own; the server takes the defaults)
-export function makeTowers({ root, repoHome, run, jobs = () => [], isPrivate = () => false, home = os.homedir(), gitEveryMs = Number(process.env.PASS_TOWERS_GIT_MS) || 600000, sigEveryMs = 3000, github = {} }) {
+export function makeTowers({ root, repoHome, run, jobs = () => [], isPrivate = () => false, alias = process.env.PASS_CITY_ALIAS === '1', home = os.homedir(), gitEveryMs = Number(process.env.PASS_TOWERS_GIT_MS) || 600000, sigEveryMs = 3000, github = {} }) {
   const git = { by: new Map(), at: null, busy: null, ver: 0 }; const memo = { sig: '', checked: 0, body: null, v: '' };
   // the Sites are read again when the state kitchen.json changes, and at most every 30 s otherwise (a repo's kitchen.repo.json, a new folder)
   const sm = { sig: '', at: 0, val: null };
@@ -366,7 +369,7 @@ export function makeTowers({ root, repoHome, run, jobs = () => [], isPrivate = (
   }
   function compute() {
     const st = sitesNow(); const list = jobs(); const rec = localRecords(root, st.sites, list, G.gh.repos);
-    const body = buildTowers(st, rec, git.by, { blueprints: blueprints(root), isPrivateJob: privacyOf(list), repoPrivate: vis });
+    const body = buildTowers(st, rec, git.by, { blueprints: blueprints(root), isPrivateJob: privacyOf(list), repoPrivate: vis, alias });
     return { gitAt: git.at, githubAt: G.gh.at, githubError: G.gh.error, ...body };
   }
   function current() {

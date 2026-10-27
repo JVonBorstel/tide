@@ -210,6 +210,9 @@ dialog::backdrop{background:rgba(17,17,16,.45)}
 .action-bar{flex:none;display:flex;gap:8px;padding:12px var(--gutter) calc(12px + var(--bottom));border-top:1px solid var(--line);background:var(--bg)}
 .action-bar:empty{display:none}
 .action-bar .btn{flex:1;min-height:52px}
+/* task 30 (D-3 nothing clipped): a button that carries its reason (.btn-why, app.js retryLabel) is taller than 52 px; give its lines room
+   above the 3 px bottom edge of a pixel-look primary button, so the last line's descenders are never under it */
+.action-bar .btn:has(.btn-why){flex-direction:column;gap:2px;height:auto;padding:8px 12px 11px}
 
 /* job detail */
 .ticket{padding:4px var(--gutter) 16px}
@@ -1308,6 +1311,14 @@ html.lobe-px .lobe-box{border:12px solid transparent;border-image:var(--lobe-dlg
 .lobe-seed>summary{color:var(--ink-2)}.lobe-seed .lobe-list{opacity:.75}
 .lobe-focus{display:grid;grid-template-columns:1fr auto;align-items:end;gap:8px;margin:0 0 10px}.lobe-focus .lobe-f{margin:0}
 .lobe-props{margin:0;padding:0;list-style:none}.lobe-prop{padding:8px 0;border-top:2px dashed var(--line-strong)}.lobe-prop:first-child{border-top:0}
+/* Task 30 (D-11, D-3): text on the pixel skin's own colours meets AA in both looks; palette colours only (sprites.js) */
+.cook-badge{color:#1a1412}
+.lv-share{color:#1a1412;font-size:12px;line-height:16px}
+.lv-desk.lv-idle .lv-tag{background:#54423a}
+.lv-st .who{color:#1a1412;font-size:12px}
+.lv-st.done .mk{color:#24533a}
+.lv-scr-job small{color:#ffd36b;font-size:12px}
+.lobe-badge.bad{color:#5a2f22}.lobe-badge.example{color:#4a3020}
 /* The City (public/city.js, slice G4): the Board's home and the horizon strip on the other tabs. Tokens only; the pixel art keeps its own
    colours (its sky is the real hour, never the theme). The (i) key and every name are 44 px to tap; no sideways scroll at 375 px. */
 .city{position:relative;margin:4px var(--gutter) 10px;min-width:0;overflow:hidden}
@@ -1359,6 +1370,9 @@ html.lobe-px .lobe-box{border:12px solid transparent;border-image:var(--lobe-dlg
 html.px .notice-chip{clip-path:var(--px-notch-s)}
 .notice-text{margin:4px 0 12px;font-size:16px;line-height:24px;color:var(--ink);overflow-wrap:anywhere}
 .notice-act{display:flex;flex-wrap:wrap;gap:8px}.notice-act .btn{min-height:44px;text-decoration:none;display:inline-flex;align-items:center}
+/* task 30 (D-3): the notice sheets' words and buttons sit on the same 16 px gutter as every other sheet; their .note already lives inside it */
+#notice-body,#notices-body{padding-left:var(--gutter);padding-right:var(--gutter)}
+#notice-body .note,#notices-body .empty-line{padding-left:0;padding-right:0}
 /* the City gets the space back: edge to edge (city.js scales the picture to the box), its words keep the gutter, every name whole
    (names wrap to a second row or line, never an ellipsis); D-3: Look A (crisp pixels as drawn) by day, lit at dusk and night (B's lighting) */
 .city{margin:2px 0 10px}
@@ -1392,3 +1406,63 @@ html.px .top+.city-strip[hidden]+.banners:not(:empty),html.px .top+.city-strip[h
 .ni-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font:700 14px/20px var(--mono)}
 .ni-state{font:600 12px/16px var(--mono);color:var(--ink-3);white-space:nowrap}
 .notice-act .btn svg{width:16px;height:16px;margin-right:4px;fill:none;stroke:currentColor;stroke-width:2}
+
+/* Task 30, readable everywhere (D-11, with D-3 and D-9): titles in words, plain words, clear layout on every tab. */
+/* nothing under the header or the nav: the header is opaque (it was 70% see-through), and a floor fills the screen's bottom edge from the
+   nav's top down, full width (the room beside and below the floating nav showed rows scrolling behind it) */
+.top{background:var(--bg)}
+.bar-floor{position:fixed;left:0;right:0;bottom:0;z-index:29;height:var(--nav-cover,calc(var(--barh) + var(--bottom) + 8px));background:var(--bg)}
+/* home: the headline's one action, one grid of equal stats, the plain-words line on its own line */
+.signoff-btn{margin-top:10px;min-height:44px;gap:6px}
+.signoff-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2}
+.home-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:12px}
+.home-stats .stat{display:flex;flex-direction:column;justify-content:center;min-width:0;min-height:56px;padding:8px 10px;box-sizing:border-box;border-radius:10px;background:color-mix(in srgb,var(--ink) 6%,transparent);border:1px solid color-mix(in srgb,var(--line-strong) 60%,transparent);color:var(--ink-2);text-decoration:none;font-size:14px;line-height:18px;overflow-wrap:anywhere}
+.home-stats .stat b{font-size:20px;line-height:24px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.home-stats .stat b:empty{display:none}
+.home-stats .stat b:empty+span{color:var(--ink);font-weight:600}
+.home-stats .stat.bad,.home-stats .stat.bad b{color:var(--fault)}
+.home-stats .stat:active{transform:scale(.96)}
+html.px .home-stats .stat{border:0;border-radius:0;clip-path:var(--px-notch-s);box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--px-ol) 55%,transparent);background:color-mix(in srgb,var(--px-card) 70%,transparent)}
+.home-note{margin-top:10px;font-size:14px;line-height:20px;color:var(--ink-2)}
+.home-note a{color:var(--ink);text-underline-offset:3px}.home-note a.bad{color:var(--fault)}
+/* long text wraps: no title, ask or meta line is cut with an ellipsis */
+.row-title,.cook-card .row-title,.row-ask{display:block;-webkit-line-clamp:unset;overflow:visible}
+.row-meta{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+time.ago{position:relative;z-index:2;cursor:pointer;text-decoration:underline dotted;text-decoration-color:var(--line-strong);text-underline-offset:3px}
+.ref-id{font-size:12px;color:var(--ink-3)}
+/* a tower's rows: the whole title (wrapped), then what it was and when in words, then its number as small secondary text */
+.city-cap{font-size:14px;line-height:20px}
+.city-cut a,.city-nopr{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"t t" "m n";align-items:baseline;gap:2px 8px;padding:8px 2px}
+.city-cut .city-t{grid-area:t;overflow:visible;white-space:normal;text-overflow:clip;overflow-wrap:anywhere;font:600 15px/20px var(--sans);color:var(--ink)}
+.city-cut .city-m{grid-area:m;overflow:visible;white-space:normal;font:500 14px/20px var(--sans);color:var(--ink-2)}
+.city-cut .city-n{grid-area:n;overflow:visible;white-space:nowrap;font:600 12px/16px var(--mono);color:var(--ink-3)}
+html.px .city-cut .city-t{font-family:var(--mono);font-size:14px}
+/* body text at least 14 px; small labels (counts, ids, times) at least 12 px */
+.sec-head .n{font-size:12px}
+.lg-ok,.lg-row li,.lg-row summary,.lg-row details{font-size:14px}
+.kv dd.mono,dd.mono{font-size:14px}
+.lv-job{font-size:14px;line-height:18px;display:block;-webkit-line-clamp:unset;overflow:visible;min-height:0}
+/* contrast AA in both looks */
+.cook-side .cook-name{color:color-mix(in srgb,var(--cook) 45%,var(--ink))}
+.lg-count.hot b,.lg-row .st.hot{color:var(--fault)}
+@media (prefers-color-scheme:light){.rglyph{color:hsl(var(--h) 60% 26%)}}
+.lv-scr-job{flex:0 1 auto;min-width:0;gap:4px;white-space:normal;overflow-wrap:anywhere;text-align:right}
+
+/* the Talk box sits on the nav's measured top, like every other bottom edge */
+.composer{bottom:var(--nav-cover,calc(var(--barh) + var(--bottom) + 4px))}
+/* Live: AA text in both looks, labels at least 12 px, names wrap */
+.lv-code .ln{color:var(--lv-dim)}
+.lv-tag{font-size:12px;line-height:16px}
+.lv-desk.lv-idle{opacity:1}.lv-desk.lv-idle .lv-cam{opacity:.72}
+@media (prefers-color-scheme:dark){.lv-st.done .mk{color:var(--lv-good)}}
+.lv-who b{font-size:14px;white-space:normal;overflow:visible;overflow-wrap:anywhere}.lv-who .mono{font-size:12px;white-space:normal;overflow:visible;overflow-wrap:anywhere}
+.lv-tick .mono,.lv-tab em,.lv-foot,.lv-live{font-size:12px}
+.lv-tree summary{font-size:14px}
+.lv-scr-job{display:block}
+.cooks-body small.faint,#cooks-body small{font-size:12px}
+.btn-why{opacity:1}
+.px-say{font-size:12px;line-height:14px}
+.lv-order .mono{color:color-mix(in srgb,var(--lv-ember) 78%,var(--lv-ink))}
+.lv-screen{font-size:14px;line-height:20px}.lv-code{font-size:14px;white-space:pre-wrap;text-overflow:clip}
+/* Activity: a work order in a sentence is its title in the sentence's own type; its number small beside it */
+.ev .say a:not(.mono){font-family:inherit;font-size:inherit;color:var(--ink)}
