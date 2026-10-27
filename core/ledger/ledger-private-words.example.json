@@ -1,0 +1,4 @@
+{
+  "_about": "Copy to <state folder>/ledger-private-words.json (never into the repo) and replace the placeholders. core/ledger/share.mjs redacts every listed word, in any case, from work.json, ledger.next.json and the --json answers. List private repo names and the companies of a job search; words of 1 character are ignored.",
+  "words": ["example-private-repo", "Example Company Name"]
+}

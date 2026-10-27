@@ -19,6 +19,9 @@ node core/ledger/cli.mjs parity --db <file> --old <scratch>\ledger.json   # ever
 node core/ledger/cli.mjs backup --db <file> --to <file>                   # the nightly copy (VACUUM INTO)
 ```
 
+- Order: needs-you first, then newest first, in `work.json` rows and `ledger.next.json` items. `ledger.next.json` is page 1 (400 items,
+  the Board's reader size) and says `paging: { page, pages, pageSize, itemsTotal }`; `ledger.next.page-<n>.json` holds the rest. Nothing
+  is cut silently. (A page file beyond `pages` is from an older build.)
 - `build` writes the store, `work.json` (rows, queue, streams, flags, flag values) and `ledger.next.json` (the old `ledger.json` shape),
   all in the `--db` folder (or `--out`). It prints the top line and how many events each source added. A rerun with nothing new adds 0.
 - **The live state folder is refused** while `upgrade.ledger` is `old`. Moving it to `shadow` is Jordan's card. `LEDGER_LIVE_STATE=<folder>`
@@ -40,7 +43,7 @@ node core/ledger/cli.mjs backup --db <file> --to <file>                   # the 
 | `import-roadmap.mjs` | Roadmaps of the repos that opt in (`roadmap` in `kitchen.repo.json`; the Yard's own repos are found from its orders), and the lobe's `flags.json` (decisions ready, post-mortems due). |
 | `legacy.mjs` | The old ledger's own items rebuilt with the rules of `kitchen/ledger.ps1`: ideas with their chains, roadmap items and programs, drift, the lobe's flags with the proof for each post-mortem. The export puts these first, then the rows the old file never had (counted under `work`). |
 | `view.mjs` | The pure fold: rows (row contract), the stage machine, states, the queue (oldest first), streams and WIP (4 build streams, 3 cards per stream, no stacks for ART/CITY/BOARD, 2 elsewhere), attention flags, flag values, the `ledger.json` export. |
-| `share.mjs` | Before any ledger record leaves this PC: `publicEvent` drops an `x.*` event's data (local paths, titles) and strips local paths from `proof`; `publicRow` does the same for a row. Nothing sends records anywhere today. |
+| `share.mjs` | Every file and `--json` answer the ledger writes for readers goes through here. Free text loses this PC's paths, email addresses, private host names and addresses, and the private words of `<state>\ledger-private-words.json` (a JSON list kept only in the state folder; `ledger-private-words.example.json` shows the shape; a missing list is a WARNING line and a `warnings` entry in `work.json`). A private order (`vars.private` yes, or a step run with `-Private`) shows only "a private work order". `x.*` event data never leaves. `tide.db` keeps the raw facts. |
 | `parity.mjs` | Old `ledger.json` against the new view, item by item, with the reason for every difference. |
 | `cli.mjs`, `commands.mjs` | The command above. |
 
