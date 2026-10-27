@@ -67,7 +67,7 @@ function landingBench(kitchen = NEW) {
 }
 
 /** @param {(name: string, pass: unknown, detail?: string) => void} check */
-export async function run(check) {
+async function testDryRun(check) {
   // ---- acceptance: dry run on a scratch clone; a PR that conflicts with the latest main is held with the files named
   const c = setup({ 'src/a.txt': 'one\nTWO by the PR\nthree\n' }, { 'src/a.txt': 'one\ntwo by main\nthree\n' });
   const rc = await landPr({ dir: c.clone, branch: 'feature', pr: PR, test: TEST, expectEmail: EMAIL });
@@ -95,6 +95,20 @@ export async function run(check) {
   const rt = await landPr({ dir: t.clone, branch: 'feature', test: TEST, expectEmail: EMAIL });
   check('queue: tests that fail on the merged result hold the PR, with their output', !rt.ok && /tests failed/.test(rt.reason) && /1 failed/.test(rt.tests), rt.reason);
 
+  // fix 3, in this repo: its own kitchen.json says ship.queue old, so nothing lands whatever the caller passes
+  setIdentity(d.clone, OWNER_NOREPLY);
+  const live = await landPr({ dir: d.clone, branch: 'feature', pr: PR, wo: WO, land: true });
+  check("queue: in this repo landing is refused by its own kitchen.json (ship.queue old), whatever the caller passes", !live.ok && /ship.queue is old/.test(live.reason) && mainOf(d) === d.mainHead, live.reason);
+
+  // the command line dry-runs only
+  const cli = spawnSync(process.execPath, [path.join(repo, 'core/ship/queue.mjs'), '--dir', c.clone, '--branch', 'feature', '--expect-email', EMAIL], { encoding: 'utf8', timeout: 30000 });
+  check('queue: the command line names the conflicted file and exits 1', cli.status === 1 && /conflict: src\/a.txt/.test(cli.stdout), cli.stdout + cli.stderr);
+  const land = spawnSync(process.execPath, [path.join(repo, 'core/ship/queue.mjs'), '--dir', c.clone, '--branch', 'feature', '--land', 'yes'], { encoding: 'utf8', timeout: 30000 });
+  check('queue: the command line has no way to land (usage error)', land.status === 2, land.stdout);
+}
+
+/** @param {(name: string, pass: unknown, detail?: string) => void} check */
+function testPermissions(check) {
   // ---- the landing permissions, over events (pure)
   const ok = (ev, kitchen = NEW) => landingProblem({ kitchen, declared, events: ev, wo: WO, pr: PR, head: HEAD });
   check('queue: every permission present (switch new, flag on, yes for this PR and head, review by another crew) allows landing', ok(permits()) === '', ok(permits()));
@@ -118,11 +132,11 @@ export async function run(check) {
   const noBuilder = reviewProblem(permits(HEAD, { builder: null }).map((e) => (e.kind === 'review.verdict' ? { ...e, data: Object.fromEntries(Object.entries(e.data).filter(([k]) => k !== 'builder')) } : e)), { wo: WO, head: HEAD });
   check('queue: a review that does not name its builder refuses landing', /builder|contract/.test(noBuilder) && noBuilder !== '', noBuilder);
   check('queue: a review that says fix refuses landing', /says fix, not ship/.test(ok(permits(HEAD, { verdict: 'fix' }))));
+}
 
+/** @param {(name: string, pass: unknown, detail?: string) => void} check */
+function testBench(check) {
   // ---- fix 3: landing reads the switch, the flags and the events from files only (a copy of core/ and a scratch state folder)
-  setIdentity(d.clone, OWNER_NOREPLY);
-  const live = await landPr({ dir: d.clone, branch: 'feature', pr: PR, wo: WO, land: true });
-  check("queue: in this repo landing is refused by its own kitchen.json (ship.queue old), whatever the caller passes", !live.ok && /ship.queue is old/.test(live.reason) && mainOf(d) === d.mainHead, live.reason);
   const sqliteOk = Number(process.versions.node.split('.')[0]) > 22 || Number(process.versions.node.split('.')[1]) >= 5;
   if (!sqliteOk) { check('queue: Node 22.5 or later for the landing bench (node:sqlite)', false, process.versions.node); return; }
   const bench = landingBench();
@@ -160,10 +174,11 @@ export async function run(check) {
   b3.seed(permits(pp.prHead));
   const rp = b3.run({ op: 'land', args: { ...args, dir: pp.clone, test: ['git', `--git-dir=${pp.origin}`, 'update-ref', 'refs/heads/feature', pushed] } });
   check('queue: a push to the PR after the test holds it (the yes and the review were for the old head)', !rp.ok && /feature moved .* old head/.test(rp.reason) && mainOf(pp) === pp.mainHead, rp.reason);
+}
 
-  // the command line dry-runs only
-  const cli = spawnSync(process.execPath, [path.join(repo, 'core/ship/queue.mjs'), '--dir', c.clone, '--branch', 'feature', '--expect-email', EMAIL], { encoding: 'utf8', timeout: 30000 });
-  check('queue: the command line names the conflicted file and exits 1', cli.status === 1 && /conflict: src\/a.txt/.test(cli.stdout), cli.stdout + cli.stderr);
-  const land = spawnSync(process.execPath, [path.join(repo, 'core/ship/queue.mjs'), '--dir', c.clone, '--branch', 'feature', '--land', 'yes'], { encoding: 'utf8', timeout: 30000 });
-  check('queue: the command line has no way to land (usage error)', land.status === 2, land.stdout);
+/** @param {(name: string, pass: unknown, detail?: string) => void} check */
+export async function run(check) {
+  await testDryRun(check);
+  testPermissions(check);
+  testBench(check);
 }
