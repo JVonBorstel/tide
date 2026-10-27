@@ -6,10 +6,10 @@
 // It drives the real Board server (a throwaway state folder from pass-app/speed/fixture.mjs, made-up work orders only) in headless Chrome or
 // Edge over the DevTools protocol (Node's own WebSocket; no package). The City's /api/towers answer is replaced in the browser by a synthetic
 // one (made-up project names, long on purpose); nothing else is faked. No live state folder, no network beyond 127.0.0.1.
-import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import http from 'node:http'; import crypto from 'node:crypto';
+import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import http from 'node:http';
 import { spawn } from 'node:child_process'; import { fileURLToPath } from 'node:url';
 import { makeYard } from './speed/fixture.mjs';
-import { cdpConnect } from './test-browser-kit.mjs';
+import { cdpConnect, signIn } from './test-browser-kit.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argOf = (n) => { const i = process.argv.indexOf('--' + n); return i > 0 ? process.argv[i + 1] : ''; };
@@ -71,13 +71,7 @@ try {
   for (let i = 0; i < 160 && !(await health()); i++) await sleep(150);
   const key = fs.readFileSync(path.join(root, 'pass-key.txt'), 'utf8').trim();
   const cdp = await cdpConnect(path.join(tmp, 'profile')); browser = cdp.proc; const { send } = cdp;
-  const ev = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
-  const until = async (expr, ms = 10000) => { const end = Date.now() + ms; while (Date.now() < end) { try { if (await ev(expr)) return true; } catch { } await sleep(120); } return false; };
-  // a signed session cookie, as /login would give (the pass key never goes in a URL)
-  const exp = Math.floor(Date.now() / 1000) + 3600; const nonce = crypto.randomBytes(16).toString('hex');
-  const mac = crypto.createHmac('sha256', Buffer.from(key)).update(`chef-session|${exp}|${nonce}`).digest('hex');
-  await send('Network.enable'); await send('Page.enable');
-  await send('Network.setCookie', { name: 'pass', value: `${exp}.${nonce}.${mac}`, url: base, httpOnly: true });
+  const { ev, until } = await signIn(send, base, key);
   await send('Fetch.enable', { patterns: [{ urlPattern: '*/api/towers*', requestStage: 'Request' }, { urlPattern: '*/sw.js', requestStage: 'Request' }] });
   cdp.on((m) => {
     if (m.method !== 'Fetch.requestPaused') return; const p = m.params;

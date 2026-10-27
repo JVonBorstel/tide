@@ -22,7 +22,7 @@ for (const s of ledgerStates) noteDrawn(drawnW(s, fullEvents()));
 noteDrawn(hoistOf('J61'));
 // every moment, played: a stage opened on a busy floor, then fresh events of every kind arrive, then frames over 2 s
 const mSt = stageNew(); stageSync(mSt, layoutScene({ ...busy, ...fullState(), jobs: busy.jobs }, [], {}, T0)); const fresh = (o) => ({ ...o, ts: iso(T0) });
-const mEv = [fresh({ type: 'step.done', job: 'J40', step: 3 }), fresh({ type: 'step.rework', job: 'J41', step: 3 }), fresh({ type: 'job.quarantined', job: 'J74' }), fresh({ type: 'approval.requested', job: 'J71', approval: 'A7' }), fresh({ type: 'job.done', job: 'J39' }), fresh({ type: 'step.crash', job: 'J42', step: 3 })];
+export const mEv = [fresh({ type: 'step.done', job: 'J40', step: 3 }), fresh({ type: 'step.rework', job: 'J41', step: 3 }), fresh({ type: 'job.quarantined', job: 'J74' }), fresh({ type: 'approval.requested', job: 'J71', approval: 'A7' }), fresh({ type: 'job.done', job: 'J39' }), fresh({ type: 'step.crash', job: 'J42', step: 3 })];
 stageSync(mSt, layoutScene({ ...busy, jobs: [...busy.jobs, job('J71', { status: 'waiting-approval', approval: { id: 'A7' } }), job('J74', { status: 'quarantined' })] }, mEv, {}, T0));
 for (let i = 0; i < 40; i++) { stageTick(mSt, 60); rec.length = 0; drawStage(rkit.mk(STAGE.w, STAGE.h).getContext(), mSt, rkit); noteDrawn(rec); }
 const undeclared = [...drawnNames].filter((n) => !rowsWith(n).length), groundNames = PURPOSE.filter((r) => r.kind === 'ground').flatMap((r) => r.sprites);
@@ -89,5 +89,8 @@ const stageBr = ['scene.js', 'sprites.js', 'world.js', 'frame.js', 'moments.js']
 // The frame loop (art critique S7 12c.1, 2026-10-26): main stood at 34,135 (LF); the dirty-flag loop, idle stop, frame clock and
 // allocation-free draw measured 36,730 (+2,595, with plain comments: the critique's section 5 says stop trimming for bytes; the frame
 // meter is its own file, frame-meter.js, loaded only when it is on). Ceiling +15,400; the phone speed budget (frame work p95) is the
-// gate that replaces this one when Jordan taps it (critique section 11)
-check(`budget: the stage files (scene, sprites, world, frame, moments) are at most 37,015 bytes brotli (${stageBr}; 21.6 KB before wave 1; plan +6 KB wave 1, +5 KB wave 2; ceiling +15.4 KB with the frame loop)`, stageBr <= 21615 + 15400);
+// gate that replaces this one when Jordan taps it (critique section 11).
+// The WebGL2 renderer (decisions D-4 and D-6: performance over size, byte caps stop being merge gates): main stood at 36,728 (LF);
+// its hook in scene.js (the flag, the switch, the fallback, the remount) measured 37,116 (+388). gl.js itself is its own file, loaded
+// only behind its flag, and not counted here (as frame-meter.js). Ceiling +15,600.
+check(`budget: the stage files (scene, sprites, world, frame, moments) are at most 37,215 bytes brotli (${stageBr}; 21.6 KB before wave 1; plan +6 KB wave 1, +5 KB wave 2; ceiling +15.6 KB with the frame loop and the WebGL2 hook)`, stageBr <= 21615 + 15600);
