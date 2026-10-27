@@ -5,9 +5,9 @@
 // Called by tests/Test-Work.ps1 (CI's Core step) and by hand: node pass-app/test-work-ui.mjs [--shots <folder>]
 // It drives the real Board server (throwaway state folder, synthetic event store) in headless Chrome or Edge over the DevTools protocol
 // (Node's own WebSocket; no package). No live state folder, no network beyond 127.0.0.1.
-import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import http from 'node:http'; import crypto from 'node:crypto';
+import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import http from 'node:http';
 import { spawn, spawnSync } from 'node:child_process'; import { fileURLToPath } from 'node:url';
-import { cdpConnect } from './test-browser-kit.mjs';
+import { cdpConnect, signIn } from './test-browser-kit.mjs';
 
 let hasSqlite = true; try { await import('node:sqlite'); } catch { hasSqlite = false; }
 if (!hasSqlite && !process.env.WORK_SQLITE_RESPAWNED) {
@@ -64,13 +64,7 @@ try {
   const key = fs.readFileSync(path.join(root, 'pass-key.txt'), 'utf8').trim();
   const cdp = await cdpConnect(path.join(tmp, 'profile')); browser = cdp.proc;
   const { send } = cdp;
-  const ev = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
-  const until = async (expr, ms = 8000) => { const end = Date.now() + ms; while (Date.now() < end) { try { if (await ev(expr)) return true; } catch { } await sleep(100); } return false; };
-  // a signed session cookie, as /login would give (the pass key never goes in a URL)
-  const exp = Math.floor(Date.now() / 1000) + 3600; const nonce = crypto.randomBytes(16).toString('hex');
-  const mac = crypto.createHmac('sha256', Buffer.from(key)).update(`chef-session|${exp}|${nonce}`).digest('hex');
-  await send('Network.enable');
-  await send('Network.setCookie', { name: 'pass', value: `${exp}.${nonce}.${mac}`, url: base, httpOnly: true });
+  const { ev, until } = await signIn(send, base, key, { wait: 8000, step: 100 });
   await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
   const now = new Date(); let off = 9 - now.getUTCHours(); if (off > 14) off -= 24; if (off < -12) off += 24;
   await send('Emulation.setTimezoneOverride', { timezoneId: off === 0 ? 'Etc/GMT' : `Etc/GMT${off > 0 ? '-' : '+'}${Math.abs(off)}` });   // 9 in the morning on the phone

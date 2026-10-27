@@ -1,9 +1,10 @@
 // The screen tests' browser: headless Chrome or Edge over the DevTools protocol (Node's own WebSocket; no package). Shared by
 // pass-app/test-work-ui.mjs, test-status-line.mjs and test-scene-gl-screen.mjs. cdpConnect(profileDir) starts the browser on a throwaway
-// profile and returns { send(method, params), on(listener), close(), proc } for its first page; the caller kills proc when done.
+// profile and returns { send(method, params), on(listener), close(), proc } for its first page; the caller kills proc when done. signIn
+// (below) signs that browser in to the Board.
 // { gpu: true } keeps the graphics chip (a hardware WebGL2 where the machine has one); by default the browser has only a software one.
 // A cold start on a CI runner can take over 10 s, so it waits up to 30 s for the DevTools port.
-import fs from 'node:fs'; import path from 'node:path'; import { spawn } from 'node:child_process';
+import fs from 'node:fs'; import path from 'node:path'; import crypto from 'node:crypto'; import { spawn } from 'node:child_process';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // CHROME_PATH, else the usual places (the GitHub runners have Google Chrome; Windows has Edge)
@@ -25,4 +26,16 @@ export async function cdpConnect(profileDir, { gpu = false } = {}) {
   ws.onmessage = (m) => { const j = JSON.parse(m.data); if (j.id && wait.has(j.id)) { const w = wait.get(j.id); wait.delete(j.id); j.error ? w.no(new Error(j.error.message)) : w.ok(j.result); } else if (j.method) for (const l of listeners) l(j); };
   const send = (method, params = {}) => new Promise((ok, no) => { const i = ++id; wait.set(i, { ok, no }); ws.send(JSON.stringify({ id: i, method, params })); });
   return { send, on: (f) => listeners.push(f), close: () => ws.close(), proc };
+}
+// signIn(send, base, key) puts a signed session cookie for the Board at base in the browser, as /login would give (the pass key never goes
+// in a URL), and returns { ev, until }: ev(expr) runs expr in the page and gives back its value; until(expr, ms) waits up to ms (default
+// { wait }, 10 s) for expr to be true, trying every { step } ms (default 120).
+export async function signIn(send, base, key, { wait = 10000, step = 120 } = {}) {
+  const ev = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
+  const until = async (expr, ms = wait) => { const end = Date.now() + ms; while (Date.now() < end) { try { if (await ev(expr)) return true; } catch { } await sleep(step); } return false; };
+  const exp = Math.floor(Date.now() / 1000) + 3600; const nonce = crypto.randomBytes(16).toString('hex');
+  const mac = crypto.createHmac('sha256', Buffer.from(key)).update(`chef-session|${exp}|${nonce}`).digest('hex');
+  await send('Network.enable'); await send('Page.enable');
+  await send('Network.setCookie', { name: 'pass', value: `${exp}.${nonce}.${mac}`, url: base, httpOnly: true });
+  return { ev, until };
 }

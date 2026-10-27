@@ -8,10 +8,10 @@
 // It drives the real Board server (a throwaway state folder from pass-app/speed/fixture.mjs, made-up work orders only) in headless Chrome or
 // Edge over the DevTools protocol: one browser with the graphics chip ({ gpu: true }) and one without (only a software WebGL2, which gl.js
 // refuses). The CI runners have no graphics chip: there the WebGL2 checks say so in their names and only the fallback is checked.
-import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import http from 'node:http'; import crypto from 'node:crypto';
+import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import http from 'node:http';
 import zlib from 'node:zlib'; import { spawn } from 'node:child_process'; import { fileURLToPath } from 'node:url';
 import { makeYard } from './speed/fixture.mjs';
-import { cdpConnect } from './test-browser-kit.mjs';
+import { cdpConnect, signIn } from './test-browser-kit.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argOf = (n) => { const i = process.argv.indexOf('--' + n); return i > 0 ? process.argv[i + 1] : ''; };
@@ -67,13 +67,7 @@ const browsers = [];
 async function board({ gpu = false, noGl = false, frozen = false } = {}) {
   const key = fs.readFileSync(path.join(root, 'pass-key.txt'), 'utf8').trim();
   const cdp = await cdpConnect(path.join(tmp, 'profile-' + browsers.length), { gpu }); browsers.push(cdp.proc); const { send } = cdp;
-  const ev = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
-  const until = async (expr, ms = 10000) => { const end = Date.now() + ms; while (Date.now() < end) { try { if (await ev(expr)) return true; } catch { } await sleep(120); } return false; };
-  // a signed session cookie, as /login would give (the pass key never goes in a URL)
-  const exp = Math.floor(Date.now() / 1000) + 3600; const nonce = crypto.randomBytes(16).toString('hex');
-  const mac = crypto.createHmac('sha256', Buffer.from(key)).update(`chef-session|${exp}|${nonce}`).digest('hex');
-  await send('Network.enable'); await send('Page.enable');
-  await send('Network.setCookie', { name: 'pass', value: `${exp}.${nonce}.${mac}`, url: base, httpOnly: true });
+  const { ev, until } = await signIn(send, base, key);
   await send('Fetch.enable', { patterns: [{ urlPattern: '*/sw.js', requestStage: 'Request' }] });   // no service worker: every open is fresh
   cdp.on((m) => { if (m.method === 'Fetch.requestPaused') send('Fetch.failRequest', { requestId: m.params.requestId, errorReason: 'BlockedByClient' }).catch(() => { }); });
   if (noGl) await send('Page.addScriptToEvaluateOnNewDocument', { source: `{ const g = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (k, o) { return k === 'webgl2' ? null : g.call(this, k, o); }; }` });
