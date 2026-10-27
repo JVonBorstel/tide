@@ -10,7 +10,9 @@
 // Rules kept here:
 //   - everything served comes from the ledger's event store (<state>\tide.db, or TIDE_DB) through core/ledger/view.mjs, and everything
 //     sent goes through core/ledger/share.mjs (private orders show no words; paths, emails, hosts and private words are removed);
-//   - the Work tab is behind the board.work flag (flags.json, then flag.set events); off answers 404 not-found, and nothing else runs;
+//   - the Work tab is behind the board.work flag (flags.json, then flag.set events); off answers 404 not-found. flags.json is read
+//     first (an undeclared flag never opens the store); otherwise the store is opened read-only to read the flag.set events, and the
+//     view is built only while the flag is on. Taps open a write handle only for the write;
 //   - a tap is bound to the exact card (decision id) and, when the card's order has an open PR, to the head sha the phone was shown
 //     (If-Match). A moved PR refuses the tap (412) instead of saying yes to code Jordan did not see. The sha goes in the event's proof;
 //   - one decision is answered once: the event's store key is decision.answered:<id>, so two taps that race write one event; the same
@@ -26,7 +28,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(here, '..', '..');
 
 /** The paths this module answers (the server's seam asks this first). @param {string} p */
-export const isWorkPath = (p) => p === '/api/decide' || p === '/api/work' || p.startsWith('/api/work/');
+export const isWorkPath = (p) => p === '/api/decide' || p === '/api/work' || p.startsWith('/api/work/') || p.startsWith('/work/');
+/** The Work tab's screen files (pass-app/public/work), served here so a changed file is never answered from an old cache. */
+const PUB_WORK = path.resolve(here, '..', 'public', 'work');
+const STATIC_TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 /** core/ is loaded on the first Work request only, so the Board starts and runs as before when the tab is never used. */
 /** @type {Promise<any> | null} */ let coreP = null;
@@ -79,12 +84,15 @@ export class WorkApi {
     const C = await core();
     if (!fs.existsSync(this.dbFile)) { this.reset(); this.offWhy = 'there is no event store yet (the ledger is off until its switch moves; build-way 4.1)'; return null; }
     try {
-      if (!this.store) this.store = await C.openStore(this.dbFile, { busyMs: 2000 });
+      if (!this.store) this.store = await C.openStore(this.dbFile, { readOnly: true, busyMs: 2000 });
       let more = this.store.events({ afterSeq: this.lastSeq });
       const stale = !more.length && this.snap && Date.now() - this.snap.builtAt > 60000;
       if (stale && this.store.info().lastSeq < this.lastSeq) { this.events = []; this.lastSeq = 0; more = this.store.events({}); }   // the store was built again from the start
       if (more.length) { this.events.push(...more); this.lastSeq = more[more.length - 1].seq; }
-      if (more.length || stale || force || !this.snap) this.rebuild(C);
+      if (more.length || stale || force || !this.snap) {
+        const flags = flagsNow({ events: this.events, flagsFile: this.flagsFile });
+        if (flags.on(WORK_FLAG)) this.rebuild(C, flags); else this.snap = { off: true, flags, builtAt: Date.now(), seq: this.lastSeq };   // off: no view is built
+      }
       this.offWhy = '';
       return this.snap;
     } catch (e) {
@@ -95,15 +103,15 @@ export class WorkApi {
   }
   reset() { try { this.store?.close(); } catch { } this.store = null; this.events = []; this.lastSeq = 0; this.snap = null; }
 
-  /** The view over every event, shared through share.mjs. @param {any} C */
-  rebuild(C) {
+  /** The view over every event, shared through share.mjs. @param {any} C @param {any} flags */
+  rebuild(C, flags) {
     const view = C.buildView(this.events, { now: this.now(), flagDefaults: readJson(this.flagsFile) });
     const priv = C.privateOf(view);
     const pw = C.readPrivateWords(path.join(this.root, C.PRIVATE_WORDS_FILE));
     const redact = C.makeRedactor({ privateWords: [...pw.words, ...priv.words] });
     const { internal, ...work } = view;
     const shared = C.shareWork(work, priv, redact);
-    this.snap = { view, shared, priv, redact, flags: flagsNow({ events: this.events, flagsFile: this.flagsFile }), builtAt: Date.now(), seq: this.lastSeq };
+    this.snap = { view, shared, priv, redact, flags, builtAt: Date.now(), seq: this.lastSeq };
   }
 
   /** The shared form of one event (private orders and x.* kinds lose their data; every string is redacted). @param {any} C @param {any} e */
@@ -117,6 +125,9 @@ export class WorkApi {
 
   /** Gate every request: the store is readable and board.work is on. */
   async ready() {
+    // flags.json first: a flag it does not declare (or a broken file) is off before the store is ever opened
+    const declared = flagsNow({ events: [], flagsFile: this.flagsFile });
+    if (!declared.ok || !declared.values.some((f) => f.flag === WORK_FLAG)) fail(404, 'not-found', `The Work tab is off (flag ${WORK_FLAG} is not declared in flags.json).`);
     const s = await this.sync();
     if (!s) fail(404, 'not-found', `The Work tab is off: ${this.offWhy}.`);
     if (!s.flags.on(WORK_FLAG)) fail(404, 'not-found', `The Work tab is off (flag ${WORK_FLAG}; turning it on is Jordan's card).`);
@@ -157,6 +168,7 @@ export class WorkApi {
     if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) fail(415, 'bad-request', 'JSON only.');
     const { body, tooBig } = await ctx.readBody(req, 8192);
     if (tooBig) fail(413, 'bad-request', 'The tap is too large (the note is at most 2000 characters).');
+    if (body && typeof body === 'object' && ['__proto__', 'constructor', 'prototype'].some((k) => Object.prototype.hasOwnProperty.call(body, k))) fail(400, 'bad-request', 'The tap is not well formed: a reserved key name.');   // review F3
     const v = C.validate('api-decide', body);
     if (!v.ok) fail(400, 'bad-request', `The tap is not well formed: ${String(v.errors[0] || '').slice(0, 200)}`);
     const s = await this.ready();
@@ -184,7 +196,7 @@ export class WorkApi {
       data: { decision: d.id, answer: body.answer, note: body.note ?? null, via: body.via, requestId: body.requestId },
       proof: h ? `${h.pr} head ${h.head}` : null, key: `decision.answered:${d.id}` };
     let added = 0;
-    try { added = this.store.append([ev]).added; } catch (e) { fail(503, 'unavailable', `The tap was NOT recorded: the event store refused the write (${/** @type {any} */ (e).code || 'error'}). Try again.`); }
+    try { const w = await C.openStore(this.dbFile, { busyMs: 2000 }); try { added = w.append([ev]).added; } finally { w.close(); } } catch (e) { fail(503, 'unavailable', `The tap was NOT recorded: the event store refused the write (${/** @type {any} */ (e).code || 'error'}). Try again.`); }
     await this.sync(true);
     const stored = this.answeredEvent(d.id);
     if (!stored) fail(503, 'unavailable', 'The tap was NOT recorded: it is not in the event store after the write. Try again.');
@@ -273,7 +285,9 @@ export class WorkApi {
       }
       if (req.method !== 'GET' && req.method !== 'HEAD') fail(405, 'bad-request', 'GET only.');
       if (p === '/api/work') return ctx.send(res, 200, await this.work(url, res));
+      if (p.startsWith('/work/')) return this.file(p, res, ctx);
       if (p === '/api/work/stream') return await this.stream(req, res, url, ctx);
+      if (p === '/api/work/events') return ctx.send(res, 200, await this.week(url));
       let id = ''; try { id = decodeURIComponent(p.slice('/api/work/'.length)); } catch { fail(400, 'bad-request', 'A work order id looks like WO-312 or J312.'); }
       return ctx.send(res, 200, await this.item(id, res));
     } catch (e) {
@@ -283,6 +297,27 @@ export class WorkApi {
       console.error('work api:', p, err?.message);
       return ctx.send(res, 503, { ok: false, code: 'unavailable', error: 'The Work tab hit an error; nothing was recorded. Try again.' });
     }
+  }
+
+  /**
+   * GET /api/work/events?days=7: the events of the last days (at most 14), newest 3000, shared like every other answer, for the
+   * Work tab's week replay. Not in the contracts yet (a card asks for it); each item is an event contract object.
+   * @param {URL} url
+   */
+  async week(url) {
+    const C = await core(); await this.ready();
+    const days = Math.min(14, Math.max(1, Math.floor(Number(url.searchParams.get('days')) || 7)));
+    const from = new Date(this.now().getTime() - days * 86400e3).toISOString();
+    const list = this.events.filter((e) => String(e.at) >= from).slice(-3000).map((e) => this.pubEvent(C, e));
+    return { ok: true, at: this.now().toISOString(), from, events: list };
+  }
+
+  /** One file of pass-app/public/work (.js, .css, .svg only), read fresh and never cached by the browser. @param {string} p @param {any} res @param {Ctx} ctx */
+  file(p, res, ctx) {
+    let rel = ''; try { rel = decodeURIComponent(p.slice('/work/'.length)); } catch { }
+    const full = path.resolve(PUB_WORK, rel); const type = STATIC_TYPES[/** @type {keyof typeof STATIC_TYPES} */ (path.extname(full))];
+    if (!rel || !type || !full.startsWith(PUB_WORK + path.sep) || !fs.existsSync(full) || !fs.statSync(full).isFile()) return ctx.send(res, 404, { ok: false, code: 'not-found', error: 'not found' });
+    return ctx.send(res, 200, fs.readFileSync(full), type);
   }
 
   close() { for (const c of [...this.clients]) this.drop(c); this.stopTimers(); this.reset(); }

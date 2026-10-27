@@ -9,7 +9,8 @@
 //   - a message says only how many cards wait ("3 cards wait"); never a title, a goal, a repo or a WO id;
 //   - a failure never throws to the caller: it is counted, written to <state>\work-push-last.json, and the in-app badge (the queue
 //     count on the Board) stays the way Jordan learns of a card. A phone the push service says is gone (404/410) is forgotten;
-//   - only the known push services are ever called (https, fixed host list), so a stored subscription cannot point the PC at another host;
+//   - only the known push services are ever called (https, fixed host list, redirects never followed), so neither a stored subscription
+//     nor a push service's answer can point the PC at another host;
 //   - the VAPID keys are made once and kept in the state folder (never in the repo), so subscriptions keep working across restarts. A key
 //     file that cannot be read is an error, never a silent new key (that would cut every phone off).
 import fs from 'node:fs';
@@ -152,7 +153,7 @@ export async function pushCards(o) {
   await Promise.all(subs.map(async (s) => {
     const ok = checkSubscription(s, o); if (!ok.ok) { gone.add(s.endpoint); res.gone++; return; }
     try {
-      const r = await (o.fetchImpl || fetch)(s.endpoint, { method: 'POST', body: encrypt(body, s.keys), signal: AbortSignal.timeout(o.timeoutMs ?? 10000),
+      const r = await (o.fetchImpl || fetch)(s.endpoint, { method: 'POST', redirect: 'manual', body: encrypt(body, s.keys), signal: AbortSignal.timeout(o.timeoutMs ?? 10000),
         headers: { Authorization: vapidHeader(s.endpoint, vapid, subject, o.now), 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '86400', Urgency: 'normal', Topic: 'tide-cards' } });
       if (r.status === 404 || r.status === 410) { gone.add(s.endpoint); res.gone++; }
       else if (r.status >= 200 && r.status < 300) res.sent++;

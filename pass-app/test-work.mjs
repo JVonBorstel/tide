@@ -44,7 +44,8 @@ for (let i = 3; i <= 12; i++) {
   seed.push(E('wo.created', wo, { goal: `Example order ${i}`, stream: i % 2 ? 'DEMO' : 'SAMPLE' }, ago(37 - i)));
   seed.push(E('decision.asked', wo, { decision: dec(`D-${i}`, wo, 'look', ago(36 - i)) }, ago(36 - i)));
 }
-for (let i = 13; i <= 24; i++) seed.push(E('wo.created', `WO-${2000 + i}`, { goal: `Example moving order ${i}`, stream: 'SAMPLE' }, ago(20 - i / 2)));
+for (let i = 13; i <= 24; i++) seed.push(E('wo.created', `WO-${2000 + i}`, { goal: `Example moving order ${i}`, stream: 'SAMPLE', ...(i === 24 ? { private: true } : {}) }, ago(20 - i / 2)));
+seed.push(E('pr.opened', 'WO-2024', { pr: 'example#77', branch: 'wo/privbranch-24', base: 'main', head: SHA2 }, ago(5)));   // a private order on a PR (review F1)
 { const s = await openStore(dbFile); s.append(seed); s.close(); }
 const appendNow = async (evs) => { const s = await openStore(dbFile); try { return s.append(evs); } finally { s.close(); } };
 const answered = async (id) => { const s = await openStore(dbFile, { readOnly: true }); try { return s.events().filter((e) => e.kind === 'decision.answered' && (!id || e.data.decision === id)); } finally { s.close(); } };
@@ -117,6 +118,9 @@ try {
   // ---- GET /api/work ----
   const w = await req('/api/work');
   const vw = validate('api-work', w.json);
+  const allRows = [...(await req('/api/work?page=1')).json.rows, ...(await req('/api/work?page=2')).json.rows, ...(await req('/api/work?page=3')).json.rows];
+  const privRow = allRows.find((r) => r.id === 'WO-2024'); const privItem = await req('/api/work/WO-2024');
+  check('a private order shows no branch and no PR name (review F1): rows and the item', privRow && privRow.branch === null && privRow.pr === null && privItem.json?.row?.branch === null && !JSON.stringify(allRows).includes('privbranch') && !JSON.stringify(privItem.json).includes('privbranch'), JSON.stringify(privRow));
   check('GET /api/work answers the api-work contract', w.code === 200 && vw.ok, `${w.code} ${vw.errors?.slice(0, 3).join('; ')}`);
   const q = w.json?.queue || [];
   check('the Needs-you queue shows at most 7 cards, oldest first, and counts them all', q.length === 7 && w.json.queueTotal === 12 && q.every((c, i) => i === 0 || q[i - 1].decision.at <= c.decision.at) && q[0].decision.id === 'D-1', `${q.length} / ${w.json?.queueTotal} ${q.map((c) => c.decision.id).join(',')}`);
@@ -164,6 +168,9 @@ try {
   check('an answer that is not one of the card\'s options answers 400 bad-answer', wrong.code === 400 && wrong.json?.code === 'bad-answer', `${wrong.code}`);
   const unknown = await tap('D-777', 'Yes', 'req-unknown-1');
   check('a tap on a card that does not exist answers 404 unknown-card', unknown.code === 404 && unknown.json?.code === 'unknown-card', `${unknown.code}`);
+  const proto = await req('/api/decide', { method: 'POST', body: '{"decision":"D-3","answer":"Yes","via":"board","requestId":"req-proto-001","__proto__":{"x":1}}' });
+  const ctor = await req('/api/decide', { method: 'POST', body: { decision: 'D-3', answer: 'Yes', via: 'board', requestId: 'req-ctor-0001', constructor: 'x' } });
+  check('a body with __proto__ or constructor keys is refused 400 and writes nothing (review F3)', proto.code === 400 && ctor.code === 400 && (await answered('D-3')).length === 0, `${proto.code} ${ctor.code}`);
   const keyInBody = await req('/api/decide', { method: 'POST', body: { decision: 'D-3', answer: 'Yes', via: 'board', requestId: 'req-key-0001', key: KEY } });
   check('a body that carries anything else (a key) is refused 400 bad-request', keyInBody.code === 400 && keyInBody.json?.code === 'bad-request' && (await answered('D-3')).length === 0, `${keyInBody.code}`);
   const notJson = await req('/api/decide', { method: 'POST', body: 'decision=D-3', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
@@ -205,6 +212,16 @@ try {
   check('turning board.work off again closes the tab: 404, and open streams end', offAgain.code === 404 && s4.ended === true, `${offAgain.code} ended ${s4.ended}`);
   s4.close();
 
+  // ---- the flag is read before the store (review F2) ----
+  {
+    const { WorkApi } = await import('./work/api.mjs');
+    const ff = path.join(tmp, 'flags-none.json'); fs.writeFileSync(ff, JSON.stringify({ version: 1, flags: {} }));
+    const db2 = path.join(tmp, 'never', 'tide.db');
+    const api = new WorkApi({ root: tmp, db: db2, flagsFile: ff }); let why = '';
+    try { await api.ready(); } catch (e) { why = e.message; }
+    const api2 = new WorkApi({ root: root, db: dbFile }); await api2.sync(); const offSnap = api2.snap; api2.close();
+    check('the flag is read first: an undeclared board.work answers off without opening the store, and while off no view is built', /not declared/.test(why) && !fs.existsSync(path.dirname(db2)) && offSnap?.off === true && !offSnap.view, why + ' ' + JSON.stringify(offSnap && Object.keys(offSnap)));
+  }
   // ---- what the Board logs ----
   const audit = fs.readFileSync(path.join(root, 'pass-actions.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((l) => l.op === 'work-decide');
   check('every tap is one line in the Board\'s action log, and the note is never written there', audit.length >= 8 && audit.some((l) => l.ok && l.id === 'D-1') && !fs.readFileSync(path.join(root, 'pass-actions.jsonl'), 'utf8').includes('Ship it'), `${audit.length} lines`);
