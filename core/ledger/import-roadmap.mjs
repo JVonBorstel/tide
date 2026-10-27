@@ -44,7 +44,7 @@ export function importRoadmaps(o) {
     const rm = roadmapOf(r.path, r.name);
     report.push({ repo: r.name, ok: rm.ok, why: rm.why, items: rm.items.length });
     if (!rm.ok && /^no (kitchen\.repo\.json|roadmap)$/.test(rm.why)) continue;   // not opted in: nothing to say
-    events.push({ key: `roadmap:${r.name}:${hash(rm)}`, at, actor: 'import', kind: 'x.local.roadmap', wo: null, data: { ...rm, path: r.path }, proof: null });
+    events.push({ family: `roadmap:${r.name}`, value: hash(rm), at, actor: 'import', kind: 'x.local.roadmap', wo: null, data: { ...rm, path: r.path }, proof: null });
   }
   return { events, report };
 }
@@ -73,5 +73,5 @@ export function importLobe(state, opt = {}) {
       for (const d of Array.isArray(doc.postMortemDue) ? doc.postMortemDue : []) if (d && DEC_ID.test(String(d.id)) && ['30', '60', '90'].includes(String(d.day))) data.postMortemDue.push({ id: String(d.id), day: Number(d.day), dueAt: isoOrNull(d.due_at), expiresAt: isoOrNull(d.expires_at) });
     }
   }
-  return { events: [{ key: `lobe:flags:${hash(data)}`, at, actor: 'import', kind: 'x.lobe.flags', wo: null, data, proof: null }], report: { ok: data.ok, why: data.why, decisionsReady: data.decisionReady.length, postMortemsDue: data.postMortemDue.length } };
+  return { events: [{ family: 'lobe:flags', value: hash(data), at, actor: 'import', kind: 'x.lobe.flags', wo: null, data, proof: null }], report: { ok: data.ok, why: data.why, decisionsReady: data.decisionReady.length, postMortemsDue: data.postMortemDue.length } };
 }

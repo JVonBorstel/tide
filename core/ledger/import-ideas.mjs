@@ -21,7 +21,7 @@ const ID = /^(I\d{1,5}|J\d{1,5}|[A-Za-z][A-Za-z0-9]{0,5}-\d{1,4}|R-\d{1,4})$/;
 export function importIdeas(state, opt = {}) {
   const at = (opt.now || new Date()).toISOString(); /** @type {any[]} */ const events = [];
   const report = /** @type {any} */ ({});
-  const add = (/** @type {string} */ kind, /** @type {any} */ data) => events.push({ key: `ideas:${kind}:${hash(data)}`, at, actor: 'import', kind, wo: null, data, proof: null });
+  const add = (/** @type {string} */ kind, /** @type {any} */ data) => events.push({ family: `ideas:${kind}`, value: hash(data), at, actor: 'import', kind, wo: null, data, proof: null });
   const ideas = readJson(path.join(state, 'ideas.json'));
   const items = Array.isArray(ideas.doc?.items) ? ideas.doc.items.filter((/** @type {any} */ i) => /^I\d+$/.test(String(i?.id || ''))).map((/** @type {any} */ i) => ({
     id: String(i.id), title: text(i.title || i.goal, 300) || String(i.id), status: text(i.status, 20), source: text(i.source, 300), score: Number(i.score) || 0, size: text(i.size, 10),

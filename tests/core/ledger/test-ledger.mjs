@@ -60,24 +60,34 @@ async function testStore() {
   const s = await openStore(dbf);
   const add = s.append([{ ...ev(1, 'wo.created', 'WO-2001', { goal: 'Paint the sunrise', stream: 'ART' }), key: 'k1' }]);
   check('store: an event is appended and gets seq 1', add.added === 1 && add.lastSeq === 1);
-  check('store: append-only: an UPDATE of an event is refused', catchCode(() => s.exec("UPDATE events SET kind = 'closed'")) === 'append-only');
-  check('store: append-only: a DELETE of an event is refused', catchCode(() => s.exec('DELETE FROM events')) === 'append-only');
+  // an outside writer with its own connection (the store hands out no raw SQL: no exec, no db handle)
+  const { DatabaseSync } = await import('node:sqlite'); const raw = new DatabaseSync(dbf); raw.exec('PRAGMA busy_timeout = 2000');
+  const rawErr = (sql) => { try { raw.exec(sql); return 'accepted'; } catch (e) { return /append-only/.test(String(e.message)) ? 'append-only' : String(e.message); } };
+  check('store: append-only: an UPDATE of an event is refused', rawErr("UPDATE events SET kind = 'closed'") === 'append-only');
+  check('store: append-only: a DELETE of an event is refused', rawErr('DELETE FROM events') === 'append-only');
+  check('store: append-only: INSERT OR REPLACE of an existing seq is refused', rawErr("INSERT OR REPLACE INTO events (seq, v, at, actor, kind, wo, data, proof) VALUES (1, '1.0', '2030-01-01T00:00:00Z', 'engine', 'closed', 'WO-2001', '{}', 'x')") === 'append-only');
+  check('store: append-only: INSERT OR REPLACE on a stored source key changes nothing', rawErr("INSERT OR REPLACE INTO events (v, at, actor, kind, wo, data, proof, source_key) VALUES ('1.0', '2030-01-01T00:00:00Z', 'engine', 'closed', 'WO-2001', '{}', 'x', 'k1')") === 'accepted' && s.info().events === 1);
+  check('store: the store object exposes no raw SQL (no exec, no db)', typeof s.exec === 'undefined' && typeof s.db === 'undefined');
   check('store: append-only: the refused writes changed nothing', s.events().length === 1 && s.events()[0].kind === 'wo.created');
   const info = s.info();
   check('store: WAL journal on a file store', info.journal === 'wal', info.journal);
   check(`store: schema version ${SCHEMA_VERSION} is stamped (PRAGMA user_version)`, info.version === SCHEMA_VERSION);
-  const ddl = s.db.prepare("SELECT group_concat(sql, ' ') AS s FROM sqlite_master WHERE type = 'table'").get().s;
-  check('store: tables are STRICT', /events[\s\S]*\) STRICT/.test(ddl) && /meta[\s\S]*\) STRICT/.test(ddl));
+  check('store: tables are STRICT', info.strict === true);
+  check('store: the append-only triggers are in place (update, delete, replace)', ['events_no_delete', 'events_no_replace', 'events_no_update'].every((t) => info.triggers.includes(t)));
   check('store: a rerun with the same source key adds 0 events', s.append([{ ...ev(1, 'wo.created', 'WO-2001', { goal: 'Paint the sunrise', stream: 'ART' }), key: 'k1' }]).added === 0);
   check('store: an event read back carries the contract version', s.events()[0].v === V && validate('event', s.events()[0]).ok, JSON.stringify(validate('event', s.events()[0]).errors));
   const bad = catchCode(() => s.append([{ ...ev(2, 'stage.entered', 'WO-2001', { stage: 'build' }), key: 'k2' }, { ...ev(3, 'stage.entered', 'WO-2001', { stage: 'nowhere' }), key: 'k3' }]));
   check('store: an event that breaks the contract is refused and its batch writes nothing', bad === 'bad-event' && s.info().events === 1, String(bad));
   // locked: another connection holds the write lock
-  const other = await openStore(dbf, { busyMs: 50 });
-  other.exec('BEGIN EXCLUSIVE');
+  raw.exec('BEGIN EXCLUSIVE');
   const s2 = await openStore(dbf, { busyMs: 50 });
   check('store: a locked file says locked (one writer)', catchCode(() => s2.append([{ ...ev(2, 'stage.entered', 'WO-2001', { stage: 'review' }), key: 'k4' }])) === 'locked');
-  other.exec('ROLLBACK'); other.close(); s2.close();
+  raw.exec('ROLLBACK'); raw.close(); s2.close();
+  // observations: written only when the value changes, so A -> B -> A keeps all three and A, A keeps one
+  const o = await openStore(':memory:'); const st = (stage) => ({ ...ev(1, 'stage.entered', 'WO-2001', { stage }), family: 'f:WO-2001:stage', value: stage });
+  const a1 = o.append([st('build'), st('build')]).added, a2 = o.append([st('jordan')]).added, a3 = o.append([st('build')]).added, a4 = o.append([st('build')]).added;
+  check('store: an observation is written once per change: A, A -> 1; A -> B -> A -> 3; A again -> 0', a1 === 1 && a2 === 1 && a3 === 1 && a4 === 0 && o.lastValue('f:WO-2001:stage') === 'build');
+  check('store: a family without a value is refused', catchCode(() => o.append([{ ...ev(1, 'stage.entered', 'WO-2001', { stage: 'build' }), family: 'x' }])) === 'bad-event'); o.close();
   // backup
   const copy = path.join(tmp, 'store', 'backup', 'tide-copy.db'); s.backup(copy);
   const c = await openStore(copy, { readOnly: true });
@@ -87,7 +97,9 @@ async function testStore() {
   // corrupt and newer files
   const junk = path.join(tmp, 'store', 'junk.db'); W(junk, 'this is not a database file at all, just text that is long enough to have a header....');
   check('store: a corrupt file says corrupt', await catchCodeAsync(() => openStore(junk)) === 'corrupt');
-  const newer = path.join(tmp, 'store', 'newer.db'); const n = await openStore(newer); n.exec('PRAGMA user_version = 99'); n.close();
+  const newer = path.join(tmp, 'store', 'newer.db'); (await openStore(newer)).close(); { const n = new DatabaseSync(newer); n.exec('PRAGMA user_version = 99'); n.close(); }
+  const v1 = path.join(tmp, 'store', 'v1.db'); { const n = new DatabaseSync(v1); n.exec("CREATE TABLE events (seq INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT NOT NULL, at TEXT NOT NULL, actor TEXT NOT NULL, kind TEXT NOT NULL, wo TEXT, data TEXT NOT NULL, proof TEXT, source_key TEXT UNIQUE) STRICT; PRAGMA user_version = 1"); n.close(); }
+  check('store: a schema 1 file is refused read-only and brought to schema 2 when opened for writing', await catchCodeAsync(() => openStore(v1, { readOnly: true })) === 'older-schema' && (await (async () => { const m = await openStore(v1); const i = m.info(); m.close(); return i.version === 2; })()));
   check('store: a file from newer code is refused by name (newer-schema)', await catchCodeAsync(() => openStore(newer)) === 'newer-schema');
   check('store: a read of a missing file says missing', await catchCodeAsync(() => openStore(path.join(tmp, 'none.db'), { readOnly: true })) === 'missing');
 }
@@ -439,6 +451,8 @@ async function testLegacy() {
   check('l2: counts keep the old meaning; the new rows are counted under work', ex.counts.claimed === 1 && ex.counts.notStarted >= 3 && typeof ex.work.rows === 'number');
   const noLobe = importLobe(state, { now: NOW, home: path.join(base, 'none') });
   check('l2: lobe: no flags.json is unknown (null counts), never a made-up zero', noLobe.report.ok === false && noLobe.events[0].data.missing === true);
+  const lo = await openStore(':memory:'); const lobeRead = (home) => lo.append(importLobe(state, { now: NOW, home }).events).added;
+  check('l2: lobe flags present -> missing -> present again records 3 changes (A -> B -> A), and a rerun adds 0', lobeRead(lobeDir) + lobeRead(path.join(base, 'none')) + lobeRead(lobeDir) === 3 && lobeRead(lobeDir) === 0); lo.close();
   W(path.join(base, 'bad', 'flags.json'), '{ not json');
   const bad = importLobe(state, { now: NOW, home: path.join(base, 'bad') }); const s2 = await openStore(':memory:'); s2.append(bad.events);
   check('l2: lobe: an unreadable flags.json is a flag for Claude', exportLedgerJson(buildView(s2.events(), { now: NOW })).flags.some((f) => f.rule === 'lobe-flags-unreadable')); s2.close();
@@ -459,8 +473,57 @@ async function testLegacy() {
   s.close();
 }
 
+// ---- the verifier's findings on #31 (audits/review-tide-31-2026-10-26.md): A -> B -> A, the export's words, Node, the guard ----
+async function testReview31() {
+  const { nodeHasSqlite } = await import('../../../core/ledger/store.mjs');
+  const { liveStateDirs, guardLive } = await import('../../../core/ledger/commands.mjs');
+  // F1.1 a Yard job: running -> waiting-approval -> running (same attempt)
+  const state = path.join(tmp, 'r31-state'); makeState(state, 3);
+  const setJob = (status) => { const f = path.join(state, 'jobs', 'J1.json'); const j = JSON.parse(fs.readFileSync(f, 'utf8')); j.status = status; W(f, j); };
+  const s = await openStore(':memory:'); const yard = () => s.append(importYard(state, { now: NOW }).events);
+  setJob('running'); yard(); setJob('waiting-approval'); yard(); setJob('running'); yard();
+  const r1 = buildView(s.events(), { now: NOW }).rows.find((r) => r.id === 'WO-1');
+  check('review31: a Yard job running -> waiting-approval -> running is back at build, moving, owner crew', r1?.stage === 'build' && r1.state === 'moving' && r1.owner === 'crew', JSON.stringify(r1 && [r1.stage, r1.state, r1.owner]));
+  // F1.2 PAUSED, then resumed, then paused again
+  W(path.join(state, 'PAUSED'), '2030-01-08T00:00:00Z'); yard(); const p1 = buildView(s.events(), { now: NOW }).paused;
+  fs.rmSync(path.join(state, 'PAUSED')); yard(); const p2 = buildView(s.events(), { now: NOW });
+  check('review31: the Yard paused, then resumed, is recorded as resumed', p1 === true && p2.paused === false && !/paused/.test(p2.top));
+  s.close();
+  // F1.3-5 GitHub: CI fail -> pass -> fail; mergeable CONFLICTING -> UNKNOWN -> CONFLICTING; closed -> reopened
+  const out = path.join(tmp, 'r31-gh'); const slug = 'example-owner/example-repo';
+  const pr = (over) => ({ number: 41, title: 'WO-2001: paint the sunrise', headRefName: 'art-sunrise', baseRefName: 'main', headRefOid: SHA1, createdAt: '2030-01-10T05:00:00Z', updatedAt: '2030-01-10T06:00:00Z', mergeable: 'MERGEABLE', statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'SUCCESS' }], ...over });
+  const g = await openStore(':memory:');
+  const read = (open, at) => g.append(importGithub({ repos: [slug], out, now: new Date(at), last: (f) => g.lastValue(f), run: fakeGh({ [`${slug}|open`]: { ok: true, data: open }, [`${slug}|merged`]: { ok: true, data: [] } }).run }).events);
+  const fail = [{ status: 'COMPLETED', conclusion: 'FAILURE' }];
+  read([pr({ statusCheckRollup: fail })], '2030-01-10T07:00:00Z'); read([pr({})], '2030-01-10T07:10:00Z'); read([pr({ statusCheckRollup: fail })], '2030-01-10T07:20:00Z');
+  const c = buildView(g.events(), { now: NOW }).rows.find((r) => r.id === 'WO-2001');
+  check('review31: CI fail -> pass -> fail on the same head shows CI failed, not merge-ready', c?.stage === 'ci' && /CI failed/.test(c.blockedOn || ''), JSON.stringify(c && [c.stage, c.blockedOn]));
+  read([pr({ mergeable: 'CONFLICTING' })], '2030-01-10T07:30:00Z'); read([pr({ mergeable: 'UNKNOWN' })], '2030-01-10T07:40:00Z'); read([pr({ mergeable: 'CONFLICTING' })], '2030-01-10T07:50:00Z');
+  const m = buildView(g.events(), { now: NOW }).rows.find((r) => r.id === 'WO-2001');
+  check('review31: mergeable CONFLICTING -> UNKNOWN -> CONFLICTING is stale again', m?.state === 'stale' && m.blockedOn === 'conflict with main', JSON.stringify(m && [m.state, m.blockedOn]));
+  read([], '2030-01-10T08:00:00Z'); const closed = buildView(g.events(), { now: NOW }).rows.find((r) => r.id === 'WO-2001');
+  read([pr({})], '2030-01-10T08:10:00Z'); const reopened = buildView(g.events(), { now: NOW }).rows.find((r) => r.id === 'WO-2001');
+  check('review31: a PR closed, then reopened, is lost then open again (a reopened event)', closed?.state === 'lost' && reopened?.state !== 'lost' && g.events().some((e) => e.kind === 'pr.updated' && e.data.why === 'reopened'), JSON.stringify([closed?.state, reopened?.state]));
+  check('review31: a rerun of the same GitHub read adds 0 events', read([pr({})], '2030-01-10T08:20:00Z').added === 0);
+  g.close();
+  // F3: the export carries no card question text
+  const D = { v: V, id: 'D-5', wo: 'WO-2001', kind: 'merge', ask: 'A private question text', options: ['Yes', 'No'], recommended: 'Yes', answer: null, note: null, at: '2030-01-10T00:00:00Z', answeredAt: null, via: null };
+  const ex = exportLedgerJson(buildView([ev(1, 'wo.created', 'WO-2001', { goal: 'Paint', stream: 'ART' }), ev(2, 'decision.asked', 'WO-2001', { decision: D })], { now: NOW }));
+  check('review31: ledger.next.json keeps a card\'s question out (ids and goal only)', !JSON.stringify(ex).includes('A private question text') && ex.flags.some((f) => f.id === 'D-5' && f.rule === 'waiting-on-you'));
+  // F4: Node below 22.5 is named in plain words
+  check('review31: node:sqlite needs Node 22.5 or later (20.18.1 no, 22.4.0 no, 22.5.0 yes, 24.0.0 yes)', !nodeHasSqlite('20.18.1') && !nodeHasSqlite('22.4.0') && nodeHasSqlite('22.5.0') && nodeHasSqlite('24.0.0'));
+  // F5: an extra guarded folder never removes the default one
+  const saved = process.env.LEDGER_LIVE_STATE; process.env.LEDGER_LIVE_STATE = path.join(tmp, 'elsewhere');
+  const dirs = liveStateDirs([path.join(tmp, 'injected')]);
+  check('review31: LEDGER_LIVE_STATE and an injected folder add guards; the Yard\'s own folder stays guarded', dirs.length === 3 && dirs.some((d) => /brain-kitchen$/.test(d)));
+  const def = dirs.find((d) => /brain-kitchen$/.test(d));
+  check('review31: the default live folder is still refused with LEDGER_LIVE_STATE set elsewhere', catchCode(() => guardLive([path.join(def, 'tide.db')])) === undefined ? false : /refused/.test(String((() => { try { guardLive([path.join(def, 'tide.db')]); return ''; } catch (e) { return e.message; } })())));
+  if (saved === undefined) delete process.env.LEDGER_LIVE_STATE; else process.env.LEDGER_LIVE_STATE = saved;
+}
+
 try {
   await testLegacy();
+  await testReview31();
   await testStore(); await testYard(); await testGithub(); await testLocal(); testView(); testExport();
   const db = await testCli(); await testParity(db);
 } catch (e) { check(`the suite ran to the end (${String(e?.stack || e).split('\n').slice(0, 3).join(' | ')})`, false); }

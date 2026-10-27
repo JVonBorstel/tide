@@ -49,10 +49,11 @@ function ciOf(list) {
 const goalOf = (/** @type {string} */ t) => text(String(t || '').replace(/^\s*WO-[A-Z0-9-]+\s*:\s*/, ''), 500) || 'untitled pull request';
 
 /**
- * @param {{ repos: string[], state?: string, out: string, run?: (args: string[]) => any, now?: Date, cacheFreshMin?: number }} o
+ * @param {{ repos: string[], state?: string, out: string, run?: (args: string[]) => any, now?: Date, cacheFreshMin?: number, last?: (family: string) => string | null }} o
+ *   last: the store's last value of an observation family (store.lastValue), to tell a reopened PR from a new one
  */
 export function importGithub(o) {
-  const now = o.now || new Date(); const run = o.run || ghRun; const fresh = (o.cacheFreshMin ?? 10) * 60000;
+  const now = o.now || new Date(); const run = o.run || ghRun; const lastOf = o.last || (() => null); const fresh = (o.cacheFreshMin ?? 10) * 60000;
   const lastPath = path.join(o.out, 'github-last.json');
   const last = readJson(lastPath) || { repos: {} };
   const cache = o.state ? readJson(path.join(o.state, 'towers-github.json')) : null;
@@ -84,19 +85,22 @@ export function importGithub(o) {
       const wo = woOfTitle(p.title) || woOfBranch(branch) || woOfPr(slug, n); const at = isoOrNull(p.createdAt) || now.toISOString();
       if (!woOfBranch(branch)) events.push({ key: `gh:${key}#${n}:created`, at, actor: 'github', kind: 'wo.created', wo, data: { goal: goalOf(p.title), stream: streamOf(branch, wo), repo: slug }, proof: null });
       if (!SHA.test(head) || !branch || !p.baseRefName) continue;
-      events.push({ key: `gh:${key}#${n}:opened`, at, actor: 'github', kind: 'pr.opened', wo, data: { pr, branch, base: String(p.baseRefName), head, title: text(p.title, 500) || pr }, proof: `${slug} pull ${n}` });
+      // open/closed is an observation: a PR seen open after it was closed is reopened, not opened again
+      const openFam = `gh:${key}#${n}:open`;
+      if (lastOf(openFam) === 'closed') events.push({ family: openFam, value: 'open', at: isoOrNull(p.updatedAt) || now.toISOString(), actor: 'github', kind: 'pr.updated', wo, data: { pr, head, why: 'reopened' }, proof: null });
+      else events.push({ family: openFam, value: 'open', at, actor: 'github', kind: 'pr.opened', wo, data: { pr, branch, base: String(p.baseRefName), head, title: text(p.title, 500) || pr }, proof: `${slug} pull ${n}` });
       const mg = p.mergeable === 'CONFLICTING' ? 'conflicting' : p.mergeable === 'MERGEABLE' ? 'yes' : 'unknown';
       const upAt = isoOrNull(p.updatedAt) || at;
-      events.push({ key: `gh:${key}#${n}:head:${head}:${mg}`, at: upAt, actor: 'github', kind: 'pr.updated', wo, data: { pr, head, why: mg === 'conflicting' ? 'conflict' : 'push', mergeable: mg }, proof: null });
+      events.push({ family: `gh:${key}#${n}:head`, value: `${head}:${mg}`, at: upAt, actor: 'github', kind: 'pr.updated', wo, data: { pr, head, why: mg === 'conflicting' ? 'conflict' : 'push', mergeable: mg }, proof: null });
       const ci = ciOf(p.statusCheckRollup);
-      if (ci) events.push({ key: `gh:${key}#${n}:ci:${head}:${ci}`, at: upAt, actor: 'github', kind: 'ci.result', wo, data: { pr, head, conclusion: ci, checks: p.statusCheckRollup.length, failed: p.statusCheckRollup.filter((/** @type {any} */ x) => /FAIL|ERROR|CANCEL|TIMED/i.test(String(x?.conclusion || x?.state || ''))).length }, proof: null });
+      if (ci) events.push({ family: `gh:${key}#${n}:ci`, value: `${head}:${ci}`, at: upAt, actor: 'github', kind: 'ci.result', wo, data: { pr, head, conclusion: ci, checks: p.statusCheckRollup.length, failed: p.statusCheckRollup.filter((/** @type {any} */ x) => /FAIL|ERROR|CANCEL|TIMED/i.test(String(x?.conclusion || x?.state || ''))).length }, proof: null });
       r.open++;
     }
     // a PR that was open at the last good read and is now neither open nor merged was closed unmerged
     if (r.openFrom === 'gh') for (const p of prev.open || []) {
       if (open.data.some((/** @type {any} */ x) => x.number === p.number) || mergedNums.has(p.number) || !SHA.test(String(p.headRefOid || ''))) continue;
       const wo = woOfTitle(p.title) || woOfBranch(p.headRefName) || woOfPr(slug, p.number);
-      events.push({ key: `gh:${key}#${p.number}:closed`, at: now.toISOString(), actor: 'github', kind: 'pr.updated', wo, data: { pr: prRef(slug, p.number), head: String(p.headRefOid).toLowerCase(), why: 'closed' }, proof: null });
+      events.push({ family: `gh:${key}#${p.number}:open`, value: 'closed', at: now.toISOString(), actor: 'github', kind: 'pr.updated', wo, data: { pr: prRef(slug, p.number), head: String(p.headRefOid).toLowerCase(), why: 'closed' }, proof: null });
     }
     // merged PRs: those that name a work order, and every one merged in the last RECENT_DAYS days
     for (const m of merged) {

@@ -24,4 +24,4 @@
 - Business: none. MSP: none.
 - Community: the old ledger's rules now live in plain, tested Node next to the new event store.
 
-**Tests:** `tests/core/ledger/test-ledger.mjs`: 132/0 (25 new, named `l2: ...`).
+**Tests:** `tests/core/ledger/test-ledger.mjs`: 150/0 (with the #31 review fixes merged in) (26 new, named `l2: ...`; ideas, roadmap and lobe snapshots are observations, so A -> B -> A is kept).

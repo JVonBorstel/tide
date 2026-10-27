@@ -28,11 +28,20 @@
 - **Before new:** the same parity command, run against the shadow's own `<state>\tide.db` and that hour's `ledger.json`, exits 0 on every
   run for 24 h (build-way 4.3 cutover step 2), and the Board reads `ledger.next.json` with no change to its tests.
 
+**Review fixes (verifier: SHIP AFTER FIXES, audits/review-tide-31-2026-10-26.md):**
+- F1: observations (Yard stage and status, paused, PR head/mergeable, CI, open/closed) are written when their value changes, not once per
+  value, so A -> B -> A is kept (5 tests: running/waiting/running, paused/resumed, CI fail/pass/fail, conflict/unknown/conflict,
+  closed/reopened). Store schema 2 (a schema 1 file is brought up when opened for writing).
+- F2: no raw SQL from the store; a trigger refuses REPLACE of an event and `recursive_triggers` is on (tests from an outside connection).
+- F3: `ledger.next.json` and row `blockedOn` carry a card's id and kind, never its question text.
+- F4: below Node 22.5 the command says it needs Node 22.5 in plain words.
+- F5: `LEDGER_LIVE_STATE` adds a guarded folder; the Yard's own folder is always guarded.
+
 **L1-L4:**
 - Person: none yet (switched off). When it serves, Jordan's queue and the state of every piece of work come from one place, with proof.
 - Business: none.
 - MSP: none.
 - Community: an event-sourced work ledger in plain Node with no packages, readable and testable by anyone.
 
-**Tests:** `tests/core/ledger/test-ledger.mjs` (via `tests/Test-CoreLedger.ps1`): 107/0. Contracts suites unchanged: fixtures 132/0,
+**Tests:** `tests/core/ledger/test-ledger.mjs` (via `tests/Test-CoreLedger.ps1`): 124/0. Contracts suites unchanged: fixtures 132/0,
 tests 133/0.
