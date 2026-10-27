@@ -91,8 +91,11 @@ try {
     Check 'a change to a dynamically imported module in another folder changes the fingerprint' ($id2 -ne $id1)
     Add-Content (Join-Path $fp 'app\other.mjs') '// changed'
     Check 'a change to a file the entry never imports leaves the fingerprint alone' ((& $id) -eq $id2)
+    Set-Content (Join-Path $fp 'lib\rule.schema.json') '{"type":"object"}'; $id3 = & $id
+    Add-Content (Join-Path $fp 'lib\rule.schema.json') ' '
+    Check 'a change to a *.schema.json beside a reached module changes the fingerprint' ($id3 -ne $id2 -and (& $id) -ne $id3)
     $files = & node --input-type=module -e "import { serverFiles } from '$(([Uri]$sid).AbsoluteUri)'; console.log(serverFiles(process.argv[1]).join('\n'))" (Join-Path $repo 'pass-app\server.mjs')
-    Check 'the real server fingerprint covers towers.mjs, work/api.mjs and the core modules it reaches' ((@($files) -match 'pass-app[\\/]towers\.mjs$').Count -eq 1 -and (@($files) -match 'work[\\/]api\.mjs$').Count -eq 1 -and (@($files) -match '[\\/]core[\\/]').Count -ge 1)
+    Check 'the real server fingerprint covers towers.mjs, work/api.mjs and the core modules it reaches' ((@($files) -match 'pass-app[\\/]towers\.mjs$').Count -eq 1 -and (@($files) -match 'work[\\/]api\.mjs$').Count -eq 1 -and (@($files) -match '[\\/]core[\\/]').Count -ge 1 -and (@($files) -match 'contracts[\\/][^\\/]+\.schema\.json$').Count -ge 1)
 } finally {
     foreach ($n in $saved.Keys) { [Environment]::SetEnvironmentVariable($n, $saved[$n]) }
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue

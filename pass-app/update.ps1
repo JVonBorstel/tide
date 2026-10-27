@@ -42,7 +42,7 @@ if ($DryRun) {
   exit 0
 }
 # the same fingerprint the server reports: server.mjs plus every local module it imports (a change to towers.mjs alone needs a restart too)
-$want = "$(& node (Join-Path $PSScriptRoot 'server-id.mjs') $srv)".Trim()
+$want = "$(& node (Join-Path $PSScriptRoot 'server-id.mjs') $srv 2>&1)".Trim()
 if ($LASTEXITCODE -or $want -notmatch '^[0-9a-f]{12}$') { Fail "could not compute the server fingerprint: $want" }
 $live = Health $Port
 if ($live -and $live.server -eq $want -and -not $Force -and -not $TrialOnly) {
