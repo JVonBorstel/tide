@@ -4,10 +4,10 @@
 // if it cannot. The pixel stage (SCENE.md): once sprites.js loads, layoutScene drives a canvas; frame.js runs its loop, moments.js its
 // moments. Private work orders show no words anywhere.
 import { WORLD, worldOf, worldWords, legendRows, legendHtml, PLACE, worldKey, bakeWorld, plural } from './world.js';
-import { stageOk, stageFps, frameKey, makeLoop } from './frame.js';
+import { stageOk, makeLoop, at, tk, due, CLOCK, stageDirty, stageWait, METER, frameStats } from './frame.js';
 import { markItems, nightShift } from './purpose.js';
-import { fxSync, fxTick, fxBusy, drawFx, chefPose, passFx, chefSpots, propRects, placeSays, approveFx, tapChef, FX } from './moments.js';
-export { makeLoop };
+import { fxSync, fxTick, drawFx, chefPose, passFx, chefSpots, propRects, placeSays, approveFx, tapChef, FX } from './moments.js';
+export { makeLoop, frameStats };
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const ticket = (id) => 'WO-' + String(id || '').replace(/^J/, '').padStart(4, '0');
 const r1 = (n) => Math.round(n * 10) / 10;
@@ -131,7 +131,7 @@ export function mountScene(el, s, events, opts = {}) {
 }
 
 // ---- the pixel stage: layoutScene drives a canvas of sprites.js art (the still card above is the fallback) ----
-export const STAGE = { w: 192, h: 112, aisle: 76, front: 108, top: 70, doorX: 9, doorY: 56, exitX: 150, speed: 30, fps: 60, maxDraws: 120 };
+export const STAGE = { w: 192, h: 112, aisle: 76, front: 108, top: 70, doorX: 9, doorY: 56, exitX: 150, speed: 30, maxDraws: 120 };   // no fps cap: the screen's rate
 export const sx = (x) => Math.round(x * 0.48);          // the 400-wide room onto the 192-pixel stage
 const TICKET_DX = 5;                                    // work-order cards hang clear of the window
 const waiterX = (i) => 146 + i * 15;                    // runners at the sign-off window stand a body apart
@@ -146,7 +146,12 @@ export function pixelScale(cssW, dpr = 1, maxCssH = Infinity, w = STAGE.w, h = S
   return { scale: s, w: room, cssW: (room * s) / dpr, cssH: (h * s) / dpr, left: Math.max(0, Math.floor((dev - room * s) / 2)) / dpr };
 }
 // the stage model (pure: tested in node): one actor per crew member and runner (code: chef, waiter), keyed like the card's links, walking along axis paths
-export function stageNew() { return { W: STAGE.w, actors: new Map(), t: 0, syncT: 0, first: true, L: null, played: new Set(), sparks: [], ticks: new Set(), rounds: 0, sousNext: false }; }
+// rev counts changes to the picture, drawn is the rev last drawn, next the stage time of the next animation step (frame.js); list holds
+// the actors as an array and room the stage's palette, so a frame allocates nothing
+export function stageNew() { return { W: STAGE.w, actors: new Map(), list: [], t: 0, syncT: 0, first: true, L: null, played: new Set(), sparks: [], ticks: new Set(), rounds: 0, sousNext: false, rev: 0, drawn: -1, next: Infinity, room: null, night: false }; }
+// a palette (skin, crew colour, hair, sky, dim) with its strip-cache key, made once per sync instead of once per draw
+const palOf = (o) => { o.pk = [o.skin, o.cook, o.hair, o.sky, !!o.dim].join(); return o; };
+const relist = (st) => { st.list.length = 0; for (const a of st.actors.values()) st.list.push(a); };
 const sousRound = (st, a) => { a.path = [[PLACE.round, STAGE.front], [PLACE.sous, STAGE.front]]; st.rounds++; };
 export function stageSync(st, L, { still = false } = {}) {
   const A = st.actors, seen = new Set(), opening = st.first, first = st.first || still; st.first = false; st.L = L;
@@ -183,43 +188,67 @@ export function stageSync(st, L, { still = false } = {}) {
     if (still || a.kind === 'sleepy') { A.delete(a.key); continue; }
     a.leaving = true; a.path = a.kind === 'chef' ? [[STAGE.exitX, a.y]] : a.kind === 'sous' ? [[edgeL, a.y]] : [[edgeR, a.y]];   // crew carry the crate to the window, runners walk out, the Dispatcher leaves
   }
+  relist(st);
+  const sky = L.sky, dim = L.world?.sign?.state === 'closed';
+  st.room = palOf({ sky, dim }); st.night = nightShift(L);
+  for (const a of st.list) { a.po = palOf({ skin: a.look?.skin, cook: COOK_COLORS[a.cook || 'hand'], hair: a.hair || 0, sky, dim }); a.pz = palOf({ ...a.po, cook: COOK_COLORS.sous }); a.pw = null; }
+  st.rev++;
   return st;
 }
+// one tick of the stage clock; st.rev moves only when the picture does (a whole pixel of walk, a turn, a crouch, an arrival, a leave)
 export function stageTick(st, dt) {
   st.t += dt; const step = (STAGE.speed * fxTick(st, dt)) / 1000;   // 0 during the Approve hit-stop
-  for (const a of [...st.actors.values()]) {
+  if (st.list.length !== st.actors.size) relist(st);
+  let moved = false, gone = false;
+  for (let i = 0; i < st.list.length; i++) {
+    const a = st.list[i], x0 = Math.round(a.x), y0 = Math.round(a.y), d0 = a.dir, f0 = a.flip, c0 = a.cr > 0, w0 = a.path.length;
     if (a.path.length && !a.go) { a.go = 1; a.cr = FX.crouch; }   // anticipation: one 80 ms crouch before a walk
-    if (a.cr > 0 && step) { a.cr -= dt; continue; }
-    let left = step;
-    while (left > 0 && a.path.length) {
-      const [tx, ty] = a.path[0], dx = tx - a.x, dy = ty - a.y, d = Math.abs(dx) + Math.abs(dy);
-      if (a.path.length === 1 && d < 6) left *= Math.max(0.35, d / 6);   // ease-out on arrival
-      if (dx) { a.dir = 'side'; a.flip = dx < 0; } else if (dy) a.dir = dy > 0 ? 'down' : 'up';
-      if (d <= left) { a.x = tx; a.y = ty; a.path.shift(); left -= d; } else { if (dx) a.x += Math.sign(dx) * left; else a.y += Math.sign(dy) * left; left = 0; }
+    if (a.cr > 0 && step) a.cr -= dt;
+    else {
+      let left = step;
+      while (left > 0 && a.path.length) {
+        const p = a.path[0], tx = p[0], ty = p[1], dx = tx - a.x, dy = ty - a.y, d = Math.abs(dx) + Math.abs(dy);
+        if (a.path.length === 1 && d < 6) left *= Math.max(0.35, d / 6);   // ease-out on arrival
+        if (dx) { a.dir = 'side'; a.flip = dx < 0; } else if (dy) a.dir = dy > 0 ? 'down' : 'up';
+        if (d <= left) { a.x = tx; a.y = ty; a.path.shift(); left -= d; } else { if (dx) a.x += Math.sign(dx) * left; else a.y += Math.sign(dy) * left; left = 0; }
+      }
+      if (!a.path.length) a.go = 0;
+      if (!a.path.length && a.leaving) { st.actors.delete(a.key); gone = true; }
+      else if (!a.path.length && a.kind === 'sous' && st.sousNext) { st.sousNext = false; sousRound(st, a); }   // a tick that came mid-round
     }
-    if (!a.path.length) a.go = 0;
-    if (!a.path.length && a.leaving) st.actors.delete(a.key);
-    else if (!a.path.length && a.kind === 'sous' && st.sousNext) { st.sousNext = false; sousRound(st, a); }   // a tick that came mid-round
+    if (Math.round(a.x) !== x0 || Math.round(a.y) !== y0 || a.dir !== d0 || a.flip !== f0 || a.cr > 0 !== c0 || !a.path.length !== !w0) moved = true;
   }
-  st.sparks = st.sparks.filter((s) => st.t - s.t < 900);
+  if (gone) relist(st);
+  let j = 0; for (let i = 0; i < st.sparks.length; i++) if (st.t - st.sparks[i].t < 900) st.sparks[j++] = st.sparks[i];
+  if (j < st.sparks.length) { st.sparks.length = j; moved = true; }
+  if (moved || gone) st.rev++;
   return st;
 }
-// sprite strips, cached per palette (skin, cook, hair, sky); mk(w, h) makes a canvas (or a test mock)
+// sprite strips, cached per palette (skin, cook, hair, sky, dim) and name; mk(w, h) makes a canvas (or a test mock). A palette made by
+// palOf carries its key, so a cached look-up builds no string
 export function makeKit(P, mk) {
-  const c = new Map();
+  const c = new Map(); let size = 0;
   return { P, mk, layers: new Map(), get(name, o = {}, flip = false) {
-    const k = name + '|' + [o.skin, o.cook, o.hair, o.sky].join() + flip; let v = c.get(k);
-    if (!v) { if (c.size > 400) c.clear(); v = P.stripOf(mk, name, P.paletteFor(o), flip); c.set(k, v); }
-    return v;
+    const k = o.pk ?? [o.skin, o.cook, o.hair, o.sky, !!o.dim].join(); let m = c.get(k);
+    if (!m) { if (size > 400) { c.clear(); size = 0; } c.set(k, (m = new Map())); }
+    let v = m.get(name); if (!v) m.set(name, (v = [null, null]));
+    const i = flip ? 1 : 0; if (!v[i]) { v[i] = P.stripOf(mk, name, P.paletteFor(o), !!flip); size++; }
+    return v[i];
   } };
 }
-const at = (n, ms, t, off = 0) => Math.floor((t + off) / ms) % n;
-const bobOf = (P, anim, f) => (P.BOB[anim] || [0])[f % (P.BOB[anim] || [0]).length];
+const bobOf = (P, anim, f) => { const b = P.BOB[anim]; return b ? b[f % b.length] : 0; };
+const CHEF_DIR = { down: 'chef-down', up: 'chef-up', side: 'chef-side' }, WORK = Object.fromEntries(Object.keys(STATIONS).map((k) => [k, 'work-' + k]));
+const SX = Object.fromEntries(Object.entries(STATIONS).map(([k, s]) => [k, sx(s.x)]));   // each station's x on the stage
+// a work-order card's two digits (the last two of its number), read without building a string
+const digit = (id, k) => { for (let i = id.length - 1, n = 0; i >= 0; i--) { const c = id.charCodeAt(i) - 48; if (c >= 0 && c <= 9 && n++ === k) return c; } return 0; };
 // the still site, drawn once per sky: the top floor open to the sky (S7i): sky and shores, the guard rail, the slab and its front edge,
 // the hoist cage, job board, site cabin, the night work-light pool (back); or the stations, their contact shadows and props (front);
 // (the newest bake per sky, dim and width is re-used while its world key holds)
+// (the keys are made once per world and per room and width, not once per frame: worldKey is a JSON walk)
+const WKEYS = new WeakMap(), wkOf = (w) => { let k = WKEYS.get(w); if (k === undefined) WKEYS.set(w, (k = worldKey(w))); return k; };
 function layer(kit, which, room, W = STAGE.w, world = {}) {
-  const sky = room.sky, pre = which + sky + (room.dim ? '-dim' : '') + W, wk = which === 'bg' ? worldKey(world) : String(world.sign?.state === 'closed');
+  if (room.preW !== W) { const s = room.sky + (room.dim ? '-dim' : '') + W; room.pre = ['bg' + s, 'fg' + s]; room.preW = W; }
+  const sky = room.sky, pre = room.pre[which === 'bg' ? 0 : 1], wk = which === 'bg' ? wkOf(world) : String(world.sign?.state === 'closed');
   const have = kit.layers.get(pre); if (have && have.key === wk) return have.c;
   const c = kit.mk(W, STAGE.h); kit.bakes = (kit.bakes || 0) + 1;
   const ctx = c.getContext('2d'), o = { sky, dim: room.dim }, P = kit.P, ox = (W - STAGE.w) >> 1;
@@ -246,62 +275,75 @@ function layer(kit, which, room, W = STAGE.w, world = {}) {
   }
   kit.layers.set(pre, { key: wk, c }); return c;
 }
-// one frame of the stage; returns the number of draw calls (the budget test counts them)
+// one frame of the stage; returns the number of draw calls (the budget test counts them). Nothing is allocated per frame: actors keep
+// their palettes from stageSync, strips come from the kit's cache, and every time-driven pixel takes its step from the frame clock
+// (frame.js), which notes when the next one is due. Calm is still (art critique P3): a crew between steps, a runner at the window and
+// the seated Dispatcher hold one frame; the bell rings only as its moment.
+const D = { ctx: null, n: 0, ox: 0 };
+function put(s, f, x, y) { D.ctx.drawImage(s.img, (f % s.n) * s.w, 0, s.w, s.h, Math.round(x) + D.ox, Math.round(y), s.w, s.h); D.n++; }
+const byDepth = (a, b) => Math.round(a.y) - Math.round(b.y) || Math.round(a.x) - Math.round(b.x);   // on whole pixels: the order changes only with the picture
 export function drawStage(ctx, st, kit) {
   const L = st.L; if (!L) return 0;
-  const t = st.t, sky = L.sky, WD = L.world || {}, dim = WD.sign?.state === 'closed', room = { sky, dim }, P = kit.P, W = st.W || STAGE.w, ox = (W - STAGE.w) >> 1; let n = 0;
-  const d = (s, f, x, y) => { ctx.drawImage(s.img, (f % s.n) * s.w, 0, s.w, s.h, Math.round(x) + ox, Math.round(y), s.w, s.h); n++; };
-  const pal = (a) => ({ skin: a.look?.skin, cook: COOK_COLORS[a.cook || 'hand'], hair: a.hair || 0, sky, dim });
-  ctx.drawImage(layer(kit, 'bg', room, W, WD), 0, 0); n++;
-  if ([...st.actors.values()].some((a) => a.kind === 'chef' && a.path.length && a.x < STAGE.doorX + 15)) d(kit.get('hoist-open', room), 0, 0, 26);   // a crew is arriving: the hoist gate stands open
-  if (nightShift(L)) d(kit.get('pool', room), 0, 152, 57);   // night shift: the work light's pool on the slab
-  const pf = passFx(st);   // a 1 px shake after Jordan's Approve; the bell bounces when a work order needs him
-  if (L.pass) { d(kit.get('pass-glow', room), 0, 156 + pf.dx, 18); for (let i = 0; i < Math.min(3, L.pass); i++) d(kit.get('cloche', room), 0, 155 + pf.dx + i * 11, 33); d(kit.get('bell', room), t % 4000 < 640 ? at(2, 160, t) : 0, 183 + pf.dx, 35 + pf.bell); }
-  for (const h of WD.heat || []) d(kit.get('heat', room), h.level, PLACE.heat[0] + h.i * 11, PLACE.heat[1]);
+  if (st.list.length !== st.actors.size) relist(st);
+  const t = st.t, WD = L.world || {}, room = st.room || palOf({ sky: L.sky, dim: WD.sign?.state === 'closed' }), P = kit.P, W = st.W || STAGE.w, A = st.list.sort(byDepth), d = put;
+  D.ctx = ctx; D.n = 0; D.ox = (W - STAGE.w) >> 1;
+  const ox = D.ox;
+  ctx.drawImage(layer(kit, 'bg', room, W, WD), 0, 0); D.n++;
+  for (let i = 0; i < A.length; i++) if (A[i].kind === 'chef' && A[i].path.length && Math.round(A[i].x) < STAGE.doorX + 15) { d(kit.get('hoist-open', room), 0, 0, 26); break; }   // a crew is arriving: the hoist gate stands open
+  if (st.night) d(kit.get('pool', room), 0, 152, 57);   // night shift: the work light's pool on the slab
+  const pf = passFx(st);   // a 1 px shake after Jordan's Approve; the bell bounces when a work order needs him (its moment)
+  if (L.pass) { d(kit.get('pass-glow', room), 0, 156 + pf.dx, 18); for (let i = 0; i < Math.min(3, L.pass); i++) d(kit.get('cloche', room), 0, 155 + pf.dx + i * 11, 33); d(kit.get('bell', room), 0, 183 + pf.dx, 35 + pf.bell); }
+  if (WD.heat) for (const h of WD.heat) d(kit.get('heat', room), h.level, PLACE.heat[0] + h.i * 11, PLACE.heat[1]);
   if (WD.fuse?.tripped) d(kit.get('sparkle', room), (at(4, 90, t) + 2) % 4, PLACE.fuse[0] + 3 + (at(2, 360, t) ? -3 : 2), PLACE.fuse[1] + 8);
-  for (const s of smoking(st)) { const i = WD.aside.shelf.indexOf(s.id); d(kit.get('smoke', room), at(4, 260, t, i * 300), PLACE.aside[0] + i * 5, PLACE.aside[1] - 9 - Math.floor((t / 160 + i * 3) % 3)); }
+  const sm = WD.aside?.smoke;   // the set-aside smoke while under 2 minutes old (real time: the last sync plus the stage clock since)
+  if (sm) for (let j = 0, base = (L.now ?? 0) - st.syncT; j < sm.length; j++) {
+    const end = sm[j].until - base; if (t >= end) continue; due(end);
+    const i = WD.aside.shelf.indexOf(sm[j].id); d(kit.get('smoke', room), at(4, 260, t, i * 300), PLACE.aside[0] + i * 5, PLACE.aside[1] - 9 - at(3, 160, t, i * 480));
+  }
   ctx.fillStyle = P.PALETTE.r;
-  for (const tk of L.tickets) {
-    const x = sx(tk.x) + TICKET_DX - 5, no = String(tk.id || '').replace(/\D/g, '').slice(-2).padStart(2, '0');
-    d(kit.get('ticket', room), 0, x, 4); d(kit.get('digit', room), +no[0], x + 2, 7); d(kit.get('digit', room), +no[1], x + 6, 7);
-    if (!tk.queued) { ctx.fillRect(x + 2 + ox, 14, Math.max(1, Math.round((7 * tk.step) / Math.max(1, tk.steps))), 1); n++; }
+  for (const tc of L.tickets) {
+    const x = sx(tc.x) + TICKET_DX - 5, id = String(tc.id || '');
+    d(kit.get('ticket', room), 0, x, 4); d(kit.get('digit', room), digit(id, 1), x + 2, 7); d(kit.get('digit', room), digit(id, 0), x + 6, 7);
+    if (!tc.queued) { ctx.fillRect(x + 2 + ox, 14, Math.max(1, Math.round((7 * tc.step) / Math.max(1, tc.steps))), 1); D.n++; }
   }
-  const actors = [...st.actors.values()].sort((a, b) => a.y - b.y || a.x - b.x);
-  for (const a of actors) if (a.kind === 'chef') {
-    const o = pal(a), still = !a.path.length, delay = a.look.delay * 1000, ps = chefPose(st, a);   // a crouch, a hop or a landing squash
-    const f = still ? at(2, 450, t, delay) : at(4, 140, t), x = a.x - 8, y = a.y - 23 + (ps?.dy || 0);
-    d(kit.get(ps?.name || (still ? 'chef-idle' : 'chef-' + a.dir), o, !ps?.name && !still && a.dir === 'side' && a.flip), ps?.name ? 0 : f, x, y);
-    if (a.look.stache && (still || a.dir === 'down')) d(kit.get('stache', o), 0, x + 6, y + 10 + (ps?.name ? 2 : bobOf(P, still ? 'idle' : 'walk', f)));
+  for (let i = 0; i < A.length; i++) {
+    const a = A[i]; if (a.kind !== 'chef') continue;
+    const o = a.po, still = !a.path.length, ps = chefPose(st, a), nm = ps && ps.name;   // a crouch, a hop or a landing squash
+    const f = still ? (a.busy ? at(2, 450, t, a.look.delay * 1000) : 0) : at(4, 140, t), x = a.x - 8, y = a.y - 23 + (ps ? ps.dy : 0);
+    d(kit.get(nm || (still ? 'chef-idle' : CHEF_DIR[a.dir]), o, !nm && !still && a.dir === 'side' && a.flip), nm ? 0 : f, x, y);
+    if (a.look.stache && (still || a.dir === 'down')) d(kit.get('stache', o), 0, x + 6, y + 10 + (nm ? 2 : bobOf(P, still ? 'idle' : 'walk', f)));
   }
-  ctx.drawImage(layer(kit, 'fg', room, W, WD), 0, 0); n++;
-  for (const a of actors) if (a.kind === 'chef' && !a.path.length && a.busy) d(kit.get('work-' + a.st, pal(a)), at(4, 120, t, a.look.delay * 1000), a.x - 8, STAGE.top - 6);
-  const cx = (k) => sx(STATIONS[k].x);
+  ctx.drawImage(layer(kit, 'fg', room, W, WD), 0, 0); D.n++;
+  for (let i = 0; i < A.length; i++) { const a = A[i]; if (a.kind === 'chef' && !a.path.length && a.busy) d(kit.get(WORK[a.st], a.po), at(4, 120, t, a.look.delay * 1000), a.x - 8, STAGE.top - 6); }
   if (L.busy.stove) {
-    d(kit.get('oven-glow', room), at(3, 110, t), cx('stove') - 11, STAGE.top - 6); d(kit.get('flame', room), at(3, 110, t), cx('stove') - 4, STAGE.top - 9);   // the weld flash at the vice, sparks
-    for (let i = 0; i < 3; i++) d(kit.get('steam', room), at(4, 260, t, i * 300), cx('stove') - 7 + i * 4, STAGE.top - 12 - Math.floor((t / 90 + i * 5) % 8));   // dust
+    d(kit.get('oven-glow', room), at(3, 110, t), SX.stove - 11, STAGE.top - 6); d(kit.get('flame', room), at(3, 110, t), SX.stove - 4, STAGE.top - 9);   // the weld flash at the vice, sparks
+    for (let i = 0; i < 3; i++) d(kit.get('steam', room), at(4, 260, t, i * 300), SX.stove - 7 + i * 4, STAGE.top - 12 - at(8, 90, t, i * 450));   // dust
   }
-  if (L.busy.taste) d(kit.get('sparkle', room), at(4, 260, t), cx('taste'), STAGE.top - 7);   // the inspection desk lamp glints
-  if (L.busy.sink) for (let i = 0; i < 3; i++) d(kit.get('bubble', room), 0, cx('sink') - 10 + ((i + Math.floor(t / 300)) % 4) * 3, STAGE.top + 10);   // the test rig's green LEDs chase along its strip
+  if (L.busy.taste) d(kit.get('sparkle', room), at(4, 260, t), SX.taste, STAGE.top - 7);   // the inspection desk lamp glints
+  if (L.busy.sink) for (let i = 0; i < 3; i++) d(kit.get('bubble', room), 0, SX.sink - 10 + ((i + at(4, 300, t)) % 4) * 3, STAGE.top + 10);   // the test rig's green LEDs chase along its strip
   drawFx(st, kit, d, room);   // the moments (moments.js)
-  for (const s of st.sparks) { const f = Math.floor((t - s.t) / 90); for (let i = 0; i < 3; i++) d(kit.get('sparkle', room), f + i, s.x - 8 + i * 8, s.y - (i % 2) * 6 - Math.floor(f / 2)); }
-  for (const a of actors) if (a.kind !== 'chef') {
-    const o = pal(a), x = a.x - 8, y = a.y - 23, walking = a.path.length > 0;
+  for (const s of st.sparks) { const f = tk(90, t, -s.t); due(s.t + 900); for (let i = 0; i < 3; i++) d(kit.get('sparkle', room), f + i, s.x - 8 + i * 8, s.y - (i % 2) * 6 - Math.floor(f / 2)); }
+  for (let i = 0; i < A.length; i++) {
+    const a = A[i]; if (a.kind === 'chef') continue;
+    const o = a.po, x = a.x - 8, y = a.y - 23, walking = a.path.length > 0;
     d(kit.get('shadow', room), 0, x + 1, a.y - 1);
-    if (a.kind === 'sleepy') {
-      d(kit.get('crate', room), 0, x - 2, a.y - 11); d(kit.get('chef-sleep', { ...o, cook: COOK_COLORS.sous }), at(2, 900, t), x, y - 8);
+    if (a.kind === 'sleepy') {   // nothing building: the snore is the stage's one calm motion, a step every 900 ms
+      d(kit.get('crate', room), 0, x - 2, a.y - 11); d(kit.get('chef-sleep', a.pz), at(2, 900, t), x, y - 8);
       d(kit.get('zz', room), 0, x + 14 + at(3, 900, t), y - 12 - at(3, 900, t) * 2); continue;
     }
     if (a.kind === 'sous') {
-      const w = { ...o, cook: P.DISPATCHER };   // the Dispatcher: a white hard hat and a clipboard (Jordan, 10-26)
-      if (walking) { d(kit.get('chef-side', w, a.flip), at(4, 140, t), x, y); d(kit.get('cloche', room), 0, a.flip ? x - 4 : x + 10, y + 7 + bobOf(P, 'walk', at(4, 140, t))); } else d(kit.get('chef-sit', w), at(2, 450, t), x, y - 3);
+      const w = (a.pw ||= palOf({ ...o, cook: P.DISPATCHER }));   // the Dispatcher: a white hard hat and a clipboard (Jordan, 10-26)
+      if (walking) { const f = at(4, 140, t); d(kit.get('chef-side', w, a.flip), f, x, y); d(kit.get('cloche', room), 0, a.flip ? x - 4 : x + 10, y + 7 + bobOf(P, 'walk', f)); } else d(kit.get('chef-sit', w), 0, x, y - 3);
       continue;
     }
-    const f = walking ? at(4, 140, t) : at(2, 450, t, a.look.delay * 1000);
+    const f = walking ? at(4, 140, t) : 0;
     d(kit.get(walking ? 'waiter-side' : 'waiter-idle', o, walking && a.flip), f, x, y);
     d(kit.get('cloche', room), 0, walking ? (a.flip ? x - 4 : x + 10) : x + 3, y + (walking ? 7 : 9) + bobOf(P, walking ? 'walk' : 'idle', f));
   }
-  return n;
+  return D.n;
 }
+// a frame for the loop: one draw, then the stage notes the picture it shows and when the next step is due (stageDirty, stageWait)
+export function paintStage(ctx, st, kit) { CLOCK.next = Infinity; const n = drawStage(ctx, st, kit); st.next = CLOCK.next; st.drawn = st.rev; return n; }
 // the tap targets and the words: real links over the canvas, one per work-order card, crew member and runner (the canvas is aria-hidden)
 // o: P = sprites.js (the props' sizes), k = CSS px per art px, W = the room's width, wave = the tapped crew member (its words show for 3 s)
 export function hitItems(L, ox = 0, o = {}) {
@@ -316,10 +358,6 @@ export function hitItems(L, ox = 0, o = {}) {
     ...L.runners.map((r) => ({ kind: 'waiter', key: 'h' + r.key, id: r.id, x: 166 + ox, y: STAGE.front, label: `${ticket(r.id)} handed over, open it` })),
     ...(id ? [{ kind: 'aside', key: 'aside', id, x: PLACE.aside[0] + 13 + ox, y: PLACE.aside[1] + 4, label: `${plural(ids.length, 'work order')} failed or stopped; the newest is ${ticket(id)}, open it` }] : [])];
 }
-// nothing moves (no walk, busy station, sparkle, smoke or spark): 10 fps is enough
-export const stageCalm = (st) => !st.L || (![...st.actors.values()].some((a) => a.path.length) && !Object.keys(st.L.busy).length && !st.sparks.length && !st.L.world?.fuse?.tripped && !smoking(st).length && !fxBusy(st));
-// the set-aside smoke still under 2 minutes old (real time: the last sync plus the stage clock since)
-const smoking = (st) => (st.L.world?.aside?.smoke || []).filter((s) => (st.L.now ?? 0) + st.t - st.syncT < s.until);
 export function hitHtml(it, W = STAGE.w) {
   const [w, h] = it.w ? [it.w, it.h] : { ticket: [11, 13], aside: [27, 12] }[it.kind] || [16, 24], pc = (v, of) => ((v / of) * 100).toFixed(2) + '%';
   if (it.kind === 'say') return `<span class="px-say" aria-hidden="true" data-key="${esc(it.key)}" data-css="left:${pc(it.x, W)};top:${pc(it.y, STAGE.h)};bottom:auto;margin:0;pointer-events:none${it.show ? ';display:block' : ''}">${esc(it.word)}</span>`;
@@ -331,29 +369,48 @@ export function hitHtml(it, W = STAGE.w) {
 // ---- in the page ----
 let PX = null, KIT = null, CANVAS_OK = null;
 const mounted = new Set();
-// ?fps in the address times each frame (tick + draw); Settings > About shows the p95
-const FPS_ON = /[?&]fps\b/.test(globalThis.location?.search), FRAMES_MS = [];
-const frameNote = (ms) => FRAMES_MS.push(ms) > 600 && FRAMES_MS.shift();
-export function frameStats(list = FRAMES_MS) {
-  const s = [...list].sort((a, b) => a - b), q = (p) => Math.round(s[Math.floor(p * s.length)] * 100) / 100;
-  return s.length ? { n: s.length, p50: q(0.5), p95: q(0.95) } : null;
-}
 // the legend sheet for a mounted scene
 export const sceneLegend = (el) => legendHtml(legendRows(el?._px?.st.L || (el?._args && layoutScene(...el._args))));
-const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const RM = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null, reduced = () => !!RM?.matches;   // one query, read each frame
+// the frame meter (frame-meter.js, loaded only when used): ?hud in the address for this visit, or Settings > About > Frame meter
+// (kept on this phone); ?fps times frames for Settings > About without the box
+export function sceneMeter(on) {
+  if (on === undefined) return METER.on;
+  try { localStorage.setItem('board.frameMeter', on ? '1' : '0'); } catch { /* private mode: on for this visit */ }
+  meter(!!on); return !!on;
+}
+const meter = (on) => { METER.on = on; import('./frame-meter.js').then((m) => m.meterBox(METER.on)).catch(() => { /* not loaded: no meter */ }); };
 const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 function canvasOk() { if (CANVAS_OK === null) { try { CANVAS_OK = !!mkCanvas(1, 1).getContext('2d'); } catch { CANVAS_OK = false; } } return CANVAS_OK; }
 function fit(sc) {
   // the frame hugs the canvas (2px border each side), placed on a whole device pixel
   const r = pixelScale(Math.max(0, (sc.root.parentElement?.clientWidth || 364) - 4), globalThis.devicePixelRatio || 1, sc.compact ? 200 : 320);
   for (const e of [sc.canvas, sc.hit]) Object.assign(e.style, { width: r.cssW + 'px', height: r.cssH + 'px' });
-  if (sc.canvas.width !== r.w) { sc.canvas.width = r.w; sc.ctx.imageSmoothingEnabled = false; }
+  if (sc.canvas.width !== r.w) { sc.canvas.width = r.w; sc.ctx.imageSmoothingEnabled = false; sc.st.rev++; }
   sc.st.W = r.w; sc.k = r.scale / (globalThis.devicePixelRatio || 1);
   sc.root.style.width = r.cssW + 4 + 'px'; sc.root.style.marginLeft = r.left + 'px';
 }
 function paint(sc) {
   if (!sc.st.L) return;
-  hits(sc); drawStage(sc.ctx, sc.st, KIT); sc.key = frameKey(sc.st, KIT);   // drawn now: the loop draws again only when the picture changes
+  hits(sc); paintStage(sc.ctx, sc.st, KIT);   // drawn now: the loop draws again only when the picture changes
+}
+// one frame of the loop (pure, tested): tick, at most one draw and only for a new picture (every frame while `every`: the meter's test
+// run), then how long the loop may sleep (frame.js stageWait); st.drew says whether it drew
+export function stageFrame(st, ctx, kit, dt, every = false) {
+  stageTick(st, dt);
+  st.drew = every || stageDirty(st); if (st.drew) paintStage(ctx, st, kit);
+  return every ? 0 : stageWait(st);
+}
+function frameOf(sc, dt, now) {
+  const st = sc.st, note = METER.note, t0 = note ? performance.now() : 0, wait = stageFrame(st, sc.ctx, KIT, dt, METER.test > now);
+  if (st.fx?.line || st.fx?.wave?.key !== sc.wave) hits(sc);
+  if (note) note(now, performance.now() - t0, st.drew, wait);
+  return wait;
+}
+// a display change with no resize (a window moved to another screen, a phone's display-size setting): fit again at the new ratio
+function watchDpr() {
+  const m = typeof matchMedia === 'function' && matchMedia(`(resolution: ${globalThis.devicePixelRatio || 1}dppx)`);
+  m?.addEventListener?.('change', () => { for (const el of mounted) if (el._px) { fit(el._px); paint(el._px); el._px.loop.start(); } watchDpr(); }, { once: true });
 }
 // the links and bubbles over the canvas (again when a tapped crew member's wave starts or ends); a moment's line goes to #announce
 function hits(sc) {
@@ -382,9 +439,7 @@ function mountPixel(el, L) {
       const a = e.target.closest?.('.px-chef'), key = a?.getAttribute('data-key'); if (!a || reduced() || sc.st.fx?.wave?.key === key) return;
       e.preventDefault(); sc.tap = key; tapChef(sc.st, key); hits(sc); sc.loop.start(); setTimeout(() => { if (sc.tap === key) location.hash = a.getAttribute('href'); }, FX.wave);
     });
-    sc.loop = makeLoop({ raf: (f) => requestAnimationFrame(f), ok: () => stageOk(sc, document, reduced()), fps: () => stageFps(sc.st),
-      frame: (dt) => { const t0 = FPS_ON ? performance.now() : 0; stageTick(sc.st, dt); const k = frameKey(sc.st, KIT); if (sc.st.fx?.line || sc.st.fx?.wave?.key !== sc.wave) hits(sc);
-        if (k !== sc.key) { sc.key = k; drawStage(sc.ctx, sc.st, KIT); } if (FPS_ON) frameNote(performance.now() - t0); } });   // the same picture is not drawn again
+    sc.loop = makeLoop({ raf: (f) => requestAnimationFrame(f), ok: () => stageOk(sc, document, reduced()), frame: (dt, now) => frameOf(sc, dt, now) });
     if (typeof IntersectionObserver === 'function') (sc.io = new IntersectionObserver((es) => { const v = es.some((e) => e.isIntersecting); sc.visible = v; if (v) sc.loop.start(); })).observe(root);
     if (typeof ResizeObserver === 'function') (sc.ro = new ResizeObserver(() => { fit(sc); paint(sc); })).observe(el);
     fit(sc);
@@ -411,6 +466,11 @@ function installChrome(P) {
   root.classList.add('px');
 }
 if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+  let keep = false; try { keep = localStorage.getItem('board.frameMeter') === '1'; } catch { /* no storage: off */ }
+  METER.wake = () => { for (const el of mounted) el._px?.loop.start(); };
+  if (keep || /[?&](hud|fps=hud)\b/.test(location.search)) (document.body ? meter(true) : addEventListener('DOMContentLoaded', () => meter(true), { once: true }));
+  else if (/[?&]fps\b/.test(location.search)) import('./frame-meter.js').catch(() => {});
+  watchDpr();
   import('./sprites.js').then((P) => {
     PX = P; KIT = makeKit(P, mkCanvas); installChrome(P);
     for (const el of mounted) if (el.isConnected && el._args) mountScene(el, ...el._args);
