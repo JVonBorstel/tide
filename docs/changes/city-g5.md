@@ -22,5 +22,14 @@ a real two-finger pinch (no touch input in the test browser) and the camera's fr
 **Tests:** `pass-app/test-city.mjs` 93/0 (6 new: routes, Back, the swipe ring, the gesture meanings, the breadcrumb, the camera times
 and the reduced-motion cut); `tests/Test-PassApp.ps1` 1 new wiring check (City_Nav). PassApp counts in the PR.
 
+**Review fixes (review of the City chain, 2026-10-26; G4's fixes merged in):**
+- F2: the gestures listened on the whole `#city` box, so a tap on the (i) key zoomed into the rightmost building and a tap on a name
+  pushed a second, wrong route first. `attachGestures` now takes only a pointer that starts on the canvas; the long-press menu is kept
+  off the canvas only. Test `Nav_GesturesOnCanvasOnly`.
+- F5: following a name, crumb or cutaway link rebuilds the row and the focus dropped to `<body>`; it now goes back to the same link, else
+  the building the route is on (never moved by a tap on the canvas). Test `City_FocusKept`.
+- F1 on G5's camera: while the camera moves, `frame()` returns `Infinity` and the camera's end starts the loop again.
+- The City's Purpose Ledger gains the focus mark (a route row: drawn from the hash, not a record). Test `CityPurpose_Route`.
+
 **L1-L4:** person: Jordan taps a building to look closer, swipes between projects and goes back with Back, like zooming in and out.
 Business: none. MSP: none. Community: none.

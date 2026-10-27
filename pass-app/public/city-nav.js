@@ -28,12 +28,14 @@ export function gestureTo(g, r, hit, keys) {
   if (g.gesture === 'swipe' && r.level === 1) { const k = neighbourOf(keys, r.key, g.dx < 0 ? 1 : -1); return k ? { level: 1, key: k, pr: null } : null; }
   return null;
 }
-// pointer input on the canvas (Pointer Events only; touch-action pan-y keeps the page scrolling): tap, sideways swipe, pinch, long-press
+// pointer input on the canvas (Pointer Events only; touch-action pan-y keeps the page scrolling): tap, sideways swipe, pinch, long-press.
+// el is the City's box; only a pointer that starts on its canvas is a gesture (the (i) key, names, crumbs and sheets keep their own taps)
 export function attachGestures(el, { at, onGesture, onLong, buzz = () => {} }) {
   el.style.touchAction = 'pan-y';
-  const pts = new Map(); let down = null; let pinch0 = 0; let longT = 0;
+  const pts = new Map(); let down = null; let pinch0 = 0; let longT = 0; const onCanvas = (e) => e.target?.tagName === 'CANVAS';
   const across = (e) => { const r = el.getBoundingClientRect(); return r.width ? (e.clientX - r.left) / r.width : 0.5; };
   el.addEventListener('pointerdown', (e) => {
+    if (!onCanvas(e)) return;
     pts.set(e.pointerId, [e.clientX, e.clientY]); clearTimeout(longT);
     if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = Math.hypot(a[0] - b[0], a[1] - b[1]); down = null; return; }
     down = { x: e.clientX, y: e.clientY, at: across(e), long: false };
@@ -41,6 +43,7 @@ export function attachGestures(el, { at, onGesture, onLong, buzz = () => {} }) {
   });
   el.addEventListener('pointermove', (e) => { if (pts.has(e.pointerId)) pts.set(e.pointerId, [e.clientX, e.clientY]); if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 10) clearTimeout(longT); });
   const up = (e) => {
+    if (!pts.has(e.pointerId)) return;
     clearTimeout(longT);
     if (pts.size === 2 && pinch0) {
       const [a, b] = [...pts.values()]; const s = Math.hypot(a[0] - b[0], a[1] - b[1]) / pinch0; const r = el.getBoundingClientRect();
@@ -54,7 +57,7 @@ export function attachGestures(el, { at, onGesture, onLong, buzz = () => {} }) {
     down = null;
   };
   el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
-  el.addEventListener('contextmenu', (e) => e.preventDefault());
+  el.addEventListener('contextmenu', (e) => { if (onCanvas(e)) e.preventDefault(); });
 }
 // the camera move: the old picture scales toward the tapped building (zoom in 280 ms, out 220 ms, ease-out), then the new level is drawn
 // crisp at its whole-number scale. Under reduced motion it is an instant cut.

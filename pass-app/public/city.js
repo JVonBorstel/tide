@@ -329,7 +329,10 @@ export function mountCity(o) {
       const nameOf = (k) => c.lots.find((l) => l.key === k)?.name || (k === 'yard' ? 'Yard lot' : k); const on = c.lots.find((l) => l.key === rt.key);
       const html = crumbsHtml(rt, nameOf, esc) + (on ? `<p class="city-cap">${esc(sentence(on))}</p>` : '') + `<ul class="city-names">${c.lots.map((l) => `<li data-kind="${esc(l.kind)}"><a href="#/city/${esc(l.key)}"${l.key === rt.key ? ' aria-current="page"' : ''} aria-label="${esc(sentence(l))}"><b>${esc(l.name)}</b><span aria-hidden="true">${l.kind === 'tower' ? l.floors : l.kind === 'lot' ? 'lot' : 'office'}</span></a></li>`).join('')}</ul>`
         + `<p class="city-cap"${cap ? '' : ' hidden'} role="status">${esc(cap)}</p>` + (!c.loading && !c.lots.length ? '<p class="city-cap">No projects yet: the City fills in as work merges.</p>' : '');
-      if (o.names.innerHTML !== html) o.names.innerHTML = html;
+      if (o.names.innerHTML !== html) {   // rebuilt: the focus stays on the link it was on, else the building the route is on
+        const a = document.activeElement; const h = o.names.contains(a) ? a.getAttribute('href') || '' : null; o.names.innerHTML = html;
+        if (h !== null) (o.names.querySelector(`a[href="${h}"]`) || o.names.querySelector('a[aria-current="page"]') || o.names.querySelector('a'))?.focus();
+      }
     } else if (s && !c.loading) {
       const cv = o.strip.querySelector('canvas') || o.strip.appendChild(Object.assign(document.createElement('canvas'), { className: 'city-canvas' })); cv.setAttribute('aria-hidden', 'true');
       const W0 = Math.floor((o.strip.clientWidth || 343) * dpr); const scale = Math.max(1, Math.floor(40 * dpr / 20)); blit(cv, paintStrip(c, Math.floor(W0 / scale), ph), scale, dpr);
