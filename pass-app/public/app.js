@@ -338,7 +338,7 @@ function fillSec(el, { list, kind, count, empty = '', after = '' }) {
 const moreSeen = typeof IntersectionObserver === 'function' ? new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) showMore(e.target.dataset.more); }, { rootMargin: '200px' }) : null;
 function showMore(key) { if (!(key in S.win)) return; S.win[key] += WINDOW_STEP; S.sig.pass = ''; renderAll(); }
 function renderPass() {
-  const s = S.state; if (!s) { $('board').innerHTML = offlineCard() || '<div class="skeleton" aria-label="Opening the Board"><i></i><i></i><i></i></div>'; $('board')._keyed = null; return; }
+  const s = S.state; if (!s) { $('board').innerHTML = offlineCard() || '<div class="skeleton" aria-label="Opening Tide"><i></i><i></i><i></i></div>'; $('board')._keyed = null; return; }
   const siteF = siteFilterOf(S.siteFilter, s.jobs), sites = siteBar(s.jobs, siteF);   // TD-4: the lanes of one Site, or all
   const jobs = bySite(s.jobs, siteF); const byId = (a, b) => parseInt(a.id.slice(1)) - parseInt(b.id.slice(1));
   const needs = jobs.filter(NEEDS).sort(byId), cooking = jobs.filter((j) => j.status === 'running').sort(byId);
@@ -996,13 +996,13 @@ $('cook-body').addEventListener('click', (e) => { if (e.target.closest('.row-lin
 // ---------- banners and chrome ----------
 // no board ever arrived and the kitchen can't be reached: say so plainly instead of a skeleton that never resolves
 function offlineCard() {
-  if (S.unauth) return '<div class="quiet offline"><p><b>This device isn\'t signed in.</b></p><p class="faint">Open the Board from your Tailscale link.</p></div>';
+  if (S.unauth) return '<div class="quiet offline"><p><b>This device isn\'t signed in.</b></p><p class="faint">Open Tide from your Tailscale link.</p></div>';
   if (S.conn !== 'down') return '';
-  return '<div class="quiet offline" role="status"><p><b>Can\'t reach the Yard.</b></p><p class="faint">Your phone or the PC is offline. The Board keeps trying; pull down to retry now.</p><button class="btn" data-set="reconnect">Try again</button></div>';
+  return '<div class="quiet offline" role="status"><p><b>Can\'t reach the Yard.</b></p><p class="faint">Your phone or the PC is offline. Tide keeps trying; pull down to retry now.</p><button class="btn" data-set="reconnect">Try again</button></div>';
 }
 function renderBanners() {
   const s = S.stale ? null : S.state; const b = [];
-  if (S.unauth) b.push(`<div class="banner">This device isn't signed in. Open the Board from your Tailscale link.</div>`);
+  if (S.unauth) b.push(`<div class="banner">This device isn't signed in. Open Tide from your Tailscale link.</div>`);
   else if (S.conn === 'down') b.push(`<div class="banner">Can't reach the Yard. Retrying.</div>`);
   b.push(...mainStatusBanners(s?.mainStatus));   // TD-EH-03a: a Tower's main is red, said first (public/main-status.js; separate from other banners)
   b.push(...undoPushBanners(s?.undoUnpushed)); const amp = autoMergePauseBanner(s?.automergePause); if (amp) b.push(amp);   // TD-EH-10/11 (public/undo-pause.js)
@@ -1178,7 +1178,7 @@ function renderChrome() {
   const cd = $('count-due'); cd.hidden = !s?.due; cd.textContent = s?.due || '';
   const cl = $('count-live'); const cooking = s ? s.jobs.filter((j) => j.status === 'running').length : 0; if (cl) { cl.hidden = !cooking; cl.textContent = cooking; }
   const cw = $('count-world'); const selfN = s ? selfCount(s.lobe, s.lobeOwner || null) : 0; if (cw) { cw.hidden = !selfN; cw.textContent = selfN || ''; }   // ZG-45: the Self card's count (lobe-self.js)
-  document.title = needs ? `(${needs}) The Board` : 'The Board';
+  document.title = needs ? `(${needs}) Tide` : 'Tide';
   if ('setAppBadge' in navigator) { try { needs ? navigator.setAppBadge(needs) : navigator.clearAppBadge(); } catch {} }
   if (s && needs !== S.lastNeeds) { if (S.lastNeeds >= 0) $('announce').textContent = needs ? `${needs} ${needs === 1 ? 'work order needs' : 'work orders need'} your sign-off` : 'Nothing needs your sign-off'; S.lastNeeds = needs; }
   renderBanners();
@@ -1304,7 +1304,7 @@ function renderPulse() {
   const s = S.state; let cls = 'live', text = 'Live';
   if (S.unauth) { cls = 'off'; text = 'Not signed in'; }
   else if (S.conn === 'down') { cls = 'off'; text = S.state ? OFFLINE_TEXT(S.savedAt) : 'Offline'; }
-  else if (S.conn === 'retry' || S.conn === 'connecting') { cls = 'wait'; text = S.restartAt && Date.now() - S.restartAt < 30000 ? 'The Board is updating…' : 'Reconnecting…'; }
+  else if (S.conn === 'retry' || S.conn === 'connecting') { cls = 'wait'; text = S.restartAt && Date.now() - S.restartAt < 30000 ? 'Tide is updating…' : 'Reconnecting…'; }
   else if (s?.paused) { cls = 'wait'; text = 'Paused by you'; }
   else if (tickAge() != null) { const a = tickAge(); text = a > 150 ? `Live · supervisor quiet ${words(a)}` : `Live · checked ${a < 5 ? 'just now' : words(a) + ' ago'}`; }
   if (S.updateReady && cls === 'live') text = 'Live · update ready';
@@ -1335,7 +1335,7 @@ addEventListener('pagehide', snapNow);
 // carry no content, nothing private ever shows on the lock screen).
 function notify(title, tag) {
   if (!document.hidden || !('Notification' in window) || Notification.permission !== 'granted') return;
-  navigator.serviceWorker?.ready.then((r) => r.showNotification(/^[\w# -]{1,20} needs your sign-off$/.test(String(title)) ? String(title) : 'The Board needs your sign-off', { body: 'Open the Board', tag: String(tag || 'chef'), icon: '/icon.svg' })).catch(() => {});
+  navigator.serviceWorker?.ready.then((r) => r.showNotification(/^[\w# -]{1,20} needs your sign-off$/.test(String(title)) ? String(title) : 'Tide needs your sign-off', { body: 'Open the Board', tag: String(tag || 'chef'), icon: '/icon-192.png' })).catch(() => {});
 }
 
 // ---------- new order ----------
@@ -1589,7 +1589,7 @@ async function applyClick(t) {
     if (!await confirmBox({ title: 'Send this application?', html: `<p><b>${esc(pk.role)}</b> at <b>${esc(pk.company)}</b></p><p>Your PC fills the form with the resume, cover note and the ${pk.answers.length} answer${pk.answers.length === 1 ? '' : 's'} you just reviewed, and submits it. If anything looks off (a CAPTCHA, a new question) it stops and leaves Edge open for you.</p>`, yes: 'Apply' })) return true;
     buzz(); sb.disabled = true;
     const r = await api('/api/hunt', { method: 'POST', body: JSON.stringify({ op: 'apply-submit', id, hash: pk.hash }) });
-    if (r.ok) toast('Applying on your PC. The Board updates when it is done.'); else toast(`Not sent: ${r.error}`, { bad: true });
+    if (r.ok) toast('Applying on your PC. Tide updates when it is done.'); else toast(`Not sent: ${r.error}`, { bad: true });
     delete S.hunt.packets[id]; await loadHunt(); return true;
   }
   const fl = t.closest('[data-apply-fill]');
@@ -1618,7 +1618,7 @@ async function applyClick(t) {
 }
 const changedAt = (id) => S.hunt.data?.items?.find((x) => x.id === id)?.changedAt ?? '';   // sent back so an edit made on another phone is never overwritten
 function renderHunt(err) {
-  const d = S.hunt.data; if (!d) { $('hunt-body').innerHTML = err ? `<div class="check-bad" role="alert"><b>The job list can't be read right now.</b> ${esc(err)}. Nothing was changed, and the Board won't save over it. Pull down or reopen to try again.</div>` : '<p class="empty-line">Loading…</p>'; return; }
+  const d = S.hunt.data; if (!d) { $('hunt-body').innerHTML = err ? `<div class="check-bad" role="alert"><b>The job list can't be read right now.</b> ${esc(err)}. Nothing was changed, and Tide won't save over it. Pull down or reopen to try again.</div>` : '<p class="empty-line">Loading…</p>'; return; }
   const t = todayStr(); const due = (x) => ACTIVE_ST.includes(x.status) && x.followUp && x.followUp <= t;
   const items = d.items.filter((x) => S.hunt.filter === 'all' || ACTIVE_ST.includes(x.status))
     .sort((a, b) => (due(b) - due(a)) || STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || String(b.savedAt).localeCompare(String(a.savedAt)));
@@ -1697,7 +1697,7 @@ async function loadAnswers() {   // an unreadable profile.json shows the reason 
 const filledWord = (v) => String(v || '').trim() ? '<span class="ans-st on">Filled</span>' : '<span class="ans-st">Empty</span>';
 function renderAnswers(err) {
   const d = S.answers;
-  if (!d) { $('answers-body').innerHTML = `<div class="check-bad" role="alert"><b>Your answers can't be read right now.</b> ${esc(err)}. Nothing was changed, and the Board won't save over it.</div>`; return; }
+  if (!d) { $('answers-body').innerHTML = `<div class="check-bad" role="alert"><b>Your answers can't be read right now.</b> ${esc(err)}. Nothing was changed, and Tide won't save over it.</div>`; return; }
   const sel = (id, v, opts) => `<select id="ans-${id}" name="${id}"><option value=""${v ? '' : ' selected'}>Not set</option>${(v && !opts.includes(v) ? [v, ...opts] : opts).map((o) => `<option value="${esc(o)}"${o === v ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
   const field = ([k, label, type, attrs, max]) => { const v = d.fields[k] || '';
     return `<label class="hunt-field ans-field" for="ans-${k}"><span class="ans-label">${esc(label)} ${filledWord(v)}</span>${type === 'yesno' ? sel(k, v, ['Yes', 'No'])
@@ -1864,7 +1864,7 @@ $('ideas-body').addEventListener('click', async (e) => {
     const r = await ideasPost({ op: 'build', id: bu.dataset.ideaBuild }); if (r.ok && r.job) toast(`${ticket(r.job)} is queued`, { action: { label: 'Open', fn: () => go('#/job/' + r.job) } });
   }
   if (t.closest('[data-research]')) {
-    const focus = prompt('What should the research team look into?', 'new ideas to make the Board more useful day to day');
+    const focus = prompt('What should the research team look into?', 'new ideas to make Tide more useful day to day');
     if (focus && focus.trim().length >= 8) { const r = await ideasPost({ op: 'research', focus: focus.trim() }); if (r.ok && r.data?.job) toast(`${ticket(r.data.job)}: the research team is on it`); }
   }
 });
@@ -2048,7 +2048,7 @@ async function pushSetup() {
   const p = await api('/api/push'); if (!p.ok) return toast(p.error, { bad: true });
   const how = (topic) => `<ol class="how"><li>Install the free <b>ntfy</b> app (Play Store).</li><li>Tap <b>+</b>, then subscribe to this topic:<div class="quote mono">${esc(topic)}</div></li><li>Leave the server as ntfy.sh.</li></ol>`;
   if (!p.data.on) {
-    if (!await confirmBox({ title: 'Turn on push alerts?', html: `<p>Your phone gets an alert even when the Board is closed: a work order needs your sign-off, something failed, the Yard answered you, the morning brief is ready.</p><p>Alerts go through <b>ntfy.sh</b>, a free public service. Only short words are sent (like “J12 needs your yes”), never what a work order or a chat says. The topic is a random name only you know.</p>`, yes: 'Turn on' })) return;
+    if (!await confirmBox({ title: 'Turn on push alerts?', html: `<p>Your phone gets an alert even when Tide is closed: a work order needs your sign-off, something failed, the Yard answered you, the morning brief is ready.</p><p>Alerts go through <b>ntfy.sh</b>, a free public service. Only short words are sent (like “J12 needs your yes”), never what a work order or a chat says. The topic is a random name only you know.</p>`, yes: 'Turn on' })) return;
     const r = await act({ op: 'push-on' }); if (!r.ok) return;
     if (await confirmBox({ title: 'Last step on your phone', html: how(r.data.topic), yes: 'Send a test' })) await act({ op: 'push-test' }, { ok: 'Test sent. It should arrive in a few seconds.' });
   } else if (await confirmBox({ title: 'Push alerts are on', html: how(p.data.topic) + '<p>Turn them off any time; the Yard keeps working the same.</p>', yes: 'Turn off', danger: true })) await act({ op: 'push-off' }, { ok: 'Push alerts are off' });
@@ -2064,18 +2064,20 @@ async function openSettings() {
       <button class="set-row" data-set="lead-toggle"><i class="set-ic" aria-hidden="true">☾</i><span>${s.lead?.mode === 'away' ? 'Claude is back' : 'Claude is out'}<small>${s.lead?.mode === 'away' ? 'Ends away mode now' : 'Shows the away card until the weekly reset'}${s.lead?.week ? ` · week ${Math.round(100 * s.lead.week)}% used` : ''}</small></span></button>
       <button class="set-row" data-set="tick"><i class="set-ic" aria-hidden="true">↻</i><span>Run the supervisor now<small>One pass: checks every work order and starts what's next</small></span></button>
       <button class="set-row" data-set="doctor"><i class="set-ic" aria-hidden="true">✚</i><span>Run the doctor<small>Self-check, backups, damaged files</small></span></button>
-      <button class="set-row" data-set="push"><i class="set-ic" aria-hidden="true">◉</i><span>Push alerts<small>${s.push ? 'On: alerts reach your phone even when the Board is closed.' : `Off. ${alertsOffLine(s)} Get alerts even when the Board is closed (free ntfy app).`}</small></span></button>
+      <button class="set-row" data-set="push"><i class="set-ic" aria-hidden="true">◉</i><span>Push alerts<small>${s.push ? 'On: alerts reach your phone even when Tide is closed.' : `Off. ${alertsOffLine(s)} Get alerts even when Tide is closed (free ntfy app).`}</small></span></button>
       ${s.push ? '<button class="set-row" data-set="push-test"><span>Send a test push</span></button>' : ''}
-      <button class="set-row" data-set="notify"><i class="set-ic" aria-hidden="true">◔</i><span>Phone alerts<small>${perm === 'granted' ? 'On while the Board is open in the background (only the work-order number, never the words). Push alerts reach you when the Board is closed.' : perm === 'denied' ? 'Blocked in your browser settings.' : perm === 'unsupported' ? 'Not supported here.' : 'Get an alert when a work order needs your sign-off.'}</small></span></button>
+      <button class="set-row" data-set="notify"><i class="set-ic" aria-hidden="true">◔</i><span>Phone alerts<small>${perm === 'granted' ? 'On while Tide is open in the background (only the work-order number, never the words). Push alerts reach you when Tide is closed.' : perm === 'denied' ? 'Blocked in your browser settings.' : perm === 'unsupported' ? 'Not supported here.' : 'Get an alert when a work order needs your sign-off.'}</small></span></button>
     </div>
     ${siteStopRows(s.siteStops)}
     <h3 class="set-label">Audit trail</h3><ol class="audit" id="audit"><li>Loading…</li></ol>
     <h3 class="set-label">About</h3>
-    <dl class="kv"><div><dt>Signed in as</dt><dd id="whoami">…</dd></div><div><dt>The Board</dt><dd class="mono">${esc(s.version || '')} · ${esc(S.build || '')}</dd></div>
+    <dl class="kv"><div><dt>Signed in as</dt><dd id="whoami">…</dd></div><div><dt>Tide</dt><dd class="mono">${esc(s.version || '')} · ${esc(S.build || '')}</dd></div>
       <div><dt>Updates</dt><dd>${S.updateReady ? 'New version ready, loads when you leave the app' : 'Automatic, when you are not using it'}</dd></div>
       ${(() => { const f = frameStats(); return f ? `<div><dt>Scene frame</dt><dd class="mono">p95 ${f.p95} ms · p50 ${f.p50} ms · ${f.n} frames</dd></div>` : ''; })()}
+      ${(() => { const r = sceneRenderer(); return `<div><dt>Scene renderer</dt><dd>${r?.on ? 'WebGL2' : 'Canvas2D' + (r?.why ? ' (WebGL2 off: ' + esc(r.why) + ')' : '')}</dd></div>`; })()}
       <div><dt>Supervisor</dt><dd>${tickAge() == null ? 'never ran' : 'last pass ' + words(tickAge()) + ' ago'}</dd></div></dl>
-    <div class="set-group"><label class="switch-row" data-css="margin:0;border-top:0"><span><b>Frame meter</b><small>Frames a second and frame time over the page, to check the scene runs at your screen's rate</small></span><input type="checkbox" role="switch" id="meter-switch" ${sceneMeter() ? 'checked' : ''}><i aria-hidden="true"></i></label></div>
+    <div class="set-group"><label class="switch-row" data-css="margin:0;border-top:0"><span><b>Frame meter</b><small>Frames a second and frame time over the page, to check the scene runs at your screen's rate</small></span><input type="checkbox" role="switch" id="meter-switch" ${sceneMeter() ? 'checked' : ''}><i aria-hidden="true"></i></label>
+      <label class="switch-row"><span><b>WebGL2 renderer</b><small>Draws the scene on the graphics chip; Canvas2D stays as the fallback (this phone only)</small></span><input type="checkbox" role="switch" id="gl-switch" ${sceneGl() ? 'checked' : ''}><i aria-hidden="true"></i></label></div>
     <div class="set-group" data-css="margin-top:24px"><button class="set-row danger" data-set="stop-all"><i class="set-ic" aria-hidden="true">■</i><span>Stop everything<small>Every running and waiting work order stops now</small></span></button></div>`;
   openSheet('menu-sheet');
   const [a, w] = await Promise.all([api('/api/audit'), api('/api/whoami')]);
@@ -2102,6 +2104,7 @@ document.addEventListener('click', async (e) => {
 });
 $('menu-body').addEventListener('change', async (e) => {
   if (e.target.id === 'meter-switch') return void sceneMeter(e.target.checked);   // the scene's frame meter (scene.js), this phone only
+  if (e.target.id === 'gl-switch') return void sceneGl(e.target.checked);   // the scene's WebGL2 renderer (gl.js through scene.js), this phone only
   if (e.target.id !== 'live-switch') return; const on = e.target.checked;
   if (on && !await confirmLive()) { e.target.checked = false; return; }
   const r = await act({ op: on ? 'live-on' : 'live-off' }, { ok: on ? 'AI crews are on' : 'AI crews are off' }); if (!r.ok) e.target.checked = !on;
@@ -2226,7 +2229,7 @@ daypart(); setInterval(daypart, 600000);
 })();
 
 // ---------- the animated building site at the top of the Board and Live tabs (scene.js) ----------
-import { sceneHtml, activityWord, mountScene, cookOf, COOK_COLORS, stepWord, applyCss, sceneLegend, frameStats, sceneApproved, sceneMeter, skyAt } from './scene.js';
+import { sceneHtml, activityWord, mountScene, cookOf, COOK_COLORS, stepWord, applyCss, sceneLegend, frameStats, sceneApproved, sceneMeter, skyAt, sceneGl, sceneRenderer } from './scene.js';
 import { startLive, floorStep } from './live.js';
 import { mainStatusBanners } from './main-status.js';   // TD-EH-03a main-is-red banner
 import { markNotices, keysOf } from './notices.js';   // D-12 cleared notices and thin red bars, keyed so a change shows again

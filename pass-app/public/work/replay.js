@@ -68,7 +68,7 @@ export function makeReplay(root, ctx) {
       try {
         const r = await fetch(`/api/work/events?days=${DAYS}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
         const j = await r.json().catch(() => null);
-        if (!j?.ok) throw new Error(j?.error || `the Board answered ${r.status}`);
+        if (!j?.ok) throw new Error(j?.error || `Tide answered ${r.status}`);
         R.events = j.events; R.loaded = true; R.err = ''; store.set('week', { at: j.at, n: j.events.length });
       } catch (e) { R.err = String(e?.message || e); }
       R.loading = false; paint(); R.shown = true;

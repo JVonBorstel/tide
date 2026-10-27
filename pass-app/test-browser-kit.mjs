@@ -1,7 +1,9 @@
 // The screen tests' browser: headless Chrome or Edge over the DevTools protocol (Node's own WebSocket; no package). Shared by
-// pass-app/test-work-ui.mjs, pass-app/test-status-line.mjs and pass-app/test-board-rows.mjs (those two through boardPage below). cdpConnect(profileDir) starts the browser on a throwaway profile and
-// returns { send(method, params), on(listener), close(), proc } for its first page; the caller kills proc when done. A cold start on a CI
-// runner can take over 10 s, so it waits up to 30 s for the DevTools port.
+// pass-app/test-work-ui.mjs, test-status-line.mjs, test-board-rows.mjs and test-scene-gl-screen.mjs. cdpConnect(profileDir) starts the
+// browser on a throwaway profile and returns { send(method, params), on(listener), close(), proc } for its first page; the caller kills proc
+// when done. signIn (below) signs that browser in to the Board; boardPage (below) is the whole signed-in Board for the status-line and
+// board-rows tests. { gpu: true } keeps the graphics chip (a hardware WebGL2 where the machine has one); by default the browser has only a
+// software one. A cold start on a CI runner can take over 10 s, so it waits up to 30 s for the DevTools port.
 import fs from 'node:fs'; import path from 'node:path'; import crypto from 'node:crypto'; import { spawn } from 'node:child_process'; import { fileURLToPath } from 'node:url';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -12,9 +14,9 @@ export function chromePath() {
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'];
   return c.find((p) => p && fs.existsSync(p)) || null;
 }
-export async function cdpConnect(profileDir) {
+export async function cdpConnect(profileDir, { gpu = false } = {}) {
   const exe = chromePath(); if (!exe) throw new Error('no Chrome or Edge found (set CHROME_PATH)');
-  const proc = spawn(exe, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profileDir}`, '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--no-sandbox', '--hide-scrollbars', 'about:blank'], { stdio: 'ignore', windowsHide: true });
+  const proc = spawn(exe, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profileDir}`, '--no-first-run', '--no-default-browser-check', ...(gpu ? [] : ['--disable-gpu']), '--no-sandbox', '--hide-scrollbars', 'about:blank'], { stdio: 'ignore', windowsHide: true });
   let dport = 0; for (let i = 0; i < 300 && !dport && proc.exitCode === null; i++) { try { dport = Number(fs.readFileSync(path.join(profileDir, 'DevToolsActivePort'), 'utf8').split('\n')[0]); } catch { } if (!dport) await sleep(100); }
   if (!dport) { const code = proc.exitCode; proc.kill(); throw new Error(`the browser did not open its DevTools port in 30 s${code === null ? '' : ' (it exited with ' + code + ')'}`); }
   const list = await (await fetch(`http://127.0.0.1:${dport}/json/list`)).json();
@@ -25,10 +27,22 @@ export async function cdpConnect(profileDir) {
   const send = (method, params = {}) => new Promise((ok, no) => { const i = ++id; wait.set(i, { ok, no }); ws.send(JSON.stringify({ id: i, method, params })); });
   return { send, on: (f) => listeners.push(f), close: () => ws.close(), proc };
 }
+// signIn(send, base, key) puts a signed session cookie for the Board at base in the browser, as /login would give (the pass key never goes
+// in a URL), and returns { ev, until }: ev(expr) runs expr in the page and gives back its value; until(expr, ms) waits up to ms (default
+// { wait }, 10 s) for expr to be true, trying every { step } ms (default 120).
+export async function signIn(send, base, key, { wait = 10000, step = 120 } = {}) {
+  const ev = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
+  const until = async (expr, ms = wait) => { const end = Date.now() + ms; while (Date.now() < end) { try { if (await ev(expr)) return true; } catch { } await sleep(step); } return false; };
+  const exp = Math.floor(Date.now() / 1000) + 3600; const nonce = crypto.randomBytes(16).toString('hex');
+  const mac = crypto.createHmac('sha256', Buffer.from(key)).update(`chef-session|${exp}|${nonce}`).digest('hex');
+  await send('Network.enable'); await send('Page.enable');
+  await send('Network.setCookie', { name: 'pass', value: `${exp}.${nonce}.${mac}`, url: base, httpOnly: true });
+  return { ev, until };
+}
 
-// boardPage: the real Board server on a throwaway state folder (root), signed in with a session cookie (as /login gives; the pass key never
-// goes in a URL), no service worker (every open is fresh), and /api/towers answered by towers() (made-up projects). Returns the page's
-// helpers: ev(expr), until(expr, ms), phone(width, height, {dark, hour}), open(hash), shot(name), plus send, server, cdp, base.
+// boardPage: the real Board server on a throwaway state folder (root), signed in through signIn, no service worker (every open is fresh),
+// and /api/towers answered by towers() (made-up projects). Returns the page's helpers: ev(expr), until(expr, ms), phone(width, height,
+// {dark, hour}), open(hash), shot(name), plus send, server, cdp, base.
 export async function boardPage({ root, tmp, towers, shotsDir = '' }) {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const empty = path.join(root, 'empty'); fs.mkdirSync(empty, { recursive: true });
@@ -41,12 +55,7 @@ export async function boardPage({ root, tmp, towers, shotsDir = '' }) {
   for (let i = 0; i < 160 && !(await health()); i++) await sleep(150);
   const key = fs.readFileSync(path.join(root, 'pass-key.txt'), 'utf8').trim();
   const cdp = await cdpConnect(path.join(tmp, 'profile')); const { send } = cdp;
-  const ev = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
-  const until = async (expr, ms = 10000) => { const end = Date.now() + ms; while (Date.now() < end) { try { if (await ev(expr)) return true; } catch { } await sleep(120); } return false; };
-  const exp = Math.floor(Date.now() / 1000) + 3600; const nonce = crypto.randomBytes(16).toString('hex');
-  const mac = crypto.createHmac('sha256', Buffer.from(key)).update(`chef-session|${exp}|${nonce}`).digest('hex');
-  await send('Network.enable'); await send('Page.enable');
-  await send('Network.setCookie', { name: 'pass', value: `${exp}.${nonce}.${mac}`, url: base, httpOnly: true });
+  const { ev, until } = await signIn(send, base, key);
   await send('Fetch.enable', { patterns: [{ urlPattern: '*/api/towers*', requestStage: 'Request' }, { urlPattern: '*/sw.js', requestStage: 'Request' }] });
   cdp.on((m) => {
     if (m.method !== 'Fetch.requestPaused') return; const p = m.params;
