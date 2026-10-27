@@ -168,8 +168,19 @@ Names from `core/ledger/` (lane L1's PR), added here so the glossary stays the o
 | **Shadow database** | the event store a new piece writes in shadow, next to the old files, which still serve | `<state>\tide.db` in shadow |
 | **WO-PR-TIDE-21** | the work order id a PR gets when it names none (repo short name and PR number) | `woOfPr` in `core/ledger/ids.mjs` |
 
+## The task orchestrator
+Names from `tools/task.mjs` and `.claude/workflows/task-orchestrate.js` (README "Task orchestrator").
+| New | What it is | Code name |
+|---|---|---|
+| **Task** | one numbered file in the private task store: a piece of work with its paths, dependencies and public title; its PR is WO-TASK-n | `0012-name.md`, `kind: task` |
+| **Milestone** | a task file that groups tasks in roadmap order; the plan step raises its tasks when it comes up | `kind: milestone` |
+| **Task store** | the local, private folder of task files; never in a repo | `TIDE_TASKS_DIR`, `tasks.json` |
+| **Lane** | one task worked beside others; lanes never share a path, at most 4 | `--lanes` |
+| **Public title** | the only task words allowed in a commit, PR or branch | `public_title` |
+
 ## Collision list (same word, different thing)
 - "Spec" (recipe) is not `specs/B-##.md`.
+- A task orchestrator "Lane" (one task beside others) is not an upgrade lane (L1-L6).
 - `W-TOOL-07`, `W1-E2`, `A-1001`, `C-##` are not Pours or Sign-offs. `D-7` is a decision (a card for the Owner), not a Sign-off.
 - `%LOCALAPPDATA%\brain-kitchen\board.html` keeps its kitchen words. It is not The Board.
 - "Handover" (the merge train) and the **Handover queue** are the same idea; the queue is its new code. **Handed over** is the status word.
