@@ -39,6 +39,7 @@ function Write-JobsIndexFile([string]$Root, [hashtable]$Jobs) {
         [void]$sb.Append('"').Append($k).Append('":{"s":').Append((ConvertTo-JsonText ([string]$e.s))).Append(',"t":').Append([long]$e.t).Append(',"n":').Append([long]$e.n)
         [void]$sb.Append(',"p":').Append((ConvertTo-JsonText ([string]$e.p))).Append(',"c":').Append([int]$e.c)
         if ($e.si) { [void]$sb.Append(',"si":').Append((ConvertTo-JsonText ([string]$e.si))) }   # no Site, no key: the index reads as before TD-3
+        [void]$sb.Append(',"d":').Append((ConvertTo-JsonText ([string]$e.d)))   # the order's dup keys (task 32: duplicates at the door)
         [void]$sb.Append('}')
     }
     [void]$sb.Append('}}')
@@ -49,11 +50,11 @@ function Write-JobsIndexFile([string]$Root, [hashtable]$Jobs) {
     } catch { Remove-Item -LiteralPath $t -Force -ErrorAction SilentlyContinue }
 }
 function New-JobsIndexEntry($j, [IO.FileInfo]$f) {
-    $e = @{ s = [string]$j.status; t = $f.LastWriteTimeUtc.Ticks; n = $f.Length; p = [string]$j.parent; c = [int][bool]$j.chefUpdate }
+    $e = @{ s = [string]$j.status; t = $f.LastWriteTimeUtc.Ticks; n = $f.Length; p = [string]$j.parent; c = [int][bool]$j.chefUpdate; d = (@(Get-OrderDupKeys $j) -join ' ') }
     $si = Get-JobStoredSite $j; if ($si) { $e.si = $si }
     $e
 }
-function Test-SameEntry($a, $b) { $a -and $b -and [string]$a.s -eq [string]$b.s -and [long]$a.t -eq [long]$b.t -and [long]$a.n -eq [long]$b.n -and [string]$a.p -eq [string]$b.p -and [int]$a.c -eq [int]$b.c -and [string]$a.si -ceq [string]$b.si }
+function Test-SameEntry($a, $b) { $a -and $b -and [string]$a.s -eq [string]$b.s -and [long]$a.t -eq [long]$b.t -and [long]$a.n -eq [long]$b.n -and [string]$a.p -eq [string]$b.p -and [int]$a.c -eq [int]$b.c -and [string]$a.si -ceq [string]$b.si -and [string]$a.d -ceq [string]$b.d }
 
 # ---- the Site of an order (multi-site design TD-3) ----
 # kitchen.ps1 add stores vars.site from the order's Tower (its kitchen.repo.json "site", read from the main checkout; repo-config.ps1).
@@ -67,6 +68,38 @@ function Get-JobTower($j) {
     $r = Get-JobVar $j 'repo'; if ($r -and $r -notmatch '\{\{') { return $r }
     foreach ($s in @($j.steps)) { if ($s.args -and $s.args.Repo -and [string]$s.args.Repo -notmatch '\{\{') { return [string]$s.args.Repo } }
     ''
+}
+# Duplicates at the door (task 32): an order's dup keys, short hashes of what it asks. Two orders with a key in common ask the same thing:
+#   t| the normalized asked text (vars.goal, else every non-option var, sorted): lower case, words only, one space;
+#   o| the same files it names (its owns) and the same title (the goal's first line, normalized);
+#   i| the same roadmap item (vars.item: same owns and same title by construction).
+# Each key also carries the recipe and whether the order is private (a private run of a goal is another order). An order with no
+# recipe and no vars (a plain script order) has no keys and is never a duplicate. jobs-index.json keeps them as d (space-separated).
+function Get-OrderDupKeys($j) {
+    $recipe = if ($j.recipe) { [string]$j.recipe } elseif ([string]$j.name -match '^([\w-]+):') { $Matches[1] } else { '' }
+    $vars = @{}; if ($j.vars -is [Collections.IDictionary]) { foreach ($k in $j.vars.Keys) { $vars[[string]$k] = [string]$j.vars[$k] } } elseif ($j.vars) { foreach ($p in $j.vars.PSObject.Properties) { $vars[$p.Name] = [string]$p.Value } }
+    $text = [string]$vars['goal']
+    if (-not $text.Trim()) { $text = (@($vars.Keys | Where-Object { $_ -notin 'cook', 'private', 'size', 'night', 'priority', 'site', 'repo' } | Sort-Object | ForEach-Object { $vars[$_] }) -join ' ') }
+    if (-not $recipe -or -not $text.Trim()) { return }
+    $priv = if ($vars['private'] -in 'yes', 'true') { 'p' } else { '' }
+    $norm = { param($t) ((([string]$t).ToLowerInvariant() -replace '[^a-z0-9]+', ' ') -replace '\s+', ' ').Trim() }
+    $keys = @("t|$recipe|$priv|$(& $norm $text)")
+    $files = @([regex]::Matches($text, '(?i)\b(?:pass-app|kitchen|scripts|tests|data|docs|core|rust|tools)/[\w./-]+') | ForEach-Object { $_.Value.TrimEnd('.', '-').ToLowerInvariant() } |
+            Where-Object { $_ -notin 'kitchen/creed.md', 'kitchen/standards.md', 'kitchen/map.md' } | Sort-Object -Unique)
+    $title = & $norm ((($text -split '(?<=[.!?])\s|\r?\n')[0]) -replace '^\s*#+\s*', '')
+    if ($files.Count -and $title) { $keys += "o|$recipe|$priv|$($files -join ',')|$title" }
+    if ($vars['item']) { $keys += "i|$recipe|$priv|$($vars['item'].Trim().ToUpperInvariant())" }
+    $sha = [Security.Cryptography.SHA256]::Create()
+    @($keys | ForEach-Object { [Convert]::ToHexString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($_))).Substring(0, 12).ToLowerInvariant() })
+}
+# The open order (anything not done or cleared: queued, building, waiting, failed or stopped) that shares a dup key with $Keys, oldest
+# first, from the jobs-index.json entries. '' when none. kitchen.ps1 add refuses a new order that has one (-Force adds it anyway).
+function Find-OpenDuplicate([hashtable]$Index, [string[]]$Keys) {
+    if (-not $Keys -or -not $Keys.Count) { return '' }
+    $want = [Collections.Generic.HashSet[string]]::new([string[]]$Keys)
+    $hit = @($Index.Keys | Where-Object { $e = $Index[$_]; [string]$e.s -notin $script:JobsFinished -and @(([string]$e.d) -split ' ' | Where-Object { $_ -and $want.Contains($_) }).Count } |
+            Sort-Object { [int]([string]$_).TrimStart('J') })
+    if ($hit.Count) { [string]$hit[0] } else { '' }
 }
 # The Site the order carries itself (vars.site, a known code), '' when none. What jobs-index.json stores as si.
 function Get-JobStoredSite($j) { $s = Get-JobVar $j 'site'; if ($s -cin $script:RepoSiteCodes) { $s } else { '' } }
@@ -119,7 +152,8 @@ function Update-KitchenJobs([string]$Root, [string]$Mode = 'all', [scriptblock]$
     foreach ($f in (Get-JobFiles $Root)) {
         $id = $f.Name.Substring(0, $f.Name.Length - 5); [void]$seen.Add($id)
         $e = $idx[$id]
-        $fresh = -not $rebuilt -and $e -and [long]$e.t -eq $f.LastWriteTimeUtc.Ticks -and [long]$e.n -eq $f.Length
+        # (an entry from before task 32 has no dup keys (d): its file is read once more to add them)
+        $fresh = -not $rebuilt -and $e -and [long]$e.t -eq $f.LastWriteTimeUtc.Ticks -and [long]$e.n -eq $f.Length -and $e.ContainsKey('d')
         if ($fresh -and ($Mode -eq 'index' -or ($Mode -eq 'live' -and -not (Test-JobLive $e)))) { continue }
         $j = $null; $why = ''
         try { $j = [IO.File]::ReadAllText($f.FullName) | ConvertFrom-Json -AsHashtable; if ($j -isnot [hashtable] -or -not $j.id) { $why = 'missing id' } elseif ($RequireSteps -and -not $j.steps) { $why = 'missing id or steps' } }

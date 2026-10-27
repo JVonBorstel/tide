@@ -7,7 +7,7 @@
 # A recipe is {name, description, vars: {v: {required|default|max}}, steps: [step, ...]}. A step names a station (or script) plus
 # args and limits, exactly as kitchen.ps1 add -SpecPath takes them. {{var}} in any string is filled in here; {{job}} and
 # {{worktree}} are left for the stations to fill at run time. -Gate makes the first step wait for Jordan (used for bot orders).
-param([string]$Recipe = '', [hashtable]$Vars = @{}, [switch]$Gate, [switch]$List, [switch]$Json)
+param([string]$Recipe = '', [hashtable]$Vars = @{}, [switch]$Gate, [switch]$List, [switch]$Json, [switch]$Force)   # Force: add it even when an open order asks the same (task 32)
 $ErrorActionPreference = 'Stop'
 $dir = if ($env:KITCHEN_RECIPES) { $env:KITCHEN_RECIPES } else { Join-Path $PSScriptRoot 'recipes' }   # override for tests
 function Fail([string]$m) { if ($Json) { @{ ok = $false; error = $m } | ConvertTo-Json -Compress } else { Write-Output "ERROR: $m" }; exit 2 }
@@ -95,8 +95,15 @@ $kroot = if ($env:BRAIN_KITCHEN) { $env:BRAIN_KITCHEN } else { Join-Path $env:LO
 $specDir = Join-Path $kroot 'specs'; New-Item -ItemType Directory -Force -Path $specDir | Out-Null
 $spec = Join-Path $specDir ("{0:yyyyMMdd-HHmmss}-{1}-{2}.json" -f (Get-Date), $Recipe, (Get-Random -Maximum 99999))
 @{ name = $label; steps = $steps; recipe = $Recipe; vars = $Vars } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $spec -Encoding utf8
-$out = & (Join-Path $PSScriptRoot 'kitchen.ps1') add -SpecPath $spec | Out-String
+$out = & (Join-Path $PSScriptRoot 'kitchen.ps1') add -SpecPath $spec -Force:$Force | Out-String
 $m = [regex]::Match($out, 'added (J\d+)')
+# task 32, duplicates at the door: the open order with the same goal comes back as duplicate (its id); -Force adds it anyway
+$dm = [regex]::Match($out, 'DUPLICATE: (J\d+)')
+if (-not $m.Success -and $dm.Success) {
+    Remove-Item -LiteralPath $spec -Force -ErrorAction SilentlyContinue
+    if ($Json) { @{ ok = $false; duplicate = $dm.Groups[1].Value; error = $out.Trim() -replace '^DUPLICATE: ', '' } | ConvertTo-Json -Compress } else { Write-Output $out.Trim() }
+    exit 2
+}
 if (-not $m.Success) { Fail ($out.Trim()) }
 $jobId = $m.Groups[1].Value
 $jobFile = Join-Path $kroot "jobs\$jobId.json"
