@@ -4,9 +4,9 @@ argument-hint: "[--lanes 1-4] [--max N] [--gate-every N] [--rounds N] [--no-plan
 ---
 Start the task orchestrator. Docs: README "Task orchestrator".
 
-1. Check the store first (read-only): `node tools/task.mjs where`, `node tools/task.mjs check`, `node tools/task.mjs state`.
+1. Check the store first (read-only): `node tools/task.mjs where`, `node tools/task.mjs check`, `node tools/task.mjs state`, `node tools/task.mjs lock status`.
    If `check` reports problems, show them and stop: a malformed task is never worked. If the store is paused, say so and stop
-   (Jordan resumes with `node tools/task.mjs resume`).
+   (Jordan resumes with `node tools/task.mjs resume`). If another run holds the lock, say so and stop (never release it yourself).
 2. Run the saved workflow with the Workflow tool: name `task-orchestrate`, args `"$ARGUMENTS"` (the text exactly as given; empty is fine).
    Do not rewrite the workflow's steps by hand and do not run a second orchestrator beside a running one.
 3. When it returns, tell Jordan in at most 8 plain lines: merged (task number, PR, Board redeployed or not), tasks now waiting on

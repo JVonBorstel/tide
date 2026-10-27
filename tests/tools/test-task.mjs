@@ -217,6 +217,45 @@ try {
     check('check: a clean store passes', cli(['check', '--store', r]).code === 0);
   }
 
+  // ---- start (one task) and the one-orchestrator lock ------------------------------------------------------------------------------
+  {
+    const d = newStore();
+    put(d, '0001-a.md', fm(['title: a', 'paths: [a]']));
+    put(d, '0002-b.md', fm(['title: b', 'depends: [jordan]']));
+    put(d, '0003-c.md', fm(['title: c', 'status: review', 'pr: 9']));
+    put(d, '0004-m.md', fm(['title: m', 'kind: milestone']));
+    cli(['pause', '--reason', 'away', '--store', d]);
+    const sp = cli(['start', '1', '--run', 'new', '--store', d, '--json']);
+    check('start: paused stops /task-start too (exit 3), claims nothing, takes no lock', sp.code === 3 && sp.json.paused && T.loadStore(d).tasks[0].status === 'todo' && !T.readLock(d));
+    cli(['resume', '--store', d]);
+    const st = path.join(root, 'state-start'); fs.mkdirSync(st, { recursive: true });
+    fs.writeFileSync(path.join(st, 'plan-usage.json'), JSON.stringify({ claude: { fiveHour: { used: 0.2 }, sevenDay: { used: 0.97, resetsAt: '2030-01-07T00:00:00Z' } } }));
+    const su = cli(['start', '1', '--store', d, '--json'], env0({ BRAIN_KITCHEN: st }));
+    check('start: a usage stop stops /task-start too (exit 3)', su.code === 3 && su.json.stop === 'stop' && T.loadStore(d).tasks[0].status === 'todo');
+    const ok = cli(['start', '1', '--run', 'new', '--store', d, '--json']);
+    const t1 = T.loadStore(d).tasks.find((t) => t.id === 1);
+    check('start: a ready task is claimed with this run id, under the lock', ok.code === 0 && ok.json.state === 'picked' && ok.json.run && t1.status === 'doing' && t1.claimed_by === 'orchestrator' && t1.run === ok.json.run && T.readLock(d).run === ok.json.run);
+    const again = cli(['start', '1', '--run', 'new', '--store', d, '--json']);
+    check('lock: a second orchestrator is refused while the first is alive (exit 3)', again.code === 3 && /another orchestrator is running/.test(again.json.reason) && again.json.state === 'locked');
+    check('start: an in-flight task resumes, unchanged', (() => { const r = cli(['start', '3', '--run', ok.json.run, '--store', d, '--json']); return r.code === 0 && r.json.state === 'resume' && r.json.tasks[0].resume && r.json.tasks[0].pr === 9; })());
+    check('start: a task waiting on jordan is not started (exit 1, says why)', (() => { const r = cli(['start', '2', '--run', ok.json.run, '--store', d, '--json']); return r.code === 1 && /waits on: jordan/.test(r.json.why); })());
+    check('start: a milestone or a missing number is not started', cli(['start', '4', '--store', d]).code === 1 && cli(['start', '99', '--store', d]).code === 1 && cli(['start', '--store', d]).code === 2);
+    check('lock: a run id that does not hold the lock is refused', cli(['next', '--run', 'someone-else', '--store', d, '--json']).code === 3 && cli(['lock', 'heartbeat', '--run', 'x', '--store', d]).code === 3);
+    const before = T.readLock(d).heartbeat;
+    const nx = cli(['next', '--claim', '--run', ok.json.run, '--store', d, '--json']);
+    check('lock: next with the holder\'s run id beats the heartbeat', nx.code === 0 && T.readLock(d).heartbeat >= before && nx.json.run === ok.json.run);
+    check('lock: release by someone else is refused; by the holder it frees', cli(['lock', 'release', '--run', 'x', '--store', d]).code === 1 && cli(['lock', 'release', '--run', ok.json.run, '--store', d]).code === 0 && !T.readLock(d));
+    fs.writeFileSync(path.join(d, '.orchestrator.lock'), JSON.stringify({ run: 'dead-run', at: '2020-01-01T00:00:00Z', heartbeat: '2020-01-01T00:00:00Z' }));
+    const take = cli(['lock', 'acquire', '--store', d, '--json']);
+    check('lock: a stale lock (a run that died at a usage cap) is taken over and said so', take.code === 0 && /took over a stale lock \(run dead-run/.test(take.json.tookOver) && T.readLock(d).run === take.json.run);
+    check('lock: release --force frees any lock; status reads it', cli(['lock', 'status', '--store', d]).text.includes(take.json.run) && cli(['lock', 'release', '--force', '--store', d]).code === 0 && /not locked/.test(cli(['lock', 'status', '--store', d]).text));
+    fs.writeFileSync(path.join(d, '.orchestrator.lock'), 'garbage');
+    check('lock: an unreadable lock is judged by its file time (fresh = held)', cli(['lock', 'acquire', '--store', d]).code === 3);
+    check('lock: bad sub-commands and values are bad arguments', cli(['lock', 'frob', '--store', d]).code === 2 && cli(['lock', 'heartbeat', '--store', d]).code === 2 && cli(['lock', 'acquire', '--stale-minutes', '0', '--store', d]).code === 2);
+    cli(['set', '1', 'merged=0123456', '--store', d]);
+    check('set: a merge sha made only of digits stays text', T.loadStore(d).tasks.find((t) => t.id === 1).merged === '0123456');
+  }
+
   // ---- where the store is ----------------------------------------------------------------------------------------------------------
   {
     const home = path.join(root, 'home'); const st = path.join(root, 'state-cfg'); fs.mkdirSync(st, { recursive: true });
@@ -259,15 +298,17 @@ try {
     try { out = await fn(agent, parallel, null, () => {}, (m) => logs.push(m), args, { total: null }, null); } catch (e) { error = e; }
     return { out, calls, logs, error, maxMerge, labels: calls.map((c) => c.opts.label) };
   }
-  const CTX = { checkout: 'X:\\repo', cli: 'X:\\repo\\tools\\task.mjs', store: 'X:\\store', wtRoot: 'X:\\wt', mainSha: 'abc123', visibility: 'PUBLIC' };
+  const H = 'abcdef1234567890abcdef1234567890abcdef12'; const H2 = '1234567abcdef1234567abcdef1234567abcdef1';
+  const CTX = { checkout: 'X:\\repo', cli: 'X:\\repo\\tools\\task.mjs', store: 'X:\\store', wtRoot: 'X:\\wt', mainSha: 'abc123', visibility: 'PUBLIC', run: 'r1' };
   const task = (id, extra = {}) => ({ id, public_title: `Public ${id}`, paths: [`p${id}/**`], resume: false, pr: 0, branch: '', ...extra });
-  const pickSeq = (...batches) => { let i = 0; return () => { const b = batches[Math.min(i++, batches.length - 1)]; return { ...CTX, paused: false, stop: '', reason: '', state: b.length ? 'picked' : 'empty', why: b.length ? 'picked' : 'nothing is ready', tasks: b, ...(b.extra || {}) }; }; };
-  const built = (pr) => ({ ok: true, pr, branch: `task/${pr}`, worktree: `X:\\wt\\task-${pr}`, head: 'h', tests: 'Suite 3/0', outsidePaths: [], touchesPassApp: false, privacyScan: 'live 0', blocked: '' });
-  const green = { testsPass: true, tests: 'PARTIAL PASS: 2 of 9 suites', failing: [], ci: 'green', ciFailing: [], head: 'h' };
-  const ship = { verdict: 'SHIP', fixes: [], notes: [], privacyOk: true, why: 'fine' };
-  const mergedOk = { merged: true, sha: 'm1', refusal: '', behind: false, boardRedeploy: 'not needed', worktreeRemoved: true };
-  const gateOk = { base: 'g1', privacyRan: true, privacyLiveHits: 0, testsOk: true, tests: 'ok', tidyTask: 0, problems: [], paused: false };
+  const pickSeq = (...batches) => { let i = 0; return () => { const b = batches[Math.min(i++, batches.length - 1)]; return { ...CTX, paused: false, stop: '', reason: '', state: b.length ? 'picked' : 'empty', why: b.length ? 'picked' : 'nothing is ready', tasks: b }; }; };
+  const built = (pr) => ({ ok: true, pr, branch: `task/${pr}`, worktree: `X:\\wt\\task-${pr}`, head: H, tests: 'Suite 3/0', outsidePaths: [], privacyScan: 'hits 0', blocked: '' });
+  const green = { testsPass: true, tests: 'PARTIAL PASS: 2 of 9 suites', failing: [], ci: 'green', ciFailing: [], head: H };
+  const ship = { verdict: 'SHIP', head: H, fixes: [], notes: [], privacyOk: true, why: 'fine' };
+  const mergedOk = { merged: true, sha: 'm1', refusal: '', behind: false, passAppChanged: false, boardRedeploy: 'not needed', worktreeRemoved: true };
+  const gateOk = { base: 'g1', privacyRan: true, privacyHits: 0, testsOk: true, tests: 'ok', tidyTask: 0, problems: [], paused: false };
   const plan0 = { milestone: 0, raised: [], milestoneDone: false, why: 'the roadmap waits on Jordan' };
+  const dont = { verdict: "DON'T SHIP", head: H, fixes: ['wrong approach'], notes: [], privacyOk: true, why: 'no' };
   const std = (pick, over = {}) => (label, prompt) => {
     for (const [k, v] of Object.entries(over)) if (label.startsWith(k)) return typeof v === 'function' ? v(label, prompt) : v;
     if (label.startsWith('pick')) return pick();
@@ -279,48 +320,66 @@ try {
     if (label.startsWith('plan')) return plan0;
     return { ok: true, why: 'done' };
   };
+  const promptOf = (r, l) => (r.calls.find((c) => c.opts.label === l) || { prompt: '' }).prompt;
 
   {
     const r = await runWf('', std(pickSeq([task(5)], [])));
     const byLabel = (l) => r.calls.find((c) => c.opts.label === l);
-    check('wf happy path: work -> checks + review -> merge -> plan (nothing) -> final gate', !r.error && r.out.merged.length === 1 && r.out.merged[0].task === 5
-      && r.labels.join(',') === 'pick (resume),work 5,checks 5,review 5,merge 5,pick,plan,gate (final)', r.error ? r.error.message : r.labels.join(','));
+    check('wf happy path: work -> checks + review -> merge -> plan (nothing) -> final gate -> unlock', !r.error && r.out.merged.length === 1 && r.out.merged[0].task === 5
+      && r.labels.join(',') === 'pick (resume),work 5,checks 5,review 5,merge 5,pick,plan,gate (final),unlock', r.error ? r.error.message : r.labels.join(','));
     check('wf models: pick and merge haiku, review and plan and gate sonnet, work inherits', byLabel('pick (resume)').opts.model === 'haiku' && byLabel('merge 5').opts.model === 'haiku'
       && byLabel('review 5').opts.model === 'sonnet' && byLabel('plan').opts.model === 'sonnet' && byLabel('gate (final)').opts.model === 'sonnet' && byLabel('work 5').opts.model === undefined);
-    check('wf first pick resumes in-flight work and claims', /next --lanes 1 --claim --resume --json/.test(byLabel('pick (resume)').prompt) && !/--resume/.test(byLabel('pick').prompt));
+    check('wf lock: the first pick takes the lock and resumes, later picks carry the run id, the end releases it',
+      /next --lanes 1 --claim --resume --run new --json/.test(byLabel('pick (resume)').prompt) && /next --lanes 1 --claim --run r1 --json/.test(byLabel('pick').prompt)
+      && /lock release --run r1/.test(byLabel('unlock').prompt) && /lock heartbeat --run r1/.test(byLabel('checks 5').prompt) && /lock heartbeat --run r1/.test(byLabel('merge 5').prompt));
     const w = byLabel('work 5').prompt;
     check('wf work: own worktree and branch, noreply identity, trailer, PR title from the public title only, PR body ending',
       w.includes('X:\\wt\\task-5') && w.includes('-b task/5 origin/main') && w.includes('user.email=204934145+JVonBorstel@users.noreply.github.com')
       && w.includes('Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>') && w.includes('--title "WO-TASK-5: Public 5"') && w.includes('🤖 Generated with [Claude Code](https://claude.com/claude-code)'));
-    check('wf work: privacy scan before every push, never force', /Before every push/.test(w) && w.includes('public-tide-scan.ps1') && /never --force/.test(w));
-    check('wf review: independent reviewer, read-only, CREED 6', /INDEPENDENT REVIEWER/.test(byLabel('review 5').prompt) && /did not build it/.test(byLabel('review 5').prompt) && /Read-only/.test(byLabel('review 5').prompt));
-    check('wf merge: only through scripts/merge-pr.ps1', byLabel('merge 5').prompt.includes('scripts\\merge-pr.ps1 -Repo JVonBorstel/tide -Pr 5') && /Never `gh pr merge`/.test(byLabel('merge 5').prompt));
+    check('wf work: privacy scan before every push counts "hits", never "live"; never force', /Before every push/.test(w) && w.includes('public-tide-scan.ps1') && /"hits" array/.test(w) && /never a hit count/.test(w) && /never --force/.test(w));
+    check('wf rules: never close, reopen or approve a PR (builder, checks, reviewer, merge)', /never close, reopen, approve/.test(w) && /close, approve or merge/.test(byLabel('checks 5').prompt)
+      && /close, approve or merge/.test(byLabel('review 5').prompt) && /never close or reopen a PR/.test(byLabel('merge 5').prompt));
+    check('wf review: independent reviewer, read-only, records the head it reviews first', /INDEPENDENT REVIEWER/.test(byLabel('review 5').prompt) && /did not build it/.test(byLabel('review 5').prompt) && /FIRST record the commit you review/.test(byLabel('review 5').prompt));
+    const mp = byLabel('merge 5').prompt;
+    check('wf merge: only through scripts/merge-pr.ps1, pinned to the reviewed head', mp.includes(`scripts\\merge-pr.ps1 -Repo JVonBorstel/tide -Pr 5 -ExpectHead ${H}`) && /Never `gh pr merge`/.test(mp));
+    check('wf Board: "pass-app changed" comes from the merged diff, never the builder; a skipped redeploy leaves a note', mp.includes('gh pr diff 5 -R JVonBorstel/tide --name-only') && mp.includes('pass-app\\update.ps1')
+      && /not from anyone's report/.test(mp) && /note 5 --text "Board not redeployed/.test(mp) && !/touchesPassApp/.test(wfSrc));
+    check('wf gate: privacy counts the scanner\'s "hits", never its "live" counts', /"hits" array/.test(byLabel('gate (final)').prompt) && !/sum of "live"/.test(wfSrc));
     check('wf: never sees or sends the private title (only public_title travels)', !r.calls.some((c) => /Private words/.test(c.prompt)));
   }
   {
     let reviews = 0;
-    const r = await runWf('', std(pickSeq([task(6)], []), { review: () => (++reviews < 3 ? { verdict: 'SHIP AFTER FIXES', fixes: [`fix #${reviews}`], notes: ['a slip'], privacyOk: true, why: 'w' } : ship) }));
+    const r = await runWf('', std(pickSeq([task(6)], []), { review: () => (++reviews < 3 ? { verdict: 'SHIP AFTER FIXES', head: H, fixes: [`fix #${reviews}`], notes: ['a slip'], privacyOk: true, why: 'w' } : ship) }));
     check('wf fix rounds: fixes loop back to the builder until SHIP, then merge', r.out.merged.length === 1 && r.labels.filter((l) => /^fix 6\./.test(l)).length === 2
-      && r.calls.find((c) => c.opts.label === 'fix 6.1').prompt.includes('1. fix #1'));
-    check('wf gate: reviewer notes reach the final gate as tidy-up material', r.calls.find((c) => c.opts.label === 'gate (final)').prompt.includes('task 6 (PR #6): a slip'));
+      && promptOf(r, 'fix 6.1').includes('1. fix #1'));
+    check('wf gate: reviewer notes reach the final gate as tidy-up material', promptOf(r, 'gate (final)').includes('task 6 (PR #6): a slip'));
   }
   {
-    const r = await runWf('--rounds 2', std(pickSeq([task(7)], []), { review: { verdict: "DON'T SHIP", fixes: ['wrong approach'], notes: [], privacyOk: true, why: 'no' } }));
-    const esc = r.calls.find((c) => c.opts.label === 'escalate 7');
-    check('wf bounded: after --rounds the task waits on Jordan, no merge', r.out.merged.length === 0 && r.out.needJordan.length === 1 && !r.labels.some((l) => /^merge/.test(l))
-      && r.labels.filter((l) => /^fix 7\./.test(l)).length === 1 && esc && esc.prompt.includes('set 7 status=todo depends+=jordan') && !/pause --reason/.test(esc.prompt));
+    const r = await runWf('--rounds 2', std(pickSeq([task(7)], []), { review: { ...dont, fixes: ['use `$HOME` and "quotes" \\ here'] } }));
+    const esc = promptOf(r, 'escalate 7'); const noteLine = esc.split('\n').find((l) => l.includes('note 7 --text')) || '';
+    check('wf --rounds 2: exactly 2 fix rounds, then the task waits on Jordan, no merge', r.out.merged.length === 0 && r.out.needJordan.length === 1 && !r.labels.some((l) => /^merge/.test(l))
+      && r.labels.filter((l) => /^fix 7\./.test(l)).length === 2 && r.labels.filter((l) => l === 'review 7').length === 3 && esc.includes('set 7 status=todo depends+=jordan') && !/pause --reason/.test(esc));
+    const noteText = (/--text "(.*)"`$/.exec(noteLine) || [])[1] || '';
+    check('wf escalate: the note text carries no quote, $, backtick or backslash for a shell', /^needs Jordan: .*use HOME and quotes here/.test(noteText) && !/["'$`\\]/.test(noteText));
+    const d3 = await runWf('', std(pickSeq([task(17)], []), { review: dont }));
+    check('wf default --rounds 3: 3 fix rounds, 4 reviews, then Jordan', d3.labels.filter((l) => /^fix 17\./.test(l)).length === 3 && d3.labels.filter((l) => l === 'review 17').length === 4 && d3.out.needJordan.length === 1);
   }
   {
-    const r = await runWf('', std(() => ({ ...CTX, paused: true, stop: '', reason: 'dinner', state: 'paused', why: '', tasks: [] })));
-    check('wf pause: stops at the pick, works nothing', r.out.stopped === 'paused: dinner' && r.labels.join(',') === 'pick (resume)');
-    const u = await runWf('', std(() => ({ ...CTX, paused: false, stop: 'stop', reason: 'weekly usage 96%', state: 'stop', why: '', tasks: [] })));
+    const r = await runWf('', std(() => ({ ...CTX, paused: true, stop: '', reason: 'dinner', state: 'paused', why: '', run: '', tasks: [] })));
+    check('wf pause: stops at the pick, works nothing, has no lock to release', r.out.stopped === 'paused: dinner' && r.labels.join(',') === 'pick (resume)');
+    const u = await runWf('', std(() => ({ ...CTX, paused: false, stop: 'stop', reason: 'weekly usage 96%', state: 'stop', why: '', run: '', tasks: [] })));
     check('wf usage: a usage stop ends the run, works nothing', /weekly usage 96%/.test(u.out.stopped) && u.labels.length === 1);
+    const l = await runWf('', std(() => ({ ...CTX, paused: false, stop: 'stop', reason: 'another orchestrator is running (run r0, last heartbeat 3 min ago)', state: 'locked', why: '', run: '', tasks: [] })));
+    check('wf lock: a second orchestrator stops at its first pick and never releases the other\'s lock', /another orchestrator is running/.test(l.out.stopped) && l.labels.join(',') === 'pick (resume)');
+    const n = await runWf('', std(() => ({ ...CTX, run: '', paused: false, stop: '', reason: '', state: 'picked', why: '', tasks: [task(30)] })));
+    check('wf lock: no run id back from the first pick = nothing starts', /took no lock/.test(n.out.stopped) && !n.labels.some((x) => /^work/.test(x)));
   }
   {
     let plans = 0;
     const r = await runWf('', std(pickSeq([], [task(8)], []), { plan: () => (++plans === 1 ? { milestone: 3, raised: [8], milestoneDone: false, why: 'raised' } : plan0) }));
     check('wf plan: nothing ready -> plan raises tasks -> they are worked', r.out.merged.map((m) => m.task).join() === '8' && r.labels.slice(0, 4).join(',') === 'pick (resume),plan,pick,work 8');
     check('wf plan: a plan that raises nothing ends the run with its reason', /nothing to work: the roadmap waits on Jordan/.test(r.out.stopped));
+    check('wf plan: blocked tasks are checked first', /Blocked tasks first/.test(promptOf(r, 'plan')));
     const np = await runWf('--no-plan', std(pickSeq([])));
     check('wf --no-plan: never plans', !np.labels.includes('plan'));
   }
@@ -329,11 +388,12 @@ try {
     check('wf lanes: above the WIP limit is capped at 4 and logged', /--lanes 9 is above the WIP limit/.test(r.logs.join('\n')) && /next --lanes 4 --claim/.test(r.calls[0].prompt));
     check('wf lanes: three tasks merged, merges one at a time', r.out.merged.length === 3 && r.maxMerge === 1, `max concurrent merges ${r.maxMerge}`);
     check('wf gate: a gate after every --gate-every merges, none repeated at the end', r.labels.filter((l) => l === 'gate').length === 1 && !r.labels.includes('gate (final)'));
+    const gp = await runWf('--gate-every 1', std(pickSeq([task(31)], [task(32)], []), { gate: { ...gateOk, privacyHits: 2 } }));
+    check('wf gate: privacy hits stop the run for Jordan', /privacy scan hit/.test(gp.out.stopped) && !gp.labels.includes('work 32'));
   }
   {
-    const r = await runWf('', std(pickSeq([task(9)], []), { review: { verdict: 'SHIP', fixes: [], notes: [], privacyOk: false, why: 'title has private words' } }));
-    const esc = r.calls.find((c) => c.opts.label === 'escalate 9');
-    check('wf privacy: private text in public pauses the orchestrator and waits on Jordan', esc && /pause --reason/.test(esc.prompt) && /privacy problem/.test(r.out.stopped) && !r.labels.some((l) => /^merge/.test(l)));
+    const r = await runWf('', std(pickSeq([task(9)], []), { review: { ...ship, privacyOk: false, why: 'title has private words' } }));
+    check('wf privacy: private text in public pauses the orchestrator and waits on Jordan', /pause --reason/.test(promptOf(r, 'escalate 9')) && /privacy problem/.test(r.out.stopped) && !r.labels.some((l) => /^merge/.test(l)));
   }
   {
     const r = await runWf('', std(pickSeq([task(10)], []), { work: () => null }));
@@ -341,24 +401,40 @@ try {
   }
   {
     let m = 0;
-    const r = await runWf('', std(pickSeq([task(11)], []), { merge: () => (++m === 1 ? { merged: false, sha: '', refusal: 'branch is behind main', behind: true, boardRedeploy: '', worktreeRemoved: false } : mergedOk) }));
-    check('wf merge refused (behind): the builder brings main in, then it merges', r.out.merged.length === 1 && r.calls.find((c) => c.opts.label === 'fix 11.1').prompt.includes('normal merge (never rebase, never force-push)'));
-    const h = await runWf('', std(pickSeq([task(12)], []), { merge: { merged: false, sha: '', refusal: 'merge freeze window', behind: false, boardRedeploy: '', worktreeRemoved: false } }));
-    check('wf merge refused (freeze, red main): held with a note, no fix round', h.out.held.length === 1 && !h.labels.some((l) => /^fix/.test(l)) && h.labels.includes('hold 12'));
+    const r = await runWf('', std(pickSeq([task(11)], []), { merge: () => (++m === 1 ? { ...mergedOk, merged: false, sha: '', refusal: 'branch is behind main', behind: true } : mergedOk) }));
+    check('wf merge refused (behind): the builder brings main in, then it merges', r.out.merged.length === 1 && promptOf(r, 'fix 11.1').includes('normal merge (never rebase, never force-push)'));
+    const h = await runWf('', std(pickSeq([task(12)], []), { merge: { ...mergedOk, merged: false, sha: '', refusal: 'merge freeze window' } }));
+    check('wf merge refused (freeze, red main): held, the task leaves the in-flight set and waits on Jordan, no fix round', h.out.held.length === 1 && !h.labels.some((l) => /^fix/.test(l))
+      && promptOf(h, 'hold 12').includes('set 12 status=blocked depends+=jordan') && /To retry: set status=review/.test(promptOf(h, 'hold 12')));
   }
   {
-    const pa = await runWf('', std(pickSeq([task(13)], []), { work: () => ({ ...built(13), touchesPassApp: true }) }));
-    check('wf Board: a merge that touched pass-app redeploys with pass-app/update.ps1', pa.calls.find((c) => c.opts.label === 'merge 13').prompt.includes('pass-app\\update.ps1'));
-    const one = await runWf('14', std(pickSeq([task(14)])));
-    check('wf single task (/task-start 14): one task, no plan, final gate', /Single-task mode, task 14/.test(one.calls[0].prompt) && one.out.merged.length === 1 && !one.labels.includes('plan') && one.labels.includes('gate (final)'));
-    const pv = await runWf({ repo: 'example-owner/private-site' }, std(() => ({ ...CTX, visibility: 'PRIVATE', paused: false, stop: 'stop', reason: '', state: '', why: '', tasks: [task(16)] })));
+    let reviews = 0;
+    const mv = await runWf('', std(pickSeq([task(13)], []), { review: () => (++reviews === 1 ? { ...ship, head: H2 } : ship) }));
+    check('wf head pin: reviewer and checks saw different commits -> verify again (not a fix round), then merge the reviewed one', mv.out.merged.length === 1 && mv.labels.filter((l) => l === 'review 13').length === 2
+      && !mv.labels.some((l) => /^fix/.test(l)) && promptOf(mv, 'merge 13').includes(`-ExpectHead ${H}`));
+    const always = await runWf('', std(pickSeq([task(14)], []), { review: { ...ship, head: H2 } }));
+    check('wf head pin: a head that keeps moving is held, never merged', always.out.held.length === 1 && !always.labels.some((l) => /^merge/.test(l)));
+  }
+  {
+    let ci = 0;
+    const p1 = await runWf('', std(pickSeq([task(15)], []), { checks: { ...green, testsPass: false, failing: ['Test-X'], tests: 'FAILED: Test-X', ci: 'pending' }, 'ci ': () => (++ci === 1 ? { ...green, testsPass: true, ci: 'green' } : green), fix: built(15) }));
+    check('wf CI pending after a failed suite: the failure is kept (never overwritten to pass), the builder fixes it before any merge',
+      p1.labels.indexOf('fix 15.1') > -1 && p1.labels.indexOf('fix 15.1') < (p1.labels.indexOf('merge 15') === -1 ? Infinity : p1.labels.indexOf('merge 15')) && promptOf(p1, 'fix 15.1').includes('failing suites: Test-X'));
+    const pend = await runWf('', std(pickSeq([task(16)], []), { checks: { ...green, ci: 'pending' }, 'ci ': { ...green, ci: 'pending' } }));
+    check('wf CI pending with suites passing: waits twice more, then holds (waits on Jordan) instead of guessing', pend.out.held.length === 1 && pend.labels.filter((l) => l === 'ci 16').length === 2 && promptOf(pend, 'hold 16').includes('depends+=jordan'));
+  }
+  {
+    const one = await runWf('18', std(pickSeq([task(18)])));
+    check('wf single task (/task-start 18): start checks pause, usage and the lock; one task, no plan, final gate, unlock', /Single-task mode, task 18/.test(one.calls[0].prompt) && one.calls[0].prompt.includes('start 18 --run new --json')
+      && one.out.merged.length === 1 && !one.labels.includes('plan') && one.labels.includes('gate (final)') && one.labels.at(-1) === 'unlock');
+    const ps = await runWf('18', std(() => ({ ...CTX, paused: true, stop: '', reason: 'away', state: 'paused', why: '', run: '', tasks: [] })));
+    check('wf single task: a paused store stops /task-start before any work', ps.out.stopped === 'paused: away' && ps.labels.length === 1);
+    const pv = await runWf({ repo: 'example-owner/private-site' }, std(() => ({ ...CTX, visibility: 'PRIVATE', paused: false, stop: 'stop', reason: '', state: '', why: '', run: '', tasks: [task(16)] })));
     check('wf: refuses a repo that is not public, before any work', /not public \(PRIVATE\)/.test(pv.out.stopped) && pv.labels.join() === 'pick (resume)' && /visibility -q \.visibility/.test(pv.calls[0].prompt));
     check('wf: --repo must be owner/name', (await runWf({ repo: 'nope' }, std(pickSeq([])))).error !== null);
     const bad = await runWf('--lanes two', std(pickSeq([])));
     check('wf: bad arguments fail before any agent runs', bad.error && bad.calls.length === 0);
-    let ci = 0;
-    const pend = await runWf('', std(pickSeq([task(15)], []), { checks: { ...green, ci: 'pending' }, 'ci ': () => (++ci < 9 ? { ...green, ci: 'pending' } : green) }));
-    check('wf CI pending: waits twice more, then holds instead of guessing', pend.out.held.length === 1 && pend.labels.filter((l) => l === 'ci 15').length === 2);
+    check('wf: --max defaults to 40 (the 1000-agent cap)', /lanes: 1, max: 40,/.test(wfSrc));
   }
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

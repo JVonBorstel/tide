@@ -6,18 +6,20 @@
 //   node tools/task.mjs where                                   the store folder and where that choice came from
 //   node tools/task.mjs list [--status s] [--kind k] [--ready]  every task: id, kind, status, ready or what it waits on, title
 //   node tools/task.mjs show <n>                                one file as it is (front matter and body; private text, local only)
-//   node tools/task.mjs next [--lanes N] [--claim] [--resume]   the next ready task(s); lanes never share a path; --claim marks them doing
+//   node tools/task.mjs next [--lanes N] [--claim] [--resume] [--run new|<id>]   the next ready task(s); lanes never share a path; --claim marks them doing
 //   node tools/task.mjs roadmap [--next]                        milestones in roadmap order with their counts; --next = the first open one
 //   node tools/task.mjs new --title t [--kind milestone] [--paths a,b] [--depends 3,jordan] [--milestone m] [--priority 1-9]
 //                           [--order n] [--public-title t] [--status s] [--body text | --body-file f]     a new numbered file
 //   node tools/task.mjs set <n> key=value [key+=item] [key=]    change front matter fields (validated; key= removes an optional field)
 //   node tools/task.mjs note <n> --text line                    append a dated line under "## Log" in the task body
+//   node tools/task.mjs start <n> [--run new|<id>]              one task: pause, usage and lock checks, then claim it (or resume it)
+//   node tools/task.mjs lock acquire|heartbeat --run id|release --run id|release --force|status    one orchestrator at a time
 //   node tools/task.mjs pause --reason text | resume | state    stop the orchestrator at its next pick, or let it pick again
 //   node tools/task.mjs usage                                   the plan usage the orchestrator obeys (go / pause / stop)
 //   node tools/task.mjs check                                   every file valid, every dependency known, no cycles (exit 1 if not)
 // Every command takes --store <dir> and --json (one JSON object on stdout; shape version v: 1, read-only safe for other tools).
 // The store: --store, else $TIDE_TASKS_DIR, else "store" in <state>\tasks.json (state = $BRAIN_KITCHEN, else %LOCALAPPDATA%\brain-kitchen),
-// else <home>\gemini-brain\projects\tide\tasks. Exit: 0 fine, 1 not found or check failed, 2 bad arguments, 3 next: paused or usage stop.
+// else <home>\gemini-brain\projects\tide\tasks. Exit: 0 fine, 1 not found or check failed, 2 bad arguments, 3 next, start, lock: paused, usage stop or locked.
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import { fileURLToPath } from 'node:url';
 
 export const TASK_STATUS = ['todo', 'doing', 'review', 'blocked', 'done', 'dropped'];
@@ -308,6 +310,40 @@ export function writePause(dir, paused, reason = '', at = new Date().toISOString
   fs.mkdirSync(dir, { recursive: true });
   writeAtomic(pauseFile(dir), `${JSON.stringify({ paused, reason, at }, null, 2)}\n`);
 }
+// ---- one orchestrator at a time: a lock file with a heartbeat (every pick, check and merge beats it) ------------------------------
+const lockFile = (dir) => path.join(dir, '.orchestrator.lock');
+export const LOCK_STALE_MINUTES = 90;
+export function readLock(dir) {
+  const f = lockFile(dir); if (!fs.existsSync(f)) return null;
+  try { const j = JSON.parse(fs.readFileSync(f, 'utf8')); if (typeof j.run === 'string' && j.run) return { run: j.run, at: j.at || '', heartbeat: j.heartbeat || j.at || '' }; } catch { /* unreadable: judged by its file time below */ }
+  return { run: '', at: '', heartbeat: fs.statSync(f).mtime.toISOString() };
+}
+const ageMin = (iso, now) => { const t = Date.parse(iso); return Number.isFinite(t) ? (now.getTime() - t) / 60000 : Infinity; };
+const lockText = (run, at, beat) => `${JSON.stringify({ run, at, heartbeat: beat }, null, 2)}\n`;
+/** Take the lock (exclusive create). A lock whose heartbeat is older than staleMinutes is a run that died (usage cap, closed session): taken over, and said so. */
+export function lockAcquire(dir, { now = new Date(), staleMinutes = LOCK_STALE_MINUTES } = {}) {
+  fs.mkdirSync(dir, { recursive: true });
+  const run = `${now.toISOString().replace(/\D/g, '').slice(0, 14)}-${Math.random().toString(36).slice(2, 8)}`;
+  const text = lockText(run, now.toISOString(), now.toISOString());
+  try { fs.writeFileSync(lockFile(dir), text, { encoding: 'utf8', flag: 'wx' }); return { ok: true, run, tookOver: '' }; } catch (e) { if (e.code !== 'EEXIST') throw e; }
+  const cur = readLock(dir); const age = ageMin(cur.heartbeat, now);
+  if (age < staleMinutes) return { ok: false, run: '', why: `another orchestrator is running (run ${cur.run || 'unknown'}, last heartbeat ${Math.round(age)} min ago); if none is, run: node tools/task.mjs lock release --force` };
+  writeAtomic(lockFile(dir), text);
+  return { ok: true, run, tookOver: `took over a stale lock (run ${cur.run || 'unknown'}, silent for ${Math.round(age)} min)` };
+}
+export function lockHeartbeat(dir, run, { now = new Date() } = {}) {
+  const cur = readLock(dir);
+  if (!cur) return { ok: false, why: `no orchestrator lock: run ${run} lost it` };
+  if (cur.run !== run) return { ok: false, why: `the lock belongs to run ${cur.run || 'unknown'}, not ${run}` };
+  writeAtomic(lockFile(dir), lockText(run, cur.at, now.toISOString()));
+  return { ok: true, why: 'heartbeat' };
+}
+export function lockRelease(dir, run, force = false) {
+  const cur = readLock(dir); if (!cur) return { ok: true, why: 'no lock' };
+  if (!force && cur.run !== run) return { ok: false, why: `the lock belongs to run ${cur.run || 'unknown'}, not ${run || '(none given)'}` };
+  fs.rmSync(lockFile(dir), { force: true }); return { ok: true, why: `released run ${cur.run || 'unknown'}` };
+}
+
 /** Jordan's rule: the weekly limit at 95% stops; a full 5-hour window only pauses (a rerun after the reset continues). */
 export function usageVerdict(file, { weeklyStop = 0.95, fiveHourPause = 1.0 } = {}) {
   let u;
@@ -337,6 +373,7 @@ export function createTask(dir, data, body = '') {
   }
   throw new Error('could not get a free task number after 50 tries');
 }
+const STRING_KEYS = ['title', 'public_title', 'merged', 'head', 'branch', 'run', 'claimed_by'];
 /** Apply "key=value", "key+=item" and "key=" (remove) edits to one task, validated before anything is written. */
 export function setFields(store, id, edits) {
   const t = store.tasks.find((x) => x.id === id);
@@ -350,6 +387,7 @@ export function setFields(store, id, edits) {
     if (k === 'id') throw new Error('the number is the file name; it cannot be set');
     if (op === '=' && raw === '') { if (k === 'title') throw new Error('title cannot be removed'); delete data[k]; continue; }
     const v = parseValue(raw); if (v.error) throw new Error(`${k}: ${v.error}`);
+    if (STRING_KEYS.includes(k) && typeof v.value !== 'string' && !Array.isArray(v.value)) v.value = raw.trim(); // a merge sha of only digits stays text, leading zeros too
     if (op === '+=') { const cur = data[k] === undefined ? [] : (Array.isArray(data[k]) ? data[k] : [data[k]]); const add = Array.isArray(v.value) ? v.value : [v.value]; data[k] = [...cur, ...add.filter((x) => !cur.includes(x))]; }
     else data[k] = v.value;
   }
@@ -370,7 +408,7 @@ export function addNote(store, id, text, at = new Date().toISOString()) {
 }
 
 // ---- command line -----------------------------------------------------------------------------------------------------------------
-const VALUE_FLAGS = ['--store', '--status', '--kind', '--lanes', '--reason', '--title', '--paths', '--depends', '--milestone', '--priority', '--order', '--public-title', '--body', '--body-file', '--wip', '--text'];
+const VALUE_FLAGS = ['--store', '--status', '--kind', '--lanes', '--reason', '--title', '--paths', '--depends', '--milestone', '--priority', '--order', '--public-title', '--body', '--body-file', '--wip', '--text', '--run', '--stale-minutes'];
 export function parseArgs(argv) {
   const flags = {}; const pos = [];
   for (let i = 0; i < argv.length; i++) {
@@ -396,6 +434,22 @@ export function main(argv, io = {}) {
   try { where = resolveStore(/** @type {string} */ (flags.store || ''), env, home); } catch (e) { say(`task: ${e.message}`); return 2; }
   const dir = where.dir;
   const num = (s) => { const n = Number(String(s).replace(/^#/, '')); return Number.isInteger(n) && n > 0 ? n : null; };
+  const shape = (t, status) => ({ id: t.id, title: t.title, public_title: t.public_title, paths: t.paths, priority: t.priority, milestone: t.milestone, status, resume: !!t.resume, pr: t.pr ?? null, branch: t.branch ?? null, rounds: t.rounds ?? 0 });
+  const claimEdits = (run) => ['status=doing', 'claimed_by=orchestrator', ...(run ? [`run=${run}`] : [])];
+  // pause, then usage, then the lock (--run new takes it; --run <id> must still hold it and beats it). Returns { stop: [json, text] } or the run.
+  const preflight = () => {
+    const pause = readPause(dir); const usage = usageVerdict(path.join(stateDir(env, home), 'plan-usage.json'));
+    if (pause.paused) return { stop: [{ paused: true, stop: '', reason: pause.reason, state: 'paused', usage, tasks: [] }, `PAUSED: ${pause.reason || 'no reason given'} (node tools/task.mjs resume)`] };
+    if (usage.verdict !== 'go') return { stop: [{ paused: false, stop: usage.verdict, reason: usage.why, state: usage.verdict, usage, tasks: [] }, `${usage.verdict.toUpperCase()}: ${usage.why}`] };
+    if (flags.run === undefined) return { stop: null, run: '', took: '', usage };
+    if (typeof flags.run !== 'string') return { stop: [{ paused: false, stop: 'stop', reason: '--run needs "new" or a run id', state: 'locked', usage, tasks: [] }, 'task: --run needs "new" or a run id'] };
+    if (flags.run === 'new') {
+      const l = lockAcquire(dir); if (!l.ok) return { stop: [{ paused: false, stop: 'stop', reason: l.why, state: 'locked', usage, tasks: [] }, `LOCKED: ${l.why}`] };
+      return { stop: null, run: l.run, took: l.tookOver, usage };
+    }
+    const h = lockHeartbeat(dir, flags.run); if (!h.ok) return { stop: [{ paused: false, stop: 'stop', reason: h.why, state: 'locked', usage, tasks: [] }, `LOCKED: ${h.why}`] };
+    return { stop: null, run: flags.run, took: '', usage };
+  };
   try {
     switch (cmd) {
       case 'where': out({ store: dir, source: where.source, exists: fs.existsSync(dir) }, `${dir}  (from ${where.source}${fs.existsSync(dir) ? '' : '; does not exist yet'})`); return 0;
@@ -419,17 +473,38 @@ export function main(argv, io = {}) {
         if (!Number.isInteger(lanes) || lanes < 1) { say('task: --lanes must be a whole number of 1 or more'); return 2; }
         const wip = flags.wip === undefined ? WIP_LIMIT : Number(flags.wip);
         const capped = lanes > wip ? `--lanes ${lanes} is above the WIP limit; using ${wip}` : '';
-        const pause = readPause(dir);
-        const usage = usageVerdict(path.join(stateDir(env, home), 'plan-usage.json'));
-        if (pause.paused) { out({ paused: true, reason: pause.reason, state: 'paused', usage, tasks: [] }, `PAUSED: ${pause.reason || 'no reason given'} (node tools/task.mjs resume)`); return 3; }
-        if (usage.verdict !== 'go') { out({ paused: false, stop: usage.verdict, reason: usage.why, state: usage.verdict, usage, tasks: [] }, `${usage.verdict.toUpperCase()}: ${usage.why}`); return 3; }
+        const pf = preflight(); if (pf.stop) { out(pf.stop[0], pf.stop[1]); return 3; }
+        const { usage, run } = pf;
         const store = loadStore(dir); const rows = analyze(store);
         const pick = pickNext(rows, { lanes, wip, resume: !!flags.resume });
-        if (flags.claim) for (const t of pick.tasks.filter((x) => !x.resume)) setFields(store, t.id, ['status=doing', 'claimed_by=orchestrator']);
-        const tasks = pick.tasks.map((t) => ({ id: t.id, title: t.title, public_title: t.public_title, paths: t.paths, priority: t.priority, milestone: t.milestone, status: flags.claim && !t.resume ? 'doing' : t.status, resume: !!t.resume, pr: t.pr ?? null, branch: t.branch ?? null, rounds: t.rounds ?? 0 }));
-        out({ paused: false, usage, tasks, skipped: pick.skipped, state: pick.state, why: pick.why, note: capped, malformed: store.bad.length },
+        if (flags.claim) for (const t of pick.tasks.filter((x) => !x.resume)) setFields(store, t.id, claimEdits(run));
+        const tasks = pick.tasks.map((t) => shape(t, flags.claim && !t.resume ? 'doing' : t.status));
+        out({ paused: false, stop: '', reason: '', run, tookOver: pf.took, usage, tasks, skipped: pick.skipped, state: pick.state, why: pick.why, note: capped, malformed: store.bad.length },
           [capped, `${pick.why} (usage: ${usage.why})`, ...tasks.map((t) => `${t.resume ? 'RESUME' : 'NEXT'} ${t.id}: ${t.title}  [${t.paths.join(', ') || 'no paths: runs alone'}]`), ...pick.skipped.map((s) => `  skipped ${s.id}: ${s.why}`)].filter(Boolean).join('\n'));
         return 0;
+      }
+      case 'start': { // one task (/task-start): the same pause, usage and lock checks as next, then claim it or resume it
+        const id = num(rest[0]); if (!id) { say('task: start needs a task number'); return 2; }
+        const pf = preflight(); if (pf.stop) { out(pf.stop[0], pf.stop[1]); return 3; }
+        const store = loadStore(dir); const t = analyze(store).find((x) => x.id === id);
+        let tasks = []; let state = 'empty'; let why;
+        if (!t) { const b = store.bad.find((x) => x.id === id); why = b ? `task ${id} is malformed: ${b.error}` : `task ${id} not found in ${dir}`; }
+        else if (t.kind !== 'task') why = `${id} is a milestone, not a task`;
+        else if (t.status === 'doing' || t.status === 'review') { tasks = [{ ...shape(t, t.status), resume: true }]; state = 'resume'; why = `resuming task ${id} (${t.status})`; }
+        else if (t.ready) { setFields(store, id, claimEdits(pf.run)); tasks = [shape(t, 'doing')]; state = 'picked'; why = `claimed task ${id}`; }
+        else why = `task ${id} is ${t.status}${t.waits.length ? `, waits on: ${t.waits.join(', ')}` : ''}`;
+        out({ paused: false, stop: '', reason: '', run: pf.run, tookOver: pf.took, usage: pf.usage, tasks, state, why }, `${why}${pf.run ? ` (run ${pf.run})` : ''}`);
+        return tasks.length ? 0 : 1;
+      }
+      case 'lock': {
+        const sub = rest[0]; const stale = flags['stale-minutes'] === undefined ? LOCK_STALE_MINUTES : Number(flags['stale-minutes']);
+        if (!Number.isFinite(stale) || stale <= 0) { say('task: --stale-minutes must be a number above 0'); return 2; }
+        const run = typeof flags.run === 'string' ? flags.run : '';
+        if (sub === 'acquire') { const l = lockAcquire(dir, { staleMinutes: stale }); out(l, l.ok ? `locked: run ${l.run}${l.tookOver ? ` (${l.tookOver})` : ''}` : `LOCKED: ${l.why}`); return l.ok ? 0 : 3; }
+        if (sub === 'heartbeat') { if (!run) { say('task: lock heartbeat needs --run <id>'); return 2; } const h = lockHeartbeat(dir, run); out(h, h.ok ? `heartbeat: run ${run}` : `LOST: ${h.why}`); return h.ok ? 0 : 3; }
+        if (sub === 'release') { if (!run && !flags.force) { say('task: lock release needs --run <id> or --force'); return 2; } const r = lockRelease(dir, run, !!flags.force); out(r, r.ok ? r.why : `NOT RELEASED: ${r.why}`); return r.ok ? 0 : 1; }
+        if (sub === 'status') { const l = readLock(dir); out({ lock: l }, l ? `locked by run ${l.run || 'unknown'}, last heartbeat ${l.heartbeat}` : 'not locked'); return 0; }
+        say('task: lock acquire | heartbeat --run <id> | release --run <id> | release --force | status'); return 2;
       }
       case 'roadmap': {
         const rows = analyze(loadStore(dir));
@@ -470,7 +545,7 @@ export function main(argv, io = {}) {
         out({ ok: problems.length === 0, problems, files: store.tasks.length + store.bad.length }, problems.length ? problems.map((p) => `PROBLEM ${p}`).join('\n') : `ok: ${store.tasks.length} file(s), no problems`);
         return problems.length ? 1 : 0;
       }
-      default: say(`task: unknown command ${cmd} (where, list, show, next, roadmap, new, set, note, pause, resume, state, usage, check)`); return 2;
+      default: say(`task: unknown command ${cmd} (where, list, show, next, start, lock, roadmap, new, set, note, pause, resume, state, usage, check)`); return 2;
     }
   } catch (e) { say(`task: ${e.message}`); return 1; }
 }
