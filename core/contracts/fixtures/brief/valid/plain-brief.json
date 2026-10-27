@@ -1,0 +1,13 @@
+{
+  "v": "1.0",
+  "wo": "WO-2004",
+  "stream": "DEMO",
+  "plan": "plans/example-plan.md#slice-2",
+  "decision": "none",
+  "repo": "example-owner/example-repo",
+  "branch": "wo/2004-retry-cap",
+  "base": "main",
+  "worktree": "wt/wo-2004-retry-cap",
+  "budget": "40 turns",
+  "depth": 0
+}

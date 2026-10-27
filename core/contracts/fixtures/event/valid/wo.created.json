@@ -1,0 +1,16 @@
+{
+  "v": "1.0",
+  "seq": 1,
+  "at": "2030-01-07T09:01:00Z",
+  "actor": "crew:lead-1",
+  "kind": "wo.created",
+  "wo": "WO-2001",
+  "data": {
+    "goal": "Example: show a sunrise colour in the sky of the demo scene",
+    "stream": "DEMO",
+    "plan": "plans/example-plan.md#slice-2",
+    "repo": "example-owner/example-repo",
+    "private": false
+  },
+  "proof": null
+}

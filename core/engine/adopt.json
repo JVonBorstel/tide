@@ -1,0 +1,7 @@
+{
+  "_about": "adopt's limits (core/engine/adopt.mjs). maxStreams: at most this many build streams open at once (build-way 3.3, Jordan's answer 9.3). maxCards: a stream with this many cards waiting on Jordan starts no new slice. artPaths: work touching these needs an answered decision first (mock-ups first, build-way 9.3). boardPaths: work touching these merges to main with no stack (base main, stack depth 0). Globs: * is one path part, ** any number.",
+  "maxStreams": 4,
+  "maxCards": 3,
+  "artPaths": ["pass-app/public/**"],
+  "boardPaths": ["pass-app/**"]
+}

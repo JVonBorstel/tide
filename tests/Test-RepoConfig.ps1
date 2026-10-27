@@ -52,14 +52,62 @@ try {
         'commitBudget lines string' = '{"commitBudget":{"lines":"600"}}'
         'commitBudget exclude is a string' = '{"commitBudget":{"exclude":"fixtures"}}'
         'commitBudget exclude entry ..'    = '{"commitBudget":{"exclude":["../x"]}}'
+        'site unknown code'         = '{"site":"XX"}'
+        'site lower case'           = '{"site":"td"}'
+        'site with spaces'          = '{"site":" TD"}'
+        'site empty'                = '{"site":""}'
+        'site is a number'          = '{"site":7}'
+        'site is a list'            = '{"site":["TD"]}'
+        'site is an object'         = '{"site":{"code":"TD"}}'
+        'inspector is a string'     = '{"inspector":"full"}'
+        'inspector is a list'       = '{"inspector":[{"local":"full"}]}'
+        'inspector local unknown'   = '{"inspector":{"local":"some"}}'
+        'inspector ci unknown'      = '{"inspector":{"ci":"slow"}}'
+        'inspector local a number'  = '{"inspector":{"local":1}}'
+        'inspector key misspelt'    = '{"inspector":{"locl":"impacted","ci":"full"}}'
+        'inspector impacted, ci quick' = '{"inspector":{"local":"impacted","ci":"quick"}}'
+        'inspector impacted, no ci' = '{"inspector":{"local":"impacted"}}'
+        'inspector ciTests empty'   = '{"inspector":{"ci":"full","ciTests":[]}}'
+        'inspector ciTests a string' = '{"inspector":{"ci":"full","ciTests":"tests/Test-A.ps1"}}'
+        'inspector ciTests ..'      = '{"inspector":{"ci":"full","ciTests":["../Test-A.ps1"]}}'
+        'inspector ciTests not .ps1' = '{"inspector":{"ci":"full","ciTests":["tests/run.py"]}}'
     }
+    # ---- site (multi-site TD-2): known codes only; no key = exactly today's config ------------------------------------------------
+    Check 'site: absent file has no Site' ($d.Site -eq '')
+    foreach ($code in 'TD', 'GW', 'JH', 'ZG') { Check "site: known code $code is read" ((Cfg ('{"site":"' + $code + '"}')).Site -ceq $code) }
+    $base = '"tests":["tests/**/Test-*.ps1"],"testTimeoutSec":900,"github":"o/n","protected":["docs/"],"commitBudget":{"files":8,"lines":400,"exclude":["fixtures"],"bySize":{"S":{"files":3}}},"roadmap":"map/roadmap.json","freeze":[{"from":"2026-10-27T00:00","to":"2026-10-28T18:00","why":"demo"}]'
+    $without = Cfg "{$base}"; $with = Cfg "{$base,""site"":""TD""}"
+    $diff = @(foreach ($pn in $without.PSObject.Properties.Name) { if ((ConvertTo-Json -Depth 6 -Compress -InputObject $without.$pn) -cne (ConvertTo-Json -Depth 6 -Compress -InputObject $with.$pn)) { $pn } })
+    Check 'site: a config without the key reads every other key exactly as with it (only Site differs)' ($without.Site -eq '' -and $with.Site -eq 'TD' -and ($diff -join ',') -eq 'Site')
+    $m = Throws { Cfg '{"site":"XX"}' }
+    Check 'site: an unknown code is refused with a reason naming the file and the known codes' ($m -match [regex]::Escape((Join-Path $cfgDir 'kitchen.repo.json')) -and $m -match "'site' 'XX' is not a known Site code" -and $m -match 'GW, JH, TD, ZG')
+    Check "site: brain-monitor's own kitchen.repo.json says TD" ((Read-RepoConfig (Join-Path $PSScriptRoot '..')).Site -ceq 'TD')
+    # ---- inspector (multi-site TD-12): local full|impacted, ci quick|full; no block = local full, ci quick (today) ---------------------
+    $ni = $d.Inspector
+    Check 'inspector: absent file = not given, local full, ci quick, no CI suites' (-not $ni.Given -and $ni.Local -eq 'full' -and $ni.Ci -eq 'quick' -and $ni.CiTests.Count -eq 0)
+    $nb = (Cfg '{"github":"a/b"}').Inspector
+    Check 'inspector: a file with no block = the same plan as no file' (-not $nb.Given -and $nb.Local -eq 'full' -and $nb.Ci -eq 'quick' -and $nb.CiTests.Count -eq 0)
+    $withI = Cfg "{$base,""inspector"":{""local"":""full"",""ci"":""quick""}}"
+    $diffI = @(foreach ($pn in $without.PSObject.Properties.Name) { if ((ConvertTo-Json -Depth 6 -Compress -InputObject $without.$pn) -cne (ConvertTo-Json -Depth 6 -Compress -InputObject $withI.$pn)) { $pn } })
+    Check 'inspector: a block that says today''s plan changes nothing but Given' (($diffI -join ',') -eq 'Inspector' -and $withI.Inspector.Given -and $withI.Inspector.Local -eq 'full' -and $withI.Inspector.Ci -eq 'quick')
+    $pub = (Cfg '{"tests":["tests/**/Test-*.ps1"],"inspector":{"Local":"Impacted","CI":"FULL","_why":"public Tower"}}').Inspector
+    Check 'inspector: public plan read (keys and values without regard to case, _ notes skipped); CI suites default to the tests list' ($pub.Given -and $pub.Local -eq 'impacted' -and $pub.Ci -eq 'full' -and ($pub.CiTests -join '|') -eq 'tests/**/Test-*.ps1')
+    $own = (Cfg '{"inspector":{"ci":"full","ciTests":["tests\\Test-Lint.ps1","tests/Test-Names.ps1","tests/Test-Lint.ps1"]}}').Inspector
+    Check 'inspector: ciTests read, backslashes become /, duplicates dropped; local stays full' (($own.CiTests -join '|') -eq 'tests/Test-Lint.ps1|tests/Test-Names.ps1' -and $own.Local -eq 'full')
+    $q = (Cfg '{"inspector":{"ci":"quick","ciTests":["tests/Test-Lint.ps1"]}}').Inspector
+    Check 'inspector: ciTests may be written ahead while ci is quick' ($q.Ci -eq 'quick' -and ($q.CiTests -join '|') -eq 'tests/Test-Lint.ps1')
+    $m = Throws { Cfg '{"inspector":{"local":"impacted","ci":"quick"}}' }
+    Check 'inspector: impacted with ci quick is refused, naming the file and why' ($m -match [regex]::Escape((Join-Path $cfgDir 'kitchen.repo.json')) -and $m -match 'needs ''inspector.ci'' "full"')
+    $bmI = (Read-RepoConfig (Join-Path $PSScriptRoot '..')).Inspector
+    Check "inspector: tide's own block is local full, ci quick (ci.yml's quick checks; the public default is the Owner's call)" ($bmI.Given -and $bmI.Local -eq 'full' -and $bmI.Ci -eq 'quick')
     $c = Cfg '{"commitBudget":{"files":12,"lines":700}}'
     Check 'commitBudget: files and lines read' ($c.CommitFiles -eq 12 -and $c.CommitLines -eq 700)
     Check 'commitBudget: exclude read, backslashes become /, absent = none' (((Cfg '{"commitBudget":{"exclude":["fixtures","evals\\cases","fixtures"]}}').CommitExclude -join '|') -eq 'fixtures|evals/cases' -and (Cfg '{"commitBudget":{"files":6}}').CommitExclude.Count -eq 0)
     Check 'commitBudget: absent means the station default (0 here)' ((Cfg '{"github":"a/b"}').CommitFiles -eq 0 -and (Cfg '{"commitBudget":{"files":6}}').CommitLines -eq 0)
-    foreach ($b in $bad.GetEnumerator()) {
-        $m = Throws { Cfg $b.Value }
-        Check "bad config fails closed with a clear message: $($b.Key)" ($m -match 'kitchen\.repo\.json' -and $m.Length -gt 40)
+    # (the loop variable is not $b: Throws's own parameter is $b, so { Cfg $b.Value } would read an empty file for every case)
+    foreach ($bc in $bad.GetEnumerator()) {
+        $m = Throws { Cfg $bc.Value }
+        Check "bad config fails closed with a clear message: $($bc.Key)" ($m -match 'kitchen\.repo\.json' -and $m.Length -gt 40 -and ($bc.Key -eq 'array root' -or $m -notmatch 'must be a JSON object'))
     }
     Check 'the message names the key and the file' ((Throws { Cfg '{"testTimeoutSec":"600"}' }) -match "'testTimeoutSec' must be a whole number" -and (Throws { Cfg '{"testTimeoutSec":"600"}' }) -match [regex]::Escape($cfgDir))
     # globs: relative and inside the repo
@@ -97,7 +145,7 @@ try {
     Check 'no config: default pattern runs tests\Test-*.ps1 only, ALL PASS' ($r.Code -eq 0 -and $r.Out -match 'PASS\s+Test-Top' -and $r.Out -notmatch 'Test-X' -and $r.Out -match 'tests: ALL PASS' -and $r.Out -notmatch 'repo settings')
 
     # with a config in the main checkout: nested suites found, settings announced
-    Put "$a\kitchen.repo.json" '{"tests":["tests/**/Test-*.ps1"],"github":"o/n","protected":[".claude/**","docs/"]}'
+    Put "$a\kitchen.repo.json" '{"tests":["tests/**/Test-*.ps1"],"github":"o/n","protected":[".claude/**","docs/"],"site":"GW"}'
     G $a add -A; G $a commit -q -m 'repo config'
     $r = Run 'tests' @('-Dir', $a)
     Check 'config: nested suite is found next to the top one, ALL PASS' ($r.Code -eq 0 -and $r.Out -match 'PASS\s+Test-Top' -and $r.Out -match 'PASS\s+Test-X' -and $r.Out -match 'tests: ALL PASS')

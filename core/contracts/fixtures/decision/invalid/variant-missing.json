@@ -1,0 +1,35 @@
+{
+  "why": "a choose card has one mock-up per option",
+  "expect": "/variants: rule",
+  "doc": {
+    "v": "1.0",
+    "id": "D-8",
+    "wo": "WO-2001",
+    "kind": "choose",
+    "ask": "Which sunrise look?",
+    "options": [
+      "A",
+      "B",
+      "C"
+    ],
+    "recommended": "A",
+    "why": "The tests and the review are green.",
+    "answer": null,
+    "note": null,
+    "at": "2030-01-07T10:00:00Z",
+    "answeredAt": null,
+    "via": null,
+    "variants": [
+      {
+        "option": "A",
+        "title": "Warm orange band",
+        "preview": "mockups/WO-2001/a.png"
+      },
+      {
+        "option": "B",
+        "title": "Soft pink fade",
+        "preview": "mockups/WO-2001/b.png"
+      }
+    ]
+  }
+}

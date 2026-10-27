@@ -1,0 +1,11 @@
+{
+  "why": "requestId makes retries safe; it is 8-64 characters",
+  "expect": "/requestId: pattern",
+  "doc": {
+    "decision": "D-1",
+    "answer": "Yes",
+    "note": null,
+    "via": "board",
+    "requestId": "r1"
+  }
+}

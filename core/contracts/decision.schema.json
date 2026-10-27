@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tide.example/contracts/v1/decision.schema.json",
+  "title": "Decision: one card for Jordan",
+  "description": "A question only Jordan answers, with the recommended answer first (build-way 3.2 and 4.2). Open while answer is null. His tap is a decision.answered event; this object is the projection. Cross-field rules (checked by validate.mjs): recommended and answer are among options.",
+  "type": "object",
+  "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
+    "id": { "$ref": "common.schema.json#/$defs/decisionId" },
+    "wo": { "anyOf": [{ "$ref": "common.schema.json#/$defs/woId" }, { "type": "null" }] },
+    "kind": { "$ref": "common.schema.json#/$defs/decisionKind" },
+    "ask": { "description": "The one question, in plain words.", "type": "string", "minLength": 1, "maxLength": 300 },
+    "options": {
+      "description": "The answers he can tap, recommended first. merge, look, close, resume, publish and install are Yes/Hold/No; choose is A/B/C.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 40 },
+      "minItems": 2,
+      "maxItems": 6,
+      "uniqueItems": true
+    },
+    "recommended": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "why": { "description": "One line: why the recommended answer.", "anyOf": [{ "$ref": "common.schema.json#/$defs/text" }, { "type": "null" }] },
+    "variants": {
+      "description": "choose cards only: one mock-up per option (mock-ups first for art and Board work).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "option": { "type": "string", "minLength": 1, "maxLength": 40 },
+          "title": { "$ref": "common.schema.json#/$defs/text" },
+          "preview": { "$ref": "common.schema.json#/$defs/relPath" }
+        },
+        "required": ["option", "title", "preview"],
+        "additionalProperties": false
+      },
+      "minItems": 2,
+      "maxItems": 3
+    },
+    "answer": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 40 }, { "type": "null" }] },
+    "note": { "anyOf": [{ "type": "string", "maxLength": 2000 }, { "type": "null" }] },
+    "at": { "description": "When the card was asked.", "$ref": "common.schema.json#/$defs/time" },
+    "answeredAt": { "anyOf": [{ "$ref": "common.schema.json#/$defs/time" }, { "type": "null" }] },
+    "via": { "anyOf": [{ "enum": ["board", "/decide"] }, { "type": "null" }] },
+    "standing": { "description": "true for a standing yes (build-way section 9): it covers every later case of the same kind until withdrawn.", "type": "boolean" }
+  },
+  "required": ["v", "id", "wo", "kind", "ask", "options", "recommended", "answer", "note", "at", "answeredAt", "via"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "answer": { "type": "string" } } },
+      "then": { "properties": { "answeredAt": { "$ref": "common.schema.json#/$defs/time" }, "via": { "enum": ["board", "/decide"] } } },
+      "else": { "properties": { "answeredAt": { "type": "null" }, "via": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "choose" } } },
+      "then": { "required": ["variants"], "properties": { "options": { "maxItems": 3 } } },
+      "else": { "not": { "required": ["variants"] } }
+    }
+  ]
+}

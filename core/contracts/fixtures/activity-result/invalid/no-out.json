@@ -1,0 +1,10 @@
+{
+  "why": "the output tail is always returned",
+  "expect": "/out: required",
+  "doc": {
+    "v": "1.0",
+    "ok": true,
+    "exit": 0,
+    "proof": null
+  }
+}

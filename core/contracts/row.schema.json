@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tide.example/contracts/v1/row.schema.json",
+  "title": "Row: one work order in the ledger view",
+  "description": "The ledger is a view over the events, one row per work order (build-way 3.1). Generated only, never hand-edited. Exported as ledger.json items while old readers exist.",
+  "type": "object",
+  "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
+    "id": { "$ref": "common.schema.json#/$defs/woId" },
+    "alias": { "anyOf": [{ "$ref": "common.schema.json#/$defs/yardAlias" }, { "type": "null" }] },
+    "goal": { "$ref": "common.schema.json#/$defs/text" },
+    "stream": { "$ref": "common.schema.json#/$defs/stream" },
+    "owner": { "$ref": "common.schema.json#/$defs/owner" },
+    "plan": { "anyOf": [{ "$ref": "common.schema.json#/$defs/planRef" }, { "type": "null" }] },
+    "decision": { "anyOf": [{ "$ref": "common.schema.json#/$defs/decisionId" }, { "type": "null" }] },
+    "repo": { "anyOf": [{ "$ref": "common.schema.json#/$defs/repo" }, { "type": "null" }] },
+    "branch": { "anyOf": [{ "$ref": "common.schema.json#/$defs/branch" }, { "type": "null" }] },
+    "base": { "anyOf": [{ "$ref": "common.schema.json#/$defs/branch" }, { "type": "null" }] },
+    "pr": { "anyOf": [{ "$ref": "common.schema.json#/$defs/prRef" }, { "type": "null" }] },
+    "stackParent": {
+      "description": "The work order this one is stacked on. Board and art work have none (flags, not stacks).",
+      "anyOf": [{ "$ref": "common.schema.json#/$defs/woId" }, { "type": "null" }]
+    },
+    "stage": { "$ref": "common.schema.json#/$defs/stage" },
+    "state": { "$ref": "common.schema.json#/$defs/state" },
+    "blockedOn": { "description": "What it waits on, in plain words, or null.", "anyOf": [{ "$ref": "common.schema.json#/$defs/text" }, { "type": "null" }] },
+    "next": { "description": "What happens next and when, or null.", "anyOf": [{ "$ref": "common.schema.json#/$defs/text" }, { "type": "null" }] },
+    "ageH": { "description": "Hours since wo.created.", "type": "number", "minimum": 0 },
+    "stageAgeH": { "description": "Hours since the current stage was entered.", "type": "number", "minimum": 0 },
+    "attempts": { "type": "integer", "minimum": 0 },
+    "dod": { "$ref": "common.schema.json#/$defs/dod" },
+    "brief": { "anyOf": [{ "$ref": "common.schema.json#/$defs/relPath" }, { "type": "null" }] },
+    "report": { "anyOf": [{ "$ref": "common.schema.json#/$defs/relPath" }, { "type": "null" }] },
+    "proof": { "x-local-only": true, "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 500 }, { "type": "null" }] },
+    "lastSeq": { "description": "The last event folded into this row.", "type": "integer", "minimum": 1 }
+  },
+  "required": ["v", "id", "goal", "stream", "owner", "plan", "decision", "branch", "base", "pr", "stackParent", "stage", "state", "blockedOn", "next",
+    "ageH", "stageAgeH", "attempts", "dod", "brief", "report", "proof", "lastSeq"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "description": "Shipped needs proof on main: a status is never trusted alone.",
+      "if": { "properties": { "state": { "const": "shipped" } } },
+      "then": { "properties": { "proof": { "type": "string" }, "stage": { "enum": ["merged", "docs", "closed"] } } }
+    },
+    {
+      "description": "A row waiting on Jordan is owned by Jordan and says what he is asked.",
+      "if": { "properties": { "state": { "const": "waiting-on-jordan" } } },
+      "then": { "properties": { "owner": { "const": "jordan" }, "blockedOn": { "type": "string" } } }
+    },
+    {
+      "description": "Merged and later stages carry the merge proof.",
+      "if": { "properties": { "stage": { "enum": ["merged", "docs", "closed"] } } },
+      "then": { "properties": { "proof": { "type": "string" } } }
+    }
+  ]
+}

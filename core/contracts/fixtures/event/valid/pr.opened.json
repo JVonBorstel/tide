@@ -1,0 +1,16 @@
+{
+  "v": "1.0",
+  "seq": 6,
+  "at": "2030-01-07T09:06:00Z",
+  "actor": "github",
+  "kind": "pr.opened",
+  "wo": "WO-2001",
+  "data": {
+    "pr": "example#41",
+    "branch": "wo/2001-sunrise",
+    "base": "main",
+    "head": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+    "title": "WO-2001: sunrise colour in the demo sky"
+  },
+  "proof": "https://github.com/example-owner/example-repo/pull/41"
+}

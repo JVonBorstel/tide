@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tide.example/contracts/v1/api-decide-result.schema.json",
+  "title": "POST /api/decide: the answer",
+  "description": "ok: the decision.answered event that was written (or, for a repeated requestId, the one written the first time, with duplicate true). Errors: unauthorized, unknown-card, already-answered, bad-answer (not one of the card's options), bad-request.",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "ok": { "const": true },
+        "event": {
+          "allOf": [
+            { "$ref": "event.schema.json" },
+            { "properties": { "kind": { "const": "decision.answered" } } }
+          ]
+        },
+        "duplicate": { "type": "boolean" }
+      },
+      "required": ["ok", "event", "duplicate"],
+      "additionalProperties": false
+    },
+    { "$ref": "common.schema.json#/$defs/apiError" }
+  ]
+}
