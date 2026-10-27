@@ -271,6 +271,10 @@ problems = steps that could not run or failed, in plain words. Never edit code, 
 // ---- PLAN ---------------------------------------------------------------------------------------------------------------------------
 function planPrompt() {
   return `Plan step for the task store (private; ${ctx.store}). Nothing is ready to work.
+0. Blocked tasks first: for each task with status "blocked" (\`${cli()} list --status blocked\`), read what its body says it waits for
+   (for example "Unblock when PR #40 merges"). If that is now true (check it: \`gh pr view <n> -R ${O.repo} --json state\`), run
+   \`${cli()} set <id> status=todo\` and \`${cli()} note <id> --text "unblocked: <what changed>"\`. If any task was unblocked, return
+   milestone=0, raised=[those ids], milestoneDone=false, why="unblocked" and stop here.
 1. \`${cli()} roadmap --next --json\`. If "next" is null: return milestone=0, raised=[], milestoneDone=false, why = the waiting list in plain words.
 2. Read that milestone (\`${cli()} show <id>\`) and what its body points to (plan files, sections), the tasks it already has
    (\`${cli()} list --json\`, those with that milestone), the repo as it is now (\`git -C ${ctx.checkout} log --oneline -15 origin/main\`, \`gh pr list -R ${O.repo}\`).
