@@ -49,6 +49,17 @@ try {
 
     # 6. the real trial (a copy of pass-app on spare ports against a private kitchen root; the live Board is never touched)
     $app = Join-Path $root 'pass-app'; Copy-Item -LiteralPath (Join-Path $repo 'pass-app') -Destination $app -Recurse
+    # the server loads modules from outside pass-app (pass-app/work/*.mjs imports ../../core/...) and reads the repo's flags.json, so the
+    # copy also carries every top folder that pass-app's relative imports reach (derived from the code, never a hand list) and flags.json
+    $reach = @(foreach ($f in Get-ChildItem (Join-Path $repo 'pass-app') -Recurse -File -Include '*.mjs', '*.js' | Where-Object { $_.FullName -notmatch '\\node_modules\\' }) {
+            foreach ($m in [regex]::Matches([IO.File]::ReadAllText($f.FullName), '(?:\bfrom|\bimport\()\s*[''"]((?:\.\./)+[^''"]+)[''"]')) {
+                $to = [IO.Path]::GetFullPath((Join-Path $f.DirectoryName $m.Groups[1].Value))
+                if ($to.StartsWith($repo + '\', [StringComparison]::OrdinalIgnoreCase)) { $to.Substring($repo.Length + 1).Split('\')[0] }
+            }
+        }) | Where-Object { $_ -ne 'pass-app' } | Sort-Object -Unique
+    foreach ($d in $reach) { Copy-Item -LiteralPath (Join-Path $repo $d) -Destination (Join-Path $root $d) -Recurse }
+    Copy-Item -LiteralPath (Join-Path $repo 'flags.json') -Destination (Join-Path $root 'flags.json')
+    Check "the trial copy carries what the server loads from outside pass-app (folders: $($reach -join ', '); flags.json)" ($reach -contains 'core' -and (Test-Path -LiteralPath (Join-Path $root 'core\ship\flags.mjs')) -and (Test-Path -LiteralPath (Join-Path $root 'flags.json')))
     $kr = Join-Path $root 'kitchen'; New-Item -ItemType Directory -Force (Join-Path $kr 'jobs') | Out-Null
     $env:BRAIN_KITCHEN = $kr; $env:PASS_NO_TAILSCALE = '1'; $env:PASS_HOSTS = 'board-test.tailnet-test.example'; $env:BRAIN_NTFY_TOPIC = $null
     $env:KITCHEN_OLLAMA_URL = 'off'; $env:KITCHEN_AGY_EXE = 'off'; $env:TEMP = $root; $env:TMP = $root

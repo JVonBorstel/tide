@@ -12,6 +12,11 @@ const check = (name, pass, detail = '') => out.push({ name: detail ? `${name} ($
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'city-test-'));
 const W = (p, v) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, typeof v === 'string' ? v : JSON.stringify(v)); };
 const lines = (rows) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+// an archived order as the store leaves it (kitchen/jobs-lib.ps1 Invoke-KitchenJobArchive): its line in jobs\archive\index.jsonl, then its file
+const archiveW = (root, j, month = '2026-10') => {
+  const d = path.join(root, 'jobs', 'archive'); fs.mkdirSync(d, { recursive: true });
+  fs.appendFileSync(path.join(d, 'index.jsonl'), JSON.stringify({ id: j.id, status: j.status, month }) + '\n'); W(path.join(d, month, j.id + '.json'), j);
+};
 const sha = (c) => c.repeat(40);
 // a fake git: answers per command, the folder's last name picks the numbers (null = git failed)
 function fakeGit(table, calls = []) {
@@ -36,7 +41,7 @@ function fixture(name, { kitchen, merges = [], automerged = [], results = {}, jo
   if (automerged.length) W(path.join(root, 'automerged.jsonl'), lines(automerged));
   for (const [f, v] of Object.entries(results)) W(path.join(root, 'results', f), v);
   for (const [id, j] of Object.entries(jobs)) W(path.join(root, 'jobs', id + '.json'), { id, ...j });
-  for (const [id, j] of Object.entries(archive)) W(path.join(root, 'jobs', 'archive', '2026-10', id + '.json'), { id, ...j });
+  for (const [id, j] of Object.entries(archive)) archiveW(root, { id, ...j });
   if (ledger) W(path.join(root, 'ledger.json'), ledger);
   if (Object.keys(vis).length) W(path.join(root, 'towers-github.json'), { at: null, repos: Object.fromEntries(Object.entries(vis).map(([s, p]) => [s, { private: p, privateAt: new Date().toISOString() }])) });
   return { root, repos, dir: (r) => path.join(repos, r) };
@@ -69,7 +74,7 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   });
   const dp = F.dir('demo-project');
   const jobs = [{ id: 'J12', status: 'done', steps: [mergeStep(dp)] }, { id: 'J13', status: 'running', steps: [mergeStep(dp)] }, { id: 'J14', status: 'waiting-approval', steps: [mergeStep(dp)] }, { id: 'J15', status: 'done', steps: [mergeStep(dp)] }];
-  F.archived = W(path.join(F.root, 'jobs', 'archive', '2026-10', 'J11.json'), { id: 'J11', status: 'closed', steps: [mergeStep(dp)] });
+  archiveW(F.root, { id: 'J11', status: 'closed', steps: [mergeStep(dp)] });
   const st = sitesOf(F.root, F.dir('old-name'));
   const rec = localRecords(F.root, st.sites, jobs);
   const fl = rec.floors.get('demo-project');
@@ -79,6 +84,14 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   const loc = fl.find((f) => f.job === 'J12');
   check('LocalFloors_YardLocalMerge: a Yard merge with no PR is a floor by its merge commit; auto-merged reads by auto; an undo marks it undone (kept, never dropped)', loc && !loc.pr && loc.sha === sha('e') && loc.by === 'auto' && loc.undone === '2026-10-22T12:00:00.000Z');
   check('LocalFloors_ArchivedOrder: a merge whose work order was archived still finds its Tower (jobs\\archive)', two[0]?.job === 'J11');
+  // an archived file is found through its line in jobs\archive\index.jsonl (its month), never by listing the jobs folder
+  W(path.join(F.root, 'results', 'J16.merge.json'), { job: 'J16', before: sha('0'), after: sha('f'), via: 'local', at: '2026-10-22T10:00:00Z' });
+  W(path.join(F.root, 'jobs', 'archive', '2026-09', 'J16.json'), { id: 'J16', status: 'closed', steps: [mergeStep(dp)] });
+  const noLine = localRecords(F.root, st.sites, jobs).floors.get('demo-project').some((f) => f.job === 'J16');
+  fs.appendFileSync(path.join(F.root, 'jobs', 'archive', 'index.jsonl'), JSON.stringify({ id: 'J16', status: 'closed', month: '2026-09' }) + '\n');
+  const withLine = localRecords(F.root, st.sites, jobs).floors.get('demo-project').find((f) => f.job === 'J16');
+  check('LocalFloors_ArchiveIndex: an archived order is read by its month in jobs\\archive\\index.jsonl; a file with no line there is not read', !noLine && withLine?.sha === sha('f'));
+  fs.rmSync(path.join(F.root, 'results', 'J16.merge.json'));
   check('LocalFloors_OldestFirst: floors run oldest first', fl.map((f) => f.at).join() === [...fl.map((f) => f.at)].sort().join());
   check('Pour_FromBatchRun: "batch-run integrate-<name>" names the Pour; other words do not', pourOf('batch-run integrate-p4: x') === 'p4' && pourOf('batch B: 74/75') === null && pourOf('') === null);
   const op = rec.open.get('demo-project');
@@ -164,8 +177,8 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
     },
     vis: {},
   });
-  W(path.join(F.root, 'jobs', 'archive', '2026-10', 'J33.json'), { id: 'J33', status: 'closed', vars: { private: 'yes' }, steps: [] });
-  W(path.join(F.root, 'jobs', 'archive', '2026-10', 'J11.json'), { id: 'J11', status: 'closed', steps: [] });
+  archiveW(F.root, { id: 'J33', status: 'closed', vars: { private: 'yes' }, steps: [] });
+  archiveW(F.root, { id: 'J11', status: 'closed', steps: [] });
   const jobs = [{ id: 'J30', status: 'running', steps: [mergeStep(F.dir('demo-project'))] }, { id: 'J31', status: 'running', steps: [mergeStep(F.dir('demo-project'))] }, { id: 'J32', status: 'running', vars: { private: 'yes' }, steps: [] }];
   const isPrivate = (j) => ['yes', 'true'].includes(String(j?.vars?.private || ''));
   const gh = { calls: [], fail: false, merged: {}, open: {}, private: { 'demo-owner/demo-project': false, 'demo-owner/tide-demo': false, 'demo-owner/old-private': true } };
