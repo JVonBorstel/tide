@@ -42,14 +42,15 @@ export async function signIn(send, base, key, { wait = 10000, step = 120 } = {})
 
 // boardPage: the real Board server on a throwaway state folder (root), signed in through signIn, no service worker (every open is fresh),
 // and /api/towers answered by towers() (made-up projects). Returns the page's helpers: ev(expr), until(expr, ms), phone(width, height,
-// {dark, hour}), open(hash), shot(name), plus send, server, cdp, base.
-export async function boardPage({ root, tmp, towers, shotsDir = '' }) {
+// {dark, hour}), open(hash), shot(name), plus send, server, cdp, base. nodeArgs and env go to the server's node (the Work tab's store needs
+// --experimental-sqlite on node 22).
+export async function boardPage({ root, tmp, towers, shotsDir = '', nodeArgs = [], env = {} }) {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const empty = path.join(root, 'empty'); fs.mkdirSync(empty, { recursive: true });
   const port = 21000 + Math.floor(Math.random() * 18000); const base = `http://127.0.0.1:${port}`;
-  const server = spawn(process.execPath, [path.join(here, 'server.mjs')], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true,
+  const server = spawn(process.execPath, [...nodeArgs, path.join(here, 'server.mjs')], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true,
     env: { ...process.env, BRAIN_KITCHEN: root, PASS_PORT: String(port), PASS_NO_TAILSCALE: '1', BRAIN_NTFY_TOPIC: '', PASS_NO_KICK: '1', PASS_GITHUB: 'off',
-      KITCHEN_NOTIFY_LOG: path.join(tmp, 'notify.txt'), PASS_INCOME_DIR: empty, PASS_CAREER_DIR: empty, PASS_HOSTS: '' } });
+      KITCHEN_NOTIFY_LOG: path.join(tmp, 'notify.txt'), PASS_INCOME_DIR: empty, PASS_CAREER_DIR: empty, PASS_HOSTS: '', ...env } });
   server.stderr.on('data', () => { });
   const health = () => fetch(`${base}/api/health`).then((r) => r.status === 200, () => false);
   for (let i = 0; i < 160 && !(await health()); i++) await sleep(150);

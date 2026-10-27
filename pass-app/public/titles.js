@@ -37,6 +37,21 @@ export function plainWords(text) {
   if (s.length > 60) s = s.slice(0, 58).replace(/\s+\S*$/, '') + '…';
   return cap(s);
 }
+// A detail (a failure reason, an alert, a step's note) as the main words of a line (task 30, D-11): its first line, Windows and repo paths
+// read as the file's name ("C:\x\kitchen\stations\lint.ps1" and "kitchen/stations/lint.ps1" read "lint"), JSON objects left out, markdown
+// marks dropped, at most `max` characters. The full text stays one tap away (the work order's sheet, its History and Logs).
+const EXT = 'ps1|psm1|mjs|cjs|js|ts|jsonl|json|md|css|html|py|txt|ya?ml|log';
+export function plainDetail(text, max = 140) {
+  let s = firstLine(text);
+  const urls = []; s = s.replace(/https?:\/\/\S+/g, (u) => `\u0000${urls.push(u) - 1}\u0000`);   // links stay as they are
+  for (let i = 0; i < 3 && /\{[^{}]*\}/.test(s); i++) s = s.replace(/\{[^{}]*\}/g, ' ');   // JSON objects, inside out
+  s = s.replace(/\[\s*\{[^\]]*\]/g, ' ');
+  s = s.replace(/\b[A-Za-z]:[\\/](?:[^\\/\s"']+[\\/])*([^\\/\s"']+)/g, '$1').replace(/(?:\\\\|\.{1,2}[\\/])?(?:[\w@.-]+\\)+([\w.-]+)/g, '$1');
+  s = s.replace(new RegExp(`(?:\\.{1,2}/)?(?:[\\w@.-]+/)+([\\w.-]+\\.(?:${EXT}))\\b`, 'g'), '$1').replace(new RegExp(`\\b([\\w-]+)\\.(?:${EXT})\\b`, 'g'), '$1');
+  s = s.replace(/\u0000(\d+)\u0000/g, (_, i) => urls[Number(i)]);
+  s = cleanTitle(s).replace(/\s+([,.;:)])/g, '$1').replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim();
+  return s.length > max ? s.slice(0, Math.max(1, max - 1)).replace(/\s+\S*$/, '') + '…' : s;
+}
 // "improve: split kitchen.ps1" reads as a kind (small label) and the rest
 export function splitName(name) {
   const m = /^([a-z][\w-]{1,15}):(?:\s+([\s\S]*))?$/i.exec(String(name || ''));

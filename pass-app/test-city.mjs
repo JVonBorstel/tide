@@ -98,7 +98,7 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   check('Cranes_LocalPrRecords: an active work order with a PR and no merge is a crane with its CI (red; an error look is unknown); a finished one is not', op.length === 2 && op.find((o) => o.pr === 4)?.ci === 'red' && op.find((o) => o.pr === 5)?.ci === null && !op.some((o) => o.pr === 6) && op.every((o) => o.job && o.draft === false));
 
   let calls = []; const git = fakeGit({ 'demo-project': { commits: 40, last: '2026-10-23T08:00:00Z', before: 7 }, 'side-app': { commits: 28, last: '2026-10-10T19:00:00Z' }, 'gemini-brain': { commits: 145, last: new Date(Date.now() - 3600e3).toISOString() }, 'old-name': { commits: 3, last: '2026-10-24T00:00:00Z' } }, calls);
-  const T = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run: git, jobs: () => jobs, sigEveryMs: 0, gitEveryMs: 3600e3 });
+  const T = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run: git, jobs: () => jobs, alias: true, sigEveryMs: 0, gitEveryMs: 3600e3 });
   const before = T.view();
   check('Loading_BeforeGit: before the first git read the view is ok, gitAt is null and no stone base is drawn (unknown, never 0)', before.ok && before.gitAt === null && before.towers.every((t) => !t.plinth && t.commits === undefined), JSON.stringify(before.towers.map((t) => [t.key, t.plinth])));
   await T.refreshGit(); const v = T.view(); const by = (k) => v.towers.find((t) => t.key === k);
@@ -116,7 +116,7 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   const v2 = T.v(); const v3 = T.v();
   check('TowersV_MovesOnlyOnChange: towersV stays while nothing changed and moves when a merge is recorded', /^[0-9a-f]{12}$/.test(v1) && v1 !== v2 && v2 === v3 && T.view().towers[0].floors.length === fl.length + 1);
   T.stop();
-  const G = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run: fakeGit({}), jobs: () => jobs, sigEveryMs: 0, gitEveryMs: 3600e3 }); await G.refreshGit();
+  const G = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run: fakeGit({}), jobs: () => jobs, alias: true, sigEveryMs: 0, gitEveryMs: 3600e3 }); await G.refreshGit();
   check('GitFails_Unknown: when git cannot answer, counts and stone bases are left out (unknown), the floors stay', G.view().towers.every((t) => !t.plinth && t.commits === undefined) && G.view().towers[0].floors.length > 0 && G.view().gitAt !== null);
   G.stop();
 }
@@ -133,7 +133,7 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
     jobs: { J20: { status: 'done', steps: [] } },
   });
   W(path.join(F.root, 'jobs', 'J20.json'), { id: 'J20', status: 'done', steps: [mergeStep(F.dir('old-name'))] });
-  const T = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run: fakeGit({ 'old-name': { commits: 3, last: '2026-10-27T00:00:00Z', ref: 306 } }), jobs: () => [], sigEveryMs: 0, gitEveryMs: 3600e3 });
+  const T = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run: fakeGit({ 'old-name': { commits: 3, last: '2026-10-27T00:00:00Z', ref: 306 } }), jobs: () => [], alias: true, sigEveryMs: 0, gitEveryMs: 3600e3 });
   await T.refreshGit(); const t = T.view().towers[0];
   check('History_PublicFrom: the old repo\'s floors sit under the line (past), the public repo\'s first merged PR sets publicFrom, and the same PR number in both stays two floors',
     t.floors.filter((f) => f.past).length === 2 && t.floors.filter((f) => f.pr === 40).length === 2 && t.publicFrom === '2026-10-26T17:30:00.000Z' && t.name === 'Tide (demo)', JSON.stringify(t.floors));
@@ -152,7 +152,7 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   const M = fixture('missing', { kitchen: (r) => ({ bootRepos: [path.join(r, 'demo-project'), path.join(r, 'not-here')] }) });
   const sm = sitesOf(M.root, M.dir('demo-project'));
   check('Error_MissingFolder: a bootRepos folder that is not on this PC is named in errors (folder name only) and skipped', sm.sites.length === 1 && /not on this PC \(not-here\)/.test(sm.errors[0]?.error || '') && !sm.errors[0].error.includes(M.repos));
-  const T = makeTowers({ root: E.root, repoHome: E.dir('demo-project'), run: async () => { throw new Error('boom'); }, sigEveryMs: 0, gitEveryMs: 3600e3 });
+  const T = makeTowers({ root: E.root, repoHome: E.dir('demo-project'), run: async () => { throw new Error('boom'); }, alias: true, sigEveryMs: 0, gitEveryMs: 3600e3 });
   await T.refreshGit();
   check('Error_GitThrows: a runner that throws leaves the view working (ok, no counts)', T.view().ok && T.view().towers.length === 1);
   T.stop();
@@ -206,7 +206,7 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
     return { err: null, out: JSON.stringify((state === 'merged' ? gh.merged : gh.open)[slug] || []) };
   };
   const logs = [];
-  const T = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run, jobs: () => jobs, isPrivate, sigEveryMs: 0, gitEveryMs: 3600e3, github: { everyMs: 3600e3, off: false, log: (l) => logs.push(l) } });
+  const T = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run, jobs: () => jobs, isPrivate, alias: true, sigEveryMs: 0, gitEveryMs: 3600e3, github: { everyMs: 3600e3, off: false, log: (l) => logs.push(l) } });
   await T.refreshGit(); const before = T.view();
   const p0 = before.towers.find((t) => t.key === 'private');
   check('GitHub_Loading: before the first read githubAt is null and the City shows the local records (the session merge, the Yard\'s crane), under a neutral name while the repo\'s visibility is unread (fail closed)',
@@ -227,7 +227,7 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   gh.fail = true; await T.refreshGithub(); const v3 = T.view(); const dp3 = v3.towers.find((t) => t.key === 'demo-project');
   check('GitHub_FailKeepsLastGood: a failed read says why in plain words, keeps githubAt at the last good read and drops no floor or crane', v3.githubError === 'demo-owner/demo-project: gh is not signed in' && v3.githubAt === v2.githubAt && dp3.floors.length === 4 && dp3.open.length === 3 && v3.v !== v2.v, String(v3.githubError));
   T.stop();
-  const T2 = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run: async () => ({ err: new Error('offline'), out: '' }), jobs: () => jobs, isPrivate, sigEveryMs: 0, gitEveryMs: 3600e3, github: { everyMs: 3600e3, off: true } });
+  const T2 = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run: async () => ({ err: new Error('offline'), out: '' }), jobs: () => jobs, isPrivate, alias: true, sigEveryMs: 0, gitEveryMs: 3600e3, github: { everyMs: 3600e3, off: true } });
   const v4 = T2.view();
   check('GitHub_LastGoodAfterRestart: a new server shows the last good read from towers-github.json before it reads again', v4.githubAt === v2.githubAt && v4.towers.find((t) => t.key === 'demo-project').floors.length === 4 && fs.existsSync(path.join(F.root, 'towers-github.json')));
   const calls0 = gh.calls.length; await T2.refreshGithub();
@@ -262,7 +262,7 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
     return { err: null, out: JSON.stringify((args.includes('merged') ? lists.merged : lists.open)[args[args.indexOf('-R') + 1]] || []) };
   };
   const jobs = [{ id: 'J60', status: 'running', steps: [mergeStep(F.dir('demo-project'))] }];
-  const T = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run, jobs: () => jobs, sigEveryMs: 0, gitEveryMs: 3600e3, github: { everyMs: 3600e3, off: false } });
+  const T = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run, jobs: () => jobs, alias: true, sigEveryMs: 0, gitEveryMs: 3600e3, github: { everyMs: 3600e3, off: false } });
   const v0 = T.view();
   check('Private_FailClosed: before git and GitHub are read, every Site is "Private project" under a neutral key (its visibility is unknown)', v0.towers.length === 4 && v0.towers.every((t) => t.private && /^Private project( \d)?$/.test(t.name) && /^private(-\d)?$/.test(t.key)), JSON.stringify(v0.towers.map((t) => [t.key, t.name])));
   await T.refreshGit(); await T.refreshGithub(); await T.refreshGit();
@@ -344,7 +344,9 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   const zl = await import('node:zlib');
   const files = ['city.js', 'city-art.js', 'city-nav.js'].filter((f) => fs.existsSync(new URL('./public/' + f, import.meta.url)));
   const br = files.reduce((n, f) => n + zl.brotliCompressSync(fs.readFileSync(new URL('./public/' + f, import.meta.url))).length, 0);
-  check(`Budget_CityBytes: city.js + city-art.js + city-nav.js are at most 16,000 bytes brotli (${br} B in ${files.join(', ')})`, files.includes('city.js') && br <= 16000);
+  // task 30 raised it from 16,000 to 16,400: tower rows in words and the scene fitted to the tower cost about 440 B (main 15,858 B, LF);
+  // the words themselves (dates, row states, counts) live in public/plain.js, outside this cap
+  check(`Budget_CityBytes: city.js + city-art.js + city-nav.js are at most 16,400 bytes brotli (${br} B in ${files.join(', ')})`, files.includes('city.js') && br <= 16400);
 }
 
 // ---- G4: the pixel City (paintCity, paintStrip, the art, the legend) on plain buffers; no browser ----
@@ -511,15 +513,15 @@ async function cityLoop({ towers, s, rm = false, ms = 2000, api = async () => to
     floors: [{ sha: sha('4'), at: at(1), by: 'yard', job: 'J20', past: true }, { pr: 40, at: at(2), by: 'session', title: 'Old forty', pour: 'p1', past: true },
       ...Array.from({ length: 30 }, (_, i) => ({ pr: i + 1, at: at(20 + (i >> 3)), by: 'github', title: `Floor ${i + 1}`, ...(i < 2 ? { pour: 'p2' } : {}), ...(i === 5 ? { job: 'J7', undone: at(26) } : {}) }))] };
   const cut = N.cutawayHtml(T, esc); const links = [...cut.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
-  check('Cutaway_NewestFirst: open PRs on top, then the floors newest first', links[0] === '#/city/td/f/41' && links[1] === '#/city/td/f/30' && links[2] === '#/city/td/f/29' && cut.includes('building, CI red'));
+  check('Cutaway_NewestFirst: open PRs on top (in plain words: open, checks failed), then the floors newest first', links[0] === '#/city/td/f/41' && links[1] === '#/city/td/f/30' && links[2] === '#/city/td/f/29' && cut.includes('open, checks failed'));
   const all = N.cutawayHtml(T, esc, 70); const lineAt = all.indexOf('city-line');
-  check('Cutaway_PublicLine: the "public from" line sits once, right above the first old floor; old floors open as /old', all.split('city-line').length === 2 && all.indexOf('#/city/td/f/1"') < lineAt && all.indexOf('#/city/td/f/40/old') > lineAt && all.includes('public from 10-20'));
+  check('Cutaway_PublicLine: the "public from" line sits once, right above the first old floor; old floors open as /old', all.split('city-line').length === 2 && all.indexOf('#/city/td/f/1"') < lineAt && all.indexOf('#/city/td/f/40/old') > lineAt && all.includes('public from Oct 20'));
   check('Cutaway_Windowed: 20 floors, then "Show N more" (rows.js: 50 a tap); once every floor is shown the button goes', (cut.match(/<li>/g) || []).length === 21 && cut.includes('Show 12 more of 32 floors') && (all.match(/<li>/g) || []).length === 33 && !all.includes('data-city-more'));
-  check('Cutaway_NoPrFloor: a Yard merge with no PR is a row with its work order and no link; a taken-down floor says so', all.includes('<b>WO-0020</b><i>10-01, no PR</i>') && /f\/6"><b>#6<\/b><span>Floor 6<\/span><i>10-20, taken down/.test(all));
+  check('Cutaway_NoPrFloor: a Yard merge with no PR is a row in words with its work order and no link; a taken-down floor says so with its day (task 30: title, what, when, then the number)', all.includes('<span class="city-t">Merged without a pull request</span><span class="city-m">merged Oct 1</span><span class="city-n">WO-0020</span>') && /f\/6"><span class="city-t">Floor 6<\/span><span class="city-m">taken down Oct 26<\/span><span class="city-n">#6<\/span>/.test(all));
   check('Cutaway_Escaped: titles are escaped', cut.includes('Open &lt;one&gt;') && !cut.includes('<one>'));
   const f1 = N.floorHtml(T, 1, false, esc), f6 = N.floorHtml(T, 6, false, esc), old = N.floorHtml(T, 40, true, esc), op = N.floorHtml(T, 41, false, esc);
   check('Floor_Sheet: a floor says when it merged and by whom, its Pour (floors tested together) and a GitHub link', f1.includes('PR #1: Floor 1') && f1.includes('2026-10-20 10:00 on GitHub') && f1.includes('p2: 2 floors tested together') && f1.includes('href="https://github.com/demo-owner/demo-project/pull/1"'));
-  check('Floor_WorkOrder: a floor from a work order links to it; a taken-down one says when', f6.includes('href="#/job/J7">WO-0007') && f6.includes('<dt>Taken down</dt><dd>10-26</dd>'));
+  check('Floor_WorkOrder: a floor from a work order links to it; a taken-down one says when', f6.includes('href="#/job/J7">WO-0007') && f6.includes('<dt>Taken down</dt><dd>Oct 26</dd>'));
   check('Floor_Old: a floor under the line is the old history and has no GitHub link (the public repo may reuse its number)', old.includes('PR #40: Old forty') && old.includes('the older history') && !old.includes('github.com'));
   check('Floor_OpenPr: an open PR is under construction with its CI', op.includes('Under construction') && op.includes('<dd>red</dd>'));
   check('Floor_Missing: a number with no floor says so', N.floorHtml(T, 77, false, esc).includes('No floor or open PR #77') && N.floorHtml(T, 40, false, esc).includes('No floor'));

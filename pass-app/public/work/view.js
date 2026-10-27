@@ -108,8 +108,9 @@ function renderStreams(d, $) {
 /** One work order: id, stream, PR, age; its goal; its state as a shape and a word, and what happens next. @param {any} r */
 function rowHtml(r) {
   const [sym, word] = STATE[r.state] || ['○', r.state];
-  return `<div class="wk-l1"><span class="mono">${esc(r.id)}</span><span class="wk-meta">${esc(r.stream)}${r.pr ? ` · ${esc(r.pr)}` : ''} · ${age(r.ageH)}</span></div>
-    <div class="wk-goal">${esc(r.goal)}</div>
+  // task 30 (D-11): the goal is the row's title, first; the id is small secondary text under it
+  return `<div class="wk-goal">${esc(r.goal)}</div>
+    <div class="wk-l1"><span class="mono">${esc(r.id)}</span><span class="wk-meta">${esc(r.stream)}${r.pr ? ` · ${esc(r.pr)}` : ''} · ${age(r.ageH)}</span></div>
     <div class="wk-l2"><span class="wk-sym" aria-hidden="true">${sym}</span><span class="${r.state === 'stuck' || r.state === 'lost' ? 'fault' : r.state === 'waiting-on-jordan' ? 'ember' : ''}">${esc(word || STAGE[r.stage] || r.stage)}</span>${r.next ? ` <span class="wk-meta">· ${esc(r.next)}</span>` : ''}</div>`;
 }
 /** Keyed: a row is redrawn only when its events moved; order is needs-you first, then newest (as the API sends it). @param {any} V @param {(id: string) => HTMLElement} $ */
