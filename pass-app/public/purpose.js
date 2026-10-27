@@ -58,6 +58,44 @@ export const PURPOSE = [
 const oldestWait = (L) => { const h = [...(L.world?.heat || [])].sort((a, b) => b.mins - a.mins)[0]; return h?.id || L.waiters[0]?.id || null; };
 export const nightShift = (L) => L.sky === 'night' && !!L.world?.fuse && !L.world.fuse.tripped && Object.keys(L.busy || {}).length > 0;
 export const purposeOf = (id) => PURPOSE.find((r) => r.id === id);
+
+// ---- the City's Purpose Ledger (public/city.js, the Board's home; review F7): one row per mark the City draws ----
+// A data row names the model fields it shows (city.js cityOf: k, band, lots.*, gate.*, yard.*), where they come from (/api/towers or the
+// live state), its legend line (the start of a city.js legendRows line; null: a mark with no line yet) and what a missing field draws.
+// A ground row is structure with no field (capped by the tests); a words row is said in the caption, never drawn. pass-app/test-city.mjs
+// enforces it: every model field and every City sprite (city-art.js) has a row, every legend line is a row's, and every data row's
+// field changes the picture.
+const TW = 'GET /api/towers (towers.mjs)';
+const city = (id, art, fields, from, legend, absent) => ({ id, kind: 'data', art, fields, from, legend, absent });
+export const CITY_PURPOSE = [
+  city('building', ['RAMPS'], ['k', 'band', 'lots.key', 'lots.kind', 'lots.name', 'lots.floors', 'lots.rows'], TW + ': its floors (merged PRs)', '1 row = ', 'no building'),
+  city('base', [], ['lots.plinth'], TW + ': git commit counts', 'Stone base', 'no stone base'),
+  city('lit', [], ['lots.lit'], TW + ': floors merged in the last 24 h (the Office: its last commit)', 'Yellow windows', 'dark windows'),
+  city('public', [], ['lots.publicAt'], TW + ': publicFrom', 'Dashed line', 'no line'),
+  city('blueprint', [], ['lots.blueprint'], TW + ': blueprint (ledger.json)', 'Dashed outline', 'no outline'),
+  city('crane', ['CI', 'PAINT'], ['lots.cranes', 'lots.craneMore'], TW + ': open PRs and their CI', 'A level on the roof', 'no crane'),
+  city('crew', ['WORKER', 'TOOLS'], ['lots.crews', 'lots.crewMore', 'yard.running'], STATE + ': jobs (running)', 'Hard hats', 'no crew'),
+  city('pallets', ['PALLET'], ['lots.pallets', 'lots.palletMore', 'yard.queued'], STATE + ': jobs (pending)', 'Pallets', 'no pallet'),
+  city('beacon', ['BEACON'], ['lots.beacon', 'lots.waiting', 'yard.beacon', 'yard.waiting'], STATE + ': jobs waiting for sign-off, approval.requested', 'Beacon', 'no beacon'),
+  city('scaffold', [], ['lots.scaffold'], STATE + ': mainStatus', 'Scaffolding', 'no scaffolding'),
+  city('tape', [], ['lots.tape', 'lots.closes'], STATE + ': freeze', 'Striped barrier', 'no barrier'),
+  city('skip', ['SKIP'], ['lots.skip'], TW + ': floors taken down; ' + STATE + ': undoUnpushed', 'Skip', 'no skip'),
+  city('flag', ['FLAG'], ['lots.fresh'], TW + ': floors since the phone last looked', 'Flag on a roof', 'no flag'),
+  city('private', ['LOCK'], ['lots.private', 'yard.private'], TW + ': private (the repo\'s GitHub visibility); ' + STATE + ': private work orders', 'Padlock over a building', 'no padlock'),
+  city('manual', [], ['lots.manual'], STATE + ': automergePause', null, 'no tag'),
+  city('sign', ['GL'], ['gate.paused', 'gate.live'], STATE + ': paused, live', 'Gate sign', 'no sign'),
+  city('meter', [], ['gate.budget'], STATE + ': spent, budget; budget.stop', 'Meter on the cabin', 'no meter'),
+  city('breaker', [], ['gate.breaker'], STATE + ': breaker', null, 'no stop tag'),
+  city('clock', [], ['gate.stalled'], STATE + ': stalled', null, 'no clock'),
+  city('github', [], ['gate.github'], TW + ': githubAt, githubError', 'GH sign', 'no sign'),
+  city('yard', [], ['yard.running', 'yard.queued', 'yard.waiting'], STATE + ': jobs with no Tower', 'Workshop by the gate', 'an empty workshop'),
+  { id: 'caption', kind: 'words', fields: ['loading', 'error'], why: 'said in the caption under the City (reading, could not be read), never drawn' },
+  { id: 'sky', kind: 'ground', art: [], fields: ['sky'], why: 'the real hour\'s sky with the sun or the moon and stars' },
+  { id: 'street', kind: 'ground', art: [], fields: [], why: 'the street, its kerb and dashes' },
+  { id: 'lot', kind: 'ground', art: [], fields: [], why: 'a lot\'s fence and sign (a project with no floors yet)' },
+  { id: 'office', kind: 'ground', art: [], fields: [], why: 'the Office building, its window frames and door' },
+  { id: 'cabin', kind: 'ground', art: [], fields: [], why: 'the gate cabin and its door, the workshop shell' },
+];
 // the legend sheet: one line per data row the stage shows now, in ledger order (the world props say their line from WORLD)
 export const legendRows = (L) => PURPOSE.filter((r) => r.kind === 'data').map((r) => {
   if (r.world) { const w = L?.world?.[r.world], row = WORLD.find((x) => x.prop === r.world); return w ? { key: r.id, text: row.meaning(w) } : null; }
