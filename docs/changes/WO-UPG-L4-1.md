@@ -15,7 +15,7 @@ Lane L4 of the Tide upgrade builds the road finished work takes to main, next to
   refuses is held. Unrelated history and conflicts are held with the files named. When main changed a file the PR also changes,
   it sets the re-review mark.
 - **Handover queue** (`core/ship/queue.mjs`): tests the PR merged onto the latest main in a scratch clone. It lands only with the
-  flag on, Jordan's yes event, the agent-review status when that flag is on, and main unmoved since the test; then main moves
+  upgrade switch `ship.queue` at `new` (it stays `old`), the flag on, Jordan's yes event, the agent-review status when that flag is on, and main unmoved since the test; then main moves
   forward to the tested commit (a fast-forward). The command line only dry-runs.
 
 Nothing in the Yard changed. `scripts/merge-pr.ps1` and `kitchen/train.ps1` are untouched and stay the merge path while
@@ -51,6 +51,6 @@ Nothing in the Yard changed. `scripts/merge-pr.ps1` and `kitchen/train.ps1` are 
 - **Generated file**
 
 ## Proof
-- `node tests/core/ship/test-ship.mjs`: Ship tests 152 passed, 0 failed (6 files), on Windows (Node 22.12, pwsh 7.6).
+- `node tests/core/ship/test-ship.mjs`: Ship tests 154 passed, 0 failed (6 files), on Windows (Node 22.12, pwsh 7.6).
 - `node core/ship/flags.mjs check`: 5 flags declared, all off by default.
 - CI on the PR: `checks`, `gates`, `quality` (counts on the run's summary page).

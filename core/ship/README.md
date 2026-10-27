@@ -23,7 +23,8 @@ Zero packages; Node 18 or later; `.mjs` with JSDoc and `// @ts-check`. git runs 
 - **Resurvey** and the **Handover queue** need a GitHub noreply commit identity, a clean clone, and shared history with main. They
   hold (exit 1) and name the reason and the conflicted files otherwise. Their results are activity results
   (`core/contracts/activity-result.schema.json`) with event drafts (`pr.updated`, `x.ship.re-review`, `merged`) for the engine.
-- **Landing** (`landPr({ land: true })`, from the engine only) needs `ship.merge-queue` on, a `decision.answered` "Yes" by Jordan,
+- **Landing** (`landPr({ land: true })`, from the engine only) needs the upgrade switch `ship.queue` at `new` in `kitchen/kitchen.json`
+  (old and shadow only dry-run), `ship.merge-queue` on, a `decision.answered` "Yes" by Jordan,
   the `agent-review` status on the PR head when `ship.review-check` is on, the PR as `<repo>#<n>`, and main unmoved since the test.
   The push moves main forward to the tested merge commit; it is a fast-forward and never forced.
 
