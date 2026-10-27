@@ -42,6 +42,8 @@ node core/engine/cli.mjs show <WO-id> [--state <folder>]  # stage, state and the
 node core/engine/cli.mjs temporal                         # is Temporal installed? names what is missing
 node core/engine/converge/run.mjs <workflow> --snapshot <json> [--events <log>]   # dry run of one convergence workflow; does nothing
 node core/engine/temporal/worker.mjs --state <folder>     # the Temporal worker (after INSTALL.md); 127.0.0.1 only
+node core/engine/adopt.mjs --brief <BRIEF.md> --streams <file> [--pr <repo#n> --head <sha>] [--files <f> | --repo-dir <checkout>] [--decisions <log>] [--write <log>]
+                                                          # a pushed branch or PR + its BRIEF -> a WO; refusals named; writes only with --write
 ```
 
 `--state` defaults to `$BRAIN_KITCHEN`, else `%LOCALAPPDATA%\brain-kitchen`. The commands only read.
@@ -50,11 +52,10 @@ node core/engine/temporal/worker.mjs --state <folder>     # the Temporal worker 
 
 `pwsh -File scripts/run-bounded.ps1 -Script tests/Test-Engine.ps1 -TimeoutSeconds 600 -MaxMB 3000`
 
-This runs `tests/core/engine/test-engine.mjs`. The suites are wo, activity, runner, governor, converge and temporal. Each test is named after an acceptance line. The Temporal suite skips its three live tests, saying why, until the installs are done.
+This runs `tests/core/engine/test-engine.mjs`. The suites are wo, activity, runner, governor, converge and temporal. `adopt` has its own suite: `tests/Test-Adopt.ps1`. Each test is named after an acceptance line. The Temporal suite skips its three live tests, saying why, until the installs are done.
 
 ## Not here yet (later slices, each its own PR)
 
-- `adopt` turns a pushed branch or PR plus its BRIEF into a WO. It is in its own PR (WO-UPG-L2-2).
 - The actions the convergence workflows call. Today each one is an activity name the engine does not have yet:
   - `freshen-pr` and the merge queue (lane L4);
   - `review`, `retry`, `recook` and `pick` (lane L3 crews);
