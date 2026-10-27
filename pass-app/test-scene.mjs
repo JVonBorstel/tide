@@ -3,8 +3,9 @@
 import fs from 'node:fs';
 import { layoutScene, sceneHtml, stationFor, cookOf, lookOf, skyAt, hashId, activityWord, STATIONS, COOK_COLORS,
   STAGE, pixelScale, stageNew, stageSync, stageTick, drawStage, makeKit, makeLoop, hitItems, hitHtml,
-  stageCalm, frameStats, stepWord, writeHits, dropStage } from './public/scene.js';
-import { stageOk, stageFps, stageWalking, frameKey } from './public/frame.js';
+  frameStats, stepWord, writeHits, dropStage, paintStage, stageFrame } from './public/scene.js';
+import { stageOk, stageDirty, stageWait, stageMoving, CLOCK, tk, METER } from './public/frame.js';
+import { meterNote, meterNew } from './public/frame-meter.js';
 import { WORLD, worldOf, worldWords, worldKey, legendRows, legendHtml, PLACE, HANG, bakeWorld } from './public/world.js';
 import { PURPOSE } from './public/purpose.js';
 import { kitchenHits } from './site-words.mjs';
@@ -148,7 +149,7 @@ check(`render: the stage draws every sky with 0 errors on the pixel grid${drawEr
 check(`budget: a busy floor is at most ${STAGE.maxDraws} sprite draws a frame (${worst})`, worst <= STAGE.maxDraws);
 const srcBytes = fs.statSync(new URL('./public/sprites.js', import.meta.url)).size;
 check(`budget: the atlas source is under 200 KB (${Math.round(srcBytes / 1024)} KB)`, srcBytes < 200 * 1024);
-check('budget: 60 fps cap in the stage settings', STAGE.fps === 60);
+check('fps: no cap in the stage settings (the stage runs at the screen\'s own rate: 120 on a 120 Hz phone)', STAGE.fps === undefined && !/fps:\s*\d/.test(fs.readFileSync(new URL('./public/scene.js', import.meta.url), 'utf8')));
 // the stations (rename S7c): site art, and a busy station costs exactly the draws it did as a kitchen
 // leaf, water, soup glow, blush, carrot: none of it on a station any more; green (u, w) only on the Test rig, its scope trace and LEDs (S7h)
 const KITCHEN_FOOD = /[wuxKCs]/, onlyRigGreen = (n) => (n === 'sink' ? /[xKCs]/ : KITCHEN_FOOD);
@@ -183,7 +184,7 @@ check('reduced motion or a hidden page: the loop asks for no frame at all', aske
 const q = []; let drawn = 0;
 const lp = makeLoop({ raf: (f) => { q.push(f); return q.length; }, ok: () => true, frame: () => { drawn++; } }).start();
 for (let t = 0; t <= 1000; t += 1000 / 120) q.shift()(t);   // a 120 Hz screen for one second
-check(`fps: a 120 Hz screen gets at most 60 frames a second (${drawn})`, drawn >= 55 && drawn <= 61);
+check(`fps: while something moves a 120 Hz screen gets every frame, 120 a second (${drawn})`, drawn >= 120 && drawn <= 121);
 let hide = false; drawn = 0; const q2 = [];
 makeLoop({ raf: (f) => { q2.push(f); return 1; }, ok: () => !hide, frame: () => { drawn++; } }).start();
 q2.shift()(0); q2.shift()(17); hide = true; q2.shift()(34);
@@ -327,28 +328,93 @@ const busyWorld = { ...busy, ...strip(fullState(), 'jobs'), breaker: true, jobs:
 let worstW = 0; const bw = stageNew(); bw.W = 256; stageSync(bw, layoutScene(busyWorld, fullEvents(), {}, T0)); stageSync(bw, layoutScene({ ...busyWorld, lastTick: iso(T0 - 1000) }, fullEvents(), {}, T0));
 for (let i = 0; i < 80; i++) { stageTick(bw, 50); worstW = Math.max(worstW, drawStage(mk(256, STAGE.h).getContext(), bw, kit)); }
 check(`budget: the busiest floor with every world prop is at most ${STAGE.maxDraws} draws a frame (${worstW}), 0 off-grid writes`, worstW <= STAGE.maxDraws && worstW > 40 && errors.length === 0);
-// battery: nothing moving drops the loop to 10 fps
-const calmSt = stageNew(); stageSync(calmSt, layoutScene({ jobs: [], lastTick: iso(T0 - 9 * 60000), stalled: false }, [], {}, T0));
-check('battery: a still kitchen is calm; a walk, a busy station or a sparking fuse is not', stageCalm(calmSt) && !stageCalm(bw) && (() => { const s = stageNew(); stageSync(s, layoutScene({ jobs: [], breaker: true }, [], {}, T0)); return !stageCalm(s); })());
-let calmDrawn = 0; const q3 = []; makeLoop({ raf: (f) => { q3.push(f); return 1; }, ok: () => true, fps: () => 10, frame: () => { calmDrawn++; } }).start();
-for (let t = 0; t <= 1000; t += 1000 / 120) q3.shift()(t);
-check(`battery: a calm stage gets at most 10 frames a second (${calmDrawn})`, calmDrawn >= 9 && calmDrawn <= 11);
+// ---- the frame loop (art critique S7 12c.1, frame.js): one draw a frame and only for a new picture, no callback while nothing moves ----
 check('fps: frame stats give p50 and p95 of the timed frames (none timed: null)', frameStats([]) === null && frameStats([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).p95 === 10 && frameStats([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).p50 === 6);
-// W4 (chef.md: 5,816 ms of frame CPU per 30 s, and still drawing while scrolled away): seen-only, 30 fps unless a walk, same picture = no draw
+// W4 (chef.md: 5,816 ms of frame CPU per 30 s, and still drawing while scrolled away): seen-only
 const scOn = { root: { isConnected: true, offsetParent: {} }, visible: true }, scOff = { ...scOn, visible: false }, docShown = { hidden: false };
 let offDraws = 0, offAsked = 0;
 makeLoop({ raf: () => { offAsked++; return 1; }, ok: () => stageOk(scOff, docShown), frame: () => { offDraws++; } }).start();
 check('SceneOffscreen_NoDraw: a stage scrolled out of view asks for no frame and draws nothing; on screen, shown and in the page it may draw',
   offDraws === 0 && offAsked === 0 && stageOk(scOn, docShown) && !stageOk(scOn, { hidden: true }) && !stageOk(scOn, docShown, true) && !stageOk({ ...scOn, root: { isConnected: false, offsetParent: {} } }, docShown) && stageOk({ root: scOn.root }, docShown));
-const walkSt = stageNew(); stageSync(walkSt, layoutScene({ jobs: [] })); stageSync(walkSt, layoutScene({ jobs: [job('J64', { role: 'plan' })] }));
-check('fps: 10 when still, 60 while an actor walks, 30 when only sprites move (a busy stove)', stageFps(calmSt) === 10 && stageWalking(walkSt) && stageFps(walkSt) === 60 && !stageWalking(s2) && !stageCalm(s2) && stageFps(s2) === 30);
-const kA = frameKey(calmSt, kit), kB = frameKey(calmSt, kit), wk0 = frameKey(walkSt, kit); stageTick(walkSt, 200);
-check('frame key: the same stage gives the same key (no draw); a walking chef changes it (draw)', kA === kB && kA.length > 0 && frameKey(walkSt, kit) !== wk0);
-// the loop as mountPixel runs it: tick every frame, draw only on a new key; a still stage at 30 fps for 1 s draws once
-let keyDraws = 0, keyLast = null; const q4 = []; const still = stageNew(); stageSync(still, layoutScene({ jobs: [] }), { still: true });
-makeLoop({ raf: (f) => { q4.push(f); return 1; }, ok: () => true, fps: () => 30, frame: (dt) => { stageTick(still, dt); const k = frameKey(still, kit); if (k !== keyLast) { keyLast = k; keyDraws++; } } }).start();
-let keyFrames = 0; for (let t = 0; t <= 1000; t += 1000 / 120) { const f = q4.shift(); const before = still.t; f(t); if (still.t !== before) keyFrames++; }
-check(`frame key: a still kitchen at 30 fps draws only its new pictures (${keyDraws} of ${keyFrames} frames: the sleeper's 900 ms snore)`, keyFrames >= 25 && keyDraws >= 1 && keyDraws <= 3);
+// a fake screen: vsync every 1000/hz ms, timers on the same clock (a timer that falls due lines up with the next vsync, as in a browser)
+function screen(hz = 120) {
+  const S = { now: 0, q: [], timers: new Map(), id: 0, rafs: 0, sets: 0 };
+  S.raf = (f) => { S.q.push(f); S.rafs++; return ++S.id; };
+  S.timer = (f, ms) => { S.timers.set(++S.id, { at: S.now + ms, f }); S.sets++; return S.id; };
+  S.untimer = (id) => S.timers.delete(id);
+  S.run = (ms) => {
+    for (const end = S.now + ms; S.now < end - 1e-9;) {
+      S.now += 1000 / hz;
+      for (const [id, x] of [...S.timers]) if (x.at <= S.now) { S.timers.delete(id); x.f(); }
+      const q = S.q; S.q = []; for (const f of q) f(S.now);
+    }
+  };
+  return S;
+}
+// the oracle: the old frame key (every draw call drawStage would make, recorded), used only here to prove no picture is missed
+const imgIds = new WeakMap(); let imgN = 0;
+const imgId = (img) => { if (!imgIds.has(img)) imgIds.set(img, ++imgN); return imgIds.get(img); };
+const oracle = (st, k) => { const parts = []; drawStage({ set fillStyle(v) { parts.push('f' + v); }, get fillStyle() { return ''; }, drawImage: (img, ...a) => { parts.push(imgId(img) + ':' + a.join()); }, fillRect: (...a) => { parts.push('r' + a.join()); } }, st, k); return parts.join('|'); };
+// a canvas that counts drawStage passes (each pass draws the two cached layers whole: drawImage with 2 numbers)
+const passCtx = () => { const x = mk(224, STAGE.h).getContext(), di = x.drawImage; let layers = 0; x.drawImage = (img, ...a) => { if (a.length === 2) layers++; return di(img, ...a); }; return { x, passes: () => layers / 2 }; };
+{
+  // a scripted 20 s on a 120 Hz screen: the sleeper alone, crews walk in, a busy Workbench, a step.done moment, a tapped crew member's wave,
+  // then every work order between steps (nothing moves: the loop must stop)
+  const scr = screen(120), pc = passCtx(), st = stageNew(); st.W = 224;
+  const L0 = (jobs, ev = [], ms = 0) => layoutScene({ jobs }, ev, {}, T0 + ms);
+  stageSync(st, L0([])); paintStage(pc.x, st, kit);
+  let frames = 0, drawn = 0, missed = 0, twice = 0, same = 0, last = oracle(st, kit), ok = true;
+  const loop = makeLoop({ raf: scr.raf, timer: scr.timer, untimer: scr.untimer, ok: () => ok, frame: (dt) => {
+    const p0 = pc.passes(), w = stageFrame(st, pc.x, kit, dt), n = pc.passes() - p0, k = oracle(st, kit);
+    frames++; if (n > 1) twice++; if (n) drawn++;
+    if (k !== last && !st.drew) missed++; else if (st.drew && k === last) same++;
+    if (st.drew) last = k;
+    return w;
+  } }).start();
+  const phase = (ms) => { const r0 = scr.rafs, f0 = frames, d0 = drawn, s0 = scr.sets; scr.run(ms); return { rafs: scr.rafs - r0, frames: frames - f0, drawn: drawn - d0, timers: scr.sets - s0 }; };
+  const sleeper = phase(3000);
+  const jobs = [job('J70', { role: 'do' }), job('J71', { role: 'plan', cook: 'gemini' })];
+  stageSync(st, L0(jobs, [], 3000)); loop.start();
+  const walk = phase(1000); phase(4000);
+  stageSync(st, L0(jobs, [{ type: 'step.done', job: 'J70', step: 3, ts: iso(T0 + 7900) }], 8000)); loop.start();
+  phase(2000);
+  tapChef(st, 'J70'); loop.start(); phase(4000);
+  stageSync(st, L0(jobs.map((j) => ({ ...j, status: 'pending', step: 4 })), [], 14000)); loop.start();
+  phase(1000); const idle = phase(3000), idleWait = stageWait(st);
+  ok = false; stageSync(st, L0([...jobs, job('J72', { role: 'check' })], [], 18000)); loop.start(); const hidden = phase(1000);
+  ok = true; loop.start(); const back = phase(500);
+  check(`SingleDraw: every frame runs drawStage at most once (${twice} frames twice) and never just to compare; ${drawn} draws in ${frames} frames`, twice === 0 && drawn > 0 && drawn < frames);
+  check(`NoMissedPicture: over 20 s (walks, a busy Workbench, a moment, a wave) every frame whose picture changed was drawn (${missed} missed; ${same} drawn unchanged, tweens)`, missed === 0 && frames > 500);
+  check(`120 Hz: while crews walk the loop takes every frame of a 120 Hz screen (${walk.frames} frames in 1 s) and draws only new pictures (${walk.drawn})`, walk.frames >= 118 && walk.drawn < walk.frames);
+  check(`IdleSleep: with only the sleeper's 900 ms snore the loop sleeps on a timer between steps (${sleeper.rafs} frames asked, ${sleeper.drawn} draws in 3 s)`, sleeper.rafs <= 8 && sleeper.drawn >= 3 && sleeper.drawn <= 5 && sleeper.timers >= 3);
+  check(`IdleStop: nothing moves (every crew between steps): no frame, no timer, no draw for 3 s (${idle.rafs} frames, ${idle.timers} timers)`, idle.rafs === 0 && idle.timers === 0 && idle.drawn === 0 && idleWait === Infinity);
+  check(`IdleStop: hidden, it stays stopped even when the state changes (${hidden.rafs} frames); shown again it restarts and walks (${back.frames} frames)`, hidden.rafs <= 1 && hidden.drawn === 0 && back.frames >= 55);
+}
+{
+  // calm is still (critique P3): a crew between steps, runners at the window and the seated Dispatcher hold one frame, nothing is due
+  const st = stageNew(); stageSync(st, layoutScene({ jobs: [job('J80', { status: 'pending', step: 4 }), job('J81', { status: 'waiting-approval' })], lastTick: iso(T0 - 9 * 60000), stalled: false }, [], {}, T0));
+  const pics = [0, 450, 900, 1350, 4100].map((t) => { st.t = t; return oracle(st, kit); });
+  paintStage(mk(STAGE.w, STAGE.h).getContext(), st, kit);
+  check('CalmStill: a calm floor draws the same picture at any time and schedules nothing (no idle breathing, no looping bell): the loop stops', new Set(pics).size === 1 && st.next === Infinity && !stageMoving(st) && stageWait(st) === Infinity);
+  const bz = stageNew(); stageSync(bz, layoutScene({ jobs: [job('J82')] }, [], {}, T0)); paintStage(mk(STAGE.w, STAGE.h).getContext(), bz, kit);
+  check(`CalmStill: a busy station still animates (its work loop is data): the next step is due in ${stageWait(bz)} ms, then a new picture`, stageWait(bz) > 0 && stageWait(bz) <= 120 && (bz.t = bz.next, stageDirty(bz)));
+}
+// the frame clock: a step's index and when it changes
+CLOCK.next = Infinity; const k3 = tk(90, 200);
+check('clock: tk gives the step and notes the next step\'s time (90 ms steps at 200 ms: step 2, the next at 270 ms)', k3 === 2 && CLOCK.next === 270);
+const dk = makeKit(P, mk);
+check('kit: a paused (dim) palette is cached apart from the lit one (the dim floor never reuses lit crew strips)', dk.get('chef-idle', { sky: 'day' }) !== dk.get('chef-idle', { sky: 'day', dim: true }) && dk.get('chef-idle', { sky: 'day' }) === dk.get('chef-idle', { sky: 'day' }));
+// the frame meter: off by default; ?hud or Settings > About > Frame meter; fps, the screen's rate and the p95 of frame work, from ring buffers
+{
+  const lines = [], M = meterNew((s) => lines.push(s));
+  for (let i = 1; i <= 130; i++) meterNote(i * 1000 / 120, i === 50 || i === 90 ? 12 : 1, i % 4 === 0, 0, M);
+  const run = lines[lines.length - 1]; meterNote(131 * 1000 / 120, 1, true, Infinity, M); const stop = lines[lines.length - 1];
+  check(`FrameMeter: 120 fps on a 120 Hz screen, its rate, the work p95 and frames over 8.3 ms (${JSON.stringify(run)})`, /^120 fps\n/.test(run) && /screen 120 Hz/.test(run) && /p95 1 /.test(run) && /max 12 ms/.test(run) && /2 frames over 8\.3 ms/.test(run) && /30 draws\/s/.test(run));
+  check('FrameMeter: says idle when the loop stops', /^idle: nothing moves/.test(stop));
+  const scSrc = fs.readFileSync(new URL('./public/scene.js', import.meta.url), 'utf8'), apSrc = fs.readFileSync(new URL('./public/app.js', import.meta.url), 'utf8');
+  check('FrameMeter: off by default and not loaded with the stage (frame-meter.js comes only with ?hud, ?fps or the Settings switch, kept on this phone)',
+    METER.on === false && /\[\?&\]\(hud\|fps=hud\)/.test(scSrc) && /'board\.frameMeter'/.test(scSrc) && /import\('\.\/frame-meter\.js'\)/.test(scSrc) && !/from '\.\/frame-meter\.js'/.test(scSrc) && /id="meter-switch"/.test(apSrc) && /sceneMeter\(e\.target\.checked\)/.test(apSrc));
+}
 // reduced motion: the world is a still frame too (no walk, two paints alike)
 const rw = stageNew(); stageSync(rw, layoutScene(fullState(), fullEvents(), {}, T0), { still: true });
 const r1c = mk(STAGE.w, STAGE.h), r2c = mk(STAGE.w, STAGE.h); drawStage(r1c.getContext(), rw, kit); drawStage(r2c.getContext(), rw, kit);
@@ -614,6 +680,10 @@ const stageBr = ['scene.js', 'sprites.js', 'world.js', 'frame.js', 'moments.js']
 // main before wave 1 (with the Live call art): 21,615 bytes. Plan: wave 1 +6 KB, wave 2 +5 KB. Measured 10-22: wave 1 + W4 (frame key,
 // frame.js) +7,822; Chef 2.9.1 trims 332 of it (scene.js and world.js share esc/ticket, a shorter scene.js header): +7,490; wave 2
 // (moments.js, the moment sprites, the cook spread, the bubble placement) +5,486. Ceiling +13,000 (was +8,000 for wave 1 + W4
-// alone): about 2 KB over the two plan budgets together (1.5 from wave 1 + W4, 0.5 from wave 2); the PR says so
-check(`budget: the stage files (scene, sprites, world, frame, moments) are at most 34,615 bytes brotli (${stageBr}; 21.6 KB before wave 1; plan +6 KB wave 1, +5 KB wave 2; ceiling +13 KB)`, stageBr <= 21615 + 13000);
+// alone): about 2 KB over the two plan budgets together (1.5 from wave 1 + W4, 0.5 from wave 2); the PR says so.
+// The frame loop (art critique S7 12c.1, 2026-10-26): main stood at 34,135 (LF); the dirty-flag loop, idle stop, frame clock and
+// allocation-free draw measured 36,730 (+2,595, with plain comments: the critique's section 5 says stop trimming for bytes; the frame
+// meter is its own file, frame-meter.js, loaded only when it is on). Ceiling +15,400; the phone speed budget (frame work p95) is the
+// gate that replaces this one when Jordan taps it (critique section 11)
+check(`budget: the stage files (scene, sprites, world, frame, moments) are at most 37,015 bytes brotli (${stageBr}; 21.6 KB before wave 1; plan +6 KB wave 1, +5 KB wave 2; ceiling +15.4 KB with the frame loop)`, stageBr <= 21615 + 15400);
 console.log(JSON.stringify(out));
