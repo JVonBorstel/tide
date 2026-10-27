@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { makeTowers, sitesOf, localRecords, buildTowers, versionOf, slugOf, repoArgOf, pourOf, ciOfRollup, githubTargets, ghCall } from './towers.mjs';
+import { makeTowers, sitesOf, localRecords, buildTowers, versionOf, slugOf, repoArgOf, pourOf, ciOfRollup, githubTargets, ghCall, isPrivateSite } from './towers.mjs';
 import { cityOf, scaleOf, bandOf, beaconOf, needsYou, sentence, momentsDue } from './public/city.js';
 
 for (const k of ['PASS_GH', 'PASS_GITHUB', 'PASS_GITHUB_MS', 'PASS_TOWERS_GIT_MS']) delete process.env[k];   // the suite's fake gh is for its server, not these checks
@@ -22,8 +22,10 @@ function fakeGit(table, calls = []) {
     return pick === undefined || pick === null ? { err: new Error('git failed'), out: '' } : { err: null, out: String(pick) + '\n' };
   };
 }
-// a state folder with three repos (a tower, a lot, the Office) and the records of a few merges
-function fixture(name, { kitchen, merges = [], automerged = [], results = {}, jobs = {}, archive = {}, ledger = null } = {}) {
+// a state folder with three repos (a tower, a lot, the Office) and the records of a few merges; vis = each GitHub repo's visibility
+// as the last GitHub read saved it (towers-github.json; private: false = public), so the City shows names (an unread repo counts as private)
+const PUBLIC = { 'demo-owner/demo-project': false, 'demo-owner/tide-demo': false };
+function fixture(name, { kitchen, merges = [], automerged = [], results = {}, jobs = {}, archive = {}, ledger = null, vis = PUBLIC } = {}) {
   const root = path.join(tmp, name, 'state'); const repos = path.join(tmp, name, 'repos');
   for (const r of ['demo-project', 'side-app', 'gemini-brain', 'old-name']) fs.mkdirSync(path.join(repos, r), { recursive: true });
   W(path.join(repos, 'demo-project', 'kitchen.repo.json'), { github: 'demo-owner/demo-project' });
@@ -36,6 +38,7 @@ function fixture(name, { kitchen, merges = [], automerged = [], results = {}, jo
   for (const [id, j] of Object.entries(jobs)) W(path.join(root, 'jobs', id + '.json'), { id, ...j });
   for (const [id, j] of Object.entries(archive)) W(path.join(root, 'jobs', 'archive', '2026-10', id + '.json'), { id, ...j });
   if (ledger) W(path.join(root, 'ledger.json'), ledger);
+  if (Object.keys(vis).length) W(path.join(root, 'towers-github.json'), { at: null, repos: Object.fromEntries(Object.entries(vis).map(([s, p]) => [s, { private: p, privateAt: new Date().toISOString() }])) });
   return { root, repos, dir: (r) => path.join(repos, r) };
 }
 const mergeStep = (repo) => ({ script: 'C:\\k\\stations\\merge.ps1', args: { Repo: repo } });
@@ -143,7 +146,7 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   check('Privacy_PrivateTitle: a floor or crane of a private work order carries no title', (() => {
     const s = { sites: [{ key: 'x', name: 'x', n: 'x', folder: 'x', slug: 'o/x', office: false }] };
     const r = { floors: new Map([['x', [{ pr: 1, at: '2026-10-01T00:00:00Z', title: 'my secret plan', job: 'J1' }, { pr: 2, at: '2026-10-02T00:00:00Z', title: 'public words', job: 'J2' }]]]), open: new Map([['x', [{ pr: 3, title: 'secret crane', job: 'J1' }]]]) };
-    const b = JSON.stringify(buildTowers(s, r, new Map(), { isPrivateJob: (id) => id === 'J1' }));
+    const b = JSON.stringify(buildTowers(s, r, new Map(), { isPrivateJob: (id) => id === 'J1', repoPrivate: () => false }));
     return !b.includes('secret') && b.includes('public words');
   })());
   check('Slug_AnyForm: owner/name from owner/name, https and ssh URLs; junk is none', slugOf('a/b') === 'a/b' && slugOf('https://github.com/a/b.git') === 'a/b' && slugOf('git@github.com:a/b.git') === 'a/b' && slugOf('C:\\x\\y') === '' && slugOf('a/../b') === '');
@@ -159,12 +162,13 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
       'J30.pr.json': { job: 'J30', repo: 'demo-owner/demo-project', number: 9, url: 'https://github.com/demo-owner/demo-project/pull/9', pushedAt: '2026-10-23T09:00:00Z' },
       'J31.ci.json': { state: 'red' },
     },
+    vis: {},
   });
   W(path.join(F.root, 'jobs', 'archive', '2026-10', 'J33.json'), { id: 'J33', status: 'closed', vars: { private: 'yes' }, steps: [] });
   W(path.join(F.root, 'jobs', 'archive', '2026-10', 'J11.json'), { id: 'J11', status: 'closed', steps: [] });
   const jobs = [{ id: 'J30', status: 'running', steps: [mergeStep(F.dir('demo-project'))] }, { id: 'J31', status: 'running', steps: [mergeStep(F.dir('demo-project'))] }, { id: 'J32', status: 'running', vars: { private: 'yes' }, steps: [] }];
   const isPrivate = (j) => ['yes', 'true'].includes(String(j?.vars?.private || ''));
-  const gh = { calls: [], fail: false, merged: {}, open: {} };
+  const gh = { calls: [], fail: false, merged: {}, open: {}, private: { 'demo-owner/demo-project': false, 'demo-owner/tide-demo': false, 'demo-owner/old-private': true } };
   gh.merged['demo-owner/demo-project'] = [
     { number: 1, title: 'First floor', mergedAt: '2026-10-20T09:00:00Z', mergeCommit: { oid: sha('a') }, headRefName: 'feature-a' },
     { number: 2, title: 'Second floor', mergedAt: '2026-10-21T10:00:00Z', mergeCommit: { oid: sha('b') }, headRefName: 'kitchen/J11' },
@@ -183,6 +187,7 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
     if (file === 'git') return git(file, args, opts);
     gh.calls.push(args.join(' '));
     if (gh.fail) return { err: Object.assign(new Error('exit 4'), { code: 4 }), out: 'To get started with GitHub CLI, please run:  gh auth login' };
+    if (args[0] === 'api' && args[1].startsWith('repos/')) { const p = gh.private[args[1].slice(6)]; return p === undefined ? { err: new Error('HTTP 404'), out: 'HTTP 404: Not Found' } : { err: null, out: p + '\n' }; }
     if (args[0] === 'api') return { err: null, out: JSON.stringify({ resources: { graphql: { remaining: 4321 } } }) };
     const slug = args[args.indexOf('-R') + 1]; const state = args[args.indexOf('--state') + 1];
     return { err: null, out: JSON.stringify((state === 'merged' ? gh.merged : gh.open)[slug] || []) };
@@ -190,7 +195,9 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   const logs = [];
   const T = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run, jobs: () => jobs, isPrivate, sigEveryMs: 0, gitEveryMs: 3600e3, github: { everyMs: 3600e3, off: false, log: (l) => logs.push(l) } });
   await T.refreshGit(); const before = T.view();
-  check('GitHub_Loading: before the first read githubAt is null and the City shows the local records (the session merge, the Yard\'s crane)', before.githubAt === null && !before.githubError && before.towers.find((t) => t.key === 'demo-project').floors.some((f) => f.pr === 2) && before.towers.find((t) => t.key === 'demo-project').open.some((o) => o.pr === 9));
+  const p0 = before.towers.find((t) => t.key === 'private');
+  check('GitHub_Loading: before the first read githubAt is null and the City shows the local records (the session merge, the Yard\'s crane), under a neutral name while the repo\'s visibility is unread (fail closed)',
+    before.githubAt === null && !before.githubError && p0?.private === true && p0.name === 'Private project' && p0.floors.some((f) => f.pr === 2) && p0.open.some((o) => o.pr === 9) && !before.towers.some((t) => t.key === 'demo-project' || t.key === 'td'), JSON.stringify(before.towers.map((t) => [t.key, t.name])));
   await T.refreshGithub(); await new Promise((r) => setTimeout(r, 0)); await T.refreshGit();   // the stone base is counted again from GitHub's first floor
   const v = T.view(); const dp = v.towers.find((t) => t.key === 'demo-project'); const td = v.towers.find((t) => t.key === 'td');
   const f = (n) => dp.floors.find((x) => x.pr === n);
@@ -198,7 +205,7 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   check('GitHub_Privacy: a private work order\'s floor and crane carry no title; an order whose file cannot be found counts as private', !('title' in f(3)) && f(3).job === 'J33' && !('title' in f(4)) && !JSON.stringify(v).includes('secret') && !JSON.stringify(v).includes('ghost order words'));
   const o = (n) => dp.open.find((x) => x.pr === n);
   check('GitHub_Cranes: GitHub\'s open PRs replace the Yard\'s own crane list: CI from the checks (a failure is red, unfinished is pending), a draft carries no load, none is unknown', dp.open.length === 3 && !o(9) && o(10).ci === 'red' && o(10).job === 'J31' && o(10).title === 'Crane with red CI' && o(11).draft === true && o(11).ci === null && o(12).ci === 'pending');
-  check('GitHub_History: the old repo is read for merged PRs only (no open list), under the line', gh.calls.some((c) => c.includes('-R demo-owner/old-private --state merged')) && !gh.calls.some((c) => c.includes('-R demo-owner/old-private --state open')) && td.floors.some((x) => x.past && x.pr === 2 && x.title === 'Old floor two'));
+  check('GitHub_History: the old repo is read for merged PRs only (no open list), under the line; its repo is private, so its floors carry no title (the public Tower keeps its name)', gh.calls.some((c) => c.includes('-R demo-owner/old-private --state merged')) && !gh.calls.some((c) => c.includes('-R demo-owner/old-private --state open')) && td.floors.some((x) => x.past && x.pr === 2 && !('title' in x)) && !JSON.stringify(v).includes('Old floor two') && td.name === 'Tide' && !td.private);
   check('GitHub_FullThenIncremental: the first read takes every merged PR (limit 1000)', gh.calls.filter((c) => c.includes('-R demo-owner/demo-project --state merged'))[0].includes('--limit 1000'), gh.calls[0]);
   const at1 = v.githubAt; const v1 = v.v; gh.calls.length = 0; await new Promise((r) => setTimeout(r, 5)); await T.refreshGithub(); const v2 = T.view();
   check('GitHub_FullThenIncremental: the next read searches merged:>= a day before the newest (limit 200), and the old repo is not read again the same day', gh.calls.some((c) => c.includes('-R demo-owner/demo-project --state merged') && c.includes('--search merged:>=2026-10-21') && c.includes('--limit 200')) && !gh.calls.some((c) => c.includes('old-private')), gh.calls.join(' | '));
@@ -215,10 +222,48 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   T2.stop();
   check('CI_Rollup: no checks is unknown; all passed (or skipped) is green; a cancelled or errored one is red; a queued commit status is pending',
     ciOfRollup([]) === null && ciOfRollup(null) === null && ciOfRollup([{ status: 'COMPLETED', conclusion: 'SUCCESS' }, { status: 'COMPLETED', conclusion: 'SKIPPED' }]) === 'green' && ciOfRollup([{ conclusion: 'CANCELLED', status: 'COMPLETED' }]) === 'red' && ciOfRollup([{ state: 'ERROR' }]) === 'red' && ciOfRollup([{ state: 'PENDING' }]) === 'pending' && ciOfRollup([{ state: 'SUCCESS' }]) === 'green');
-  check('GitHub_Targets: each repo\'s GitHub home (kitchen.repo.json, else its origin remote) once, plus the old history repo; never the Office',
-    JSON.stringify(githubTargets([{ key: 'a', slug: 'o/a' }, { key: 'b', slug: '' }, { key: 'c', slug: 'o/c', office: true }, { key: 'd', slug: 'o/a', history: { slug: 'o/old' } }], new Map([['b', { remoteSlug: 'o/b' }]]))) === JSON.stringify([{ slug: 'o/a', past: false }, { slug: 'o/b', past: false }, { slug: 'o/old', past: true }]));
+  check('GitHub_Targets: each repo\'s GitHub home (kitchen.repo.json, else its origin remote) once, plus the old history repo; the Office only for its visibility',
+    JSON.stringify(githubTargets([{ key: 'a', slug: 'o/a' }, { key: 'b', slug: '' }, { key: 'c', slug: 'o/c', office: true }, { key: 'd', slug: 'o/a', history: { slug: 'o/old' } }], new Map([['b', { remoteSlug: 'o/b' }]]))) === JSON.stringify([{ slug: 'o/a', past: false }, { slug: 'o/b', past: false }, { slug: 'o/c', past: false, office: true }, { slug: 'o/old', past: true }]));
   check('GitHub_PlainErrors: gh\'s failures are said in plain words, never its raw output', (await ghCall(async () => ({ err: Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }), out: '' }), ['pr'])).error === 'gh is not installed' && (await ghCall(async () => ({ err: new Error('x'), out: 'HTTP 404: Not Found (https://api.github.com/x)' }), ['pr'])).error === 'the repo is not on GitHub');
   check('Config_KeyFallback: shown names and history are found by key, else GitHub name, else folder name (so they hold when a Site code arrives)', td.floors.some((x) => x.past) && td.publicFrom === undefined);
+}
+// ---- private repos (review F3): a private GitHub repo is "Private project" with counts only: no name, no PR title, no GitHub link ----
+{
+  const F = fixture('private', {
+    kitchen: (r) => ({ ...boot(r), city: { names: { 'demo-project': 'Demo Shown Name' } } }),
+    merges: [{ pr: 5, repo: 'demo-owner/demo-project', sha: sha('5'), actor: 'claude-session', why: '', at: '2026-10-21T10:00:00Z', ok: true }],
+    results: { 'J60.pr.json': { job: 'J60', repo: 'demo-owner/demo-project', number: 8, url: 'https://github.com/demo-owner/demo-project/pull/8', pushedAt: '2026-10-23T09:00:00Z' } },
+    vis: {},
+  });
+  // demo-project (kitchen.repo.json) and side-app (only its origin remote) are private on GitHub; the Office and Tide are public
+  const vis = { 'demo-owner/demo-project': true, 'demo-owner/side-secret': true, 'demo-owner/tide-demo': false, 'demo-owner/brain-demo': false };
+  const lists = { merged: { 'demo-owner/demo-project': [{ number: 5, title: 'Secret merged words', mergedAt: '2026-10-21T10:00:00Z', mergeCommit: { oid: sha('5') }, headRefName: 'x' }] },
+    open: { 'demo-owner/demo-project': [{ number: 8, title: 'Secret crane words', isDraft: false, createdAt: '2026-10-23T09:00:00Z', headRefName: 'kitchen/J60', statusCheckRollup: [] }] } };
+  const git = fakeGit({ 'demo-project': { commits: 9, last: '2026-10-23T08:00:00Z', before: 2 }, 'side-app': { commits: 4, last: '2026-10-10T19:00:00Z', remote: 'https://github.com/demo-owner/side-secret.git' },
+    'gemini-brain': { commits: 3, last: '2026-10-24T00:00:00Z', remote: 'git@github.com:demo-owner/brain-demo.git' }, 'old-name': { commits: 2, last: '2026-10-24T00:00:00Z' } });
+  const calls = [];
+  const run = async (file, args, opts) => {
+    if (file === 'git') return git(file, args, opts);
+    calls.push(args.join(' '));
+    if (args[0] === 'api') return { err: null, out: args[1].startsWith('repos/') ? vis[args[1].slice(6)] + '\n' : '{}' };
+    return { err: null, out: JSON.stringify((args.includes('merged') ? lists.merged : lists.open)[args[args.indexOf('-R') + 1]] || []) };
+  };
+  const jobs = [{ id: 'J60', status: 'running', steps: [mergeStep(F.dir('demo-project'))] }];
+  const T = makeTowers({ root: F.root, repoHome: F.dir('old-name'), run, jobs: () => jobs, sigEveryMs: 0, gitEveryMs: 3600e3, github: { everyMs: 3600e3, off: false } });
+  const v0 = T.view();
+  check('Private_FailClosed: before git and GitHub are read, every Site is "Private project" under a neutral key (its visibility is unknown)', v0.towers.length === 4 && v0.towers.every((t) => t.private && /^Private project( \d)?$/.test(t.name) && /^private(-\d)?$/.test(t.key)), JSON.stringify(v0.towers.map((t) => [t.key, t.name])));
+  await T.refreshGit(); await T.refreshGithub(); await T.refreshGit();
+  const v = T.view(); const shown = JSON.stringify(v.towers.map(({ folder, repo, ...rest }) => rest)); const by = (k) => v.towers.find((t) => t.key === k);
+  check('Private_Marked: a private repo (by kitchen.repo.json or by its origin remote) is "Private project", "Private project 2", private: true, under a neutral key; public ones keep their names',
+    by('private')?.private === true && by('private').name === 'Private project' && by('private').kind === 'tower' && by('private-2')?.name === 'Private project 2' && by('private-2').kind === 'lot' && by('td')?.name === 'Tide' && !('private' in by('td')) && by('gemini-brain')?.kind === 'office', JSON.stringify(v.towers.map((t) => [t.key, t.name])));
+  check('Private_NoTitlesOrNames: nothing the City draws from a private repo carries a PR title, its repo name or its configured name; its floors and cranes are still counted',
+    !/Secret|demo-project|side-secret|side-app|Demo Shown Name/.test(shown) && by('private').floors.length === 1 && by('private').open.length === 1 && by('private').open[0].pr === 8, shown);
+  check('Private_JobTower: a work order on a private repo belongs to its neutral key (so its crew still stands on it)', T.towerOf(jobs[0]) === 'private');
+  const vc = calls.filter((c) => c.startsWith('api repos/'));
+  check('Private_ReadDaily: each repo\'s visibility is read with gh api repos/<slug> --jq .private, once a day (the Office\'s too)', ['demo-project', 'side-secret', 'brain-demo', 'tide-demo'].every((r) => vc.filter((c) => c === `api repos/demo-owner/${r} --jq .private`).length === 1), vc.join(' | '));
+  T.stop();
+  check('Private_NoGithubHome: a Site with no GitHub home is not private once git has said so (it is while git is unread); a public slug is not',
+    isPrivateSite({ slug: '' }, { remoteSlug: '' }, () => undefined) === false && isPrivateSite({ slug: '' }, undefined, () => undefined) === true && isPrivateSite({ slug: 'O/X' }, {}, (s) => (s === 'o/x' ? false : undefined)) === false);
 }
 
 // ---- G3: the model (public/city.js cityOf): one truth test per row of the design's section 4.1 ----
@@ -287,6 +332,198 @@ const boot = (repos) => ({ bootRepos: ['demo-project', 'side-app', 'gemini-brain
   const files = ['city.js', 'city-art.js', 'city-nav.js'].filter((f) => fs.existsSync(new URL('./public/' + f, import.meta.url)));
   const br = files.reduce((n, f) => n + zl.brotliCompressSync(fs.readFileSync(new URL('./public/' + f, import.meta.url))).length, 0);
   check(`Budget_CityBytes: city.js + city-art.js + city-nav.js are at most 16,000 bytes brotli (${br} B in ${files.join(', ')})`, files.includes('city.js') && br <= 16000);
+}
+
+// ---- G4: the pixel City (paintCity, paintStrip, the art, the legend) on plain buffers; no browser ----
+{
+  const CJ = await import('./public/city.js'); const ARTS = await import('./public/city-art.js'); const SP = await import('./public/sprites.js');
+  const NOW = Date.parse('2026-10-26T20:00:00Z'); const ago = (ms) => new Date(NOW - ms).toISOString();
+  const towersOf = (o = {}) => ({ ok: true, towers: [
+    { key: 'td', name: 'Tide', kind: 'tower', folder: 'tide', floors: Array.from({ length: 30 }, (_, i) => ({ pr: i + 1, at: ago((30 - i) * 3600e3) })), open: [{ pr: 40, ci: 'red', createdAt: ago(1e3) }], plinth: { commits: 60 }, ...o },
+    { key: 'side', name: 'Side', kind: 'lot', folder: 'side', floors: [], open: [], plinth: { commits: 28 } },
+    { key: 'gemini-brain', name: 'Office', kind: 'office', folder: 'gemini-brain', floors: [], open: [], commits: 9, lastCommit: ago(3600e3) }] });
+  const job = (id, o) => ({ id, status: 'running', step: 1, steps: 2, station: 'agent', role: 'do', cook: 'claude', tower: 'td', updated: ago(6e4), ...o });
+  const S = { paused: true, live: false, spent: 1, budget: 4, jobs: [job('J1'), job('J2', { status: 'waiting-approval' })] };
+  const C = CJ.cityOf(towersOf(), S, [], NOW); const W = CJ.minWidth(C) + 30; const ph = { blink: 1, step: 0 };
+  const a = CJ.paintCity(C, W, 13, ph); const b = CJ.paintCity(C, W, 13, ph);
+  check('Render_OneBuffer: the City is one pixel buffer of W x 136 (one drawImage a frame; the stage\'s 120-draw cap is far away), the same model draws the same picture', a.g.buf.length === W * CJ.ART.H && a.g.buf.every((v, i) => v === b.g.buf[i]));
+  const items = CJ.layoutCity(C, W);
+  check('Render_Layout: the gate, the Yard lot, then every building in order; no slot overlaps another or leaves the picture', items.map((i) => i.key).join() === 'gate,yard,td,side,gemini-brain' && items.every((it, i) => it.slot[1] <= W && (i === 0 || it.slot[0] >= items[i - 1].slot[1])));
+  const px = (g, x, y) => g.buf[y * g.W + x]; const pal = CJ.palettes(C.sky); const box = a.boxes.td;
+  const has = (g, k, x0, y0, x1, y1) => { for (let y = Math.max(0, y0); y < Math.min(g.H, y1); y++) for (let x = Math.max(0, x0); x < Math.min(g.W, x1); x++) if (px(g, x, y) === pal[k]) return true; return false; };
+  check('Render_StoneBase: a 60-commit stone base is 3 px of stone under the tower (1 px per 20 commits)', px(a.g, box.x + 2, (CJ.ART.H - 14) - 1) === pal.k || px(a.g, box.x + 2, (CJ.ART.H - 14) - 1) === pal.j);
+  check('Render_Beacon: a waiting sign-off lights a beacon on the roof; none without one', has(a.g, BEACONK(C.lots[0].beacon), box.x - 4, box.top - 8, box.x + 4, box.top) && (() => { const n = CJ.paintCity(CJ.cityOf(towersOf(), { ...S, jobs: [job('J1')] }, [], NOW), W, 13, ph); const bx = n.boxes.td; return !has(n.g, BEACONK(C.lots[0].beacon), bx.x - 4, bx.top - 8, bx.x, bx.top); })());
+  check('Render_CraneTag: a crane with red CI carries a red tag; a gate sign reads PAUSED in red', has(a.g, 'B', box.x + box.w, box.top, box.x + box.w + 4, box.top + 8) && has(a.g, 'B', items[0].x, (CJ.ART.H - 14) - 26, items[0].x + 28, (CJ.ART.H - 14) - 16));
+  const quiet = CJ.paintCity(CJ.cityOf({ ok: true, towers: [] }, {}, [], NOW), CJ.minWidth({ lots: [] }) + 20, 13, ph);
+  const gx = CJ.layoutCity({ lots: [] }, quiet.g.W)[0].x, cy = (CJ.ART.H - 14) - 12; const clockAt = (g) => has(g, 'p', gx + 4, cy + 2, gx + 9, cy + 7);
+  const wq = quiet.g.W; const ticking = CJ.paintCity(CJ.cityOf({ ok: true, towers: [] }, { stalled: false }, [], NOW), wq, 13, ph).g; const stopped = CJ.paintCity(CJ.cityOf({ ok: true, towers: [] }, { stalled: true }, [], NOW), wq, 13, ph).g;
+  check('Render_TruthRule: with no state and no buildings there is no gate sign, no meter, no beacon and no site clock (only the sky, the cabin and the street); the clock runs (two hands) only when the state says it is not stalled',
+    !has(quiet.g, 'B', 0, 0, quiet.g.W, (CJ.ART.H - 14)) && !has(quiet.g, 'v', 0, 0, quiet.g.W, (CJ.ART.H - 14)) && !clockAt(quiet.g) && clockAt(ticking) && clockAt(stopped)
+    && px(ticking, gx + 7, cy + 4) === pal.a && px(stopped, gx + 7, cy + 4) === pal.p && CJ.cityOf({ ok: true, towers: [] }, null, [], NOW).gate.stalled === null);
+  // a private repo (towers.mjs: private, a neutral name): a padlock high over its building, "(private)" in its sentence, a legend row
+  const PC = CJ.cityOf(towersOf({ private: true, name: 'Private project', key: 'private' }), S, [], NOW); const pl = CJ.paintCity(PC, W, 13, ph); const pit = pl.items.find((it) => it.key === 'private');
+  const lockAt = (g, it) => { for (let y = 2; y < 7; y++) for (let x = it.x + (it.w >> 1) - 2; x < it.x + (it.w >> 1) + 2; x++) if (px(g, x, y) === pal.t) return true; return false; };
+  check('Render_PrivateRepo: a private repo is marked: a padlock over its building (none over a public one), "(private)" in its sentence and the legend row; its name is the neutral one it was sent',
+    lockAt(pl.g, pit) && !lockAt(a.g, items.find((it) => it.key === 'td')) && CJ.sentence(PC.lots[0]).startsWith('Private project (private): 30 floors') && CJ.legendRows(PC).some((r) => r.startsWith('Padlock over a building')) && !CJ.legendRows(C).some((r) => r.startsWith('Padlock')));
+  const day = a;
+  check('Render_SkyIsTheHour: the sky is the real hour (night is darker than day at the top), never the theme', px(CJ.paintCity({ ...C, sky: 'night' }, W, 23, ph).g, 1, 1) !== px(day.g, 1, 1) && CJ.palettes('night').sky[0] !== CJ.palettes('day').sky[0]);
+  const r1 = CJ.paintCity(C, W, 13, { blink: 1, step: 0 }); const r2 = CJ.paintCity(C, W, 13, { blink: 1, step: 0 });
+  check('Render_ReducedMotion: the still frame (beacon steady and lit, crews still) is one fixed picture', r1.g.buf.every((v, i) => v === r2.g.buf[i]) && r1.g.buf.some((v, i) => v !== CJ.paintCity(C, W, 13, { blink: 0, step: 1 }).g.buf[i]));
+  const st = CJ.paintStrip(C, 200, ph); const calm = CJ.paintStrip(CJ.cityOf(towersOf(), { paused: false }, [], NOW), 200, ph);
+  check('Strip_Paint: the horizon strip is 20 art px tall; PAUSED and the beacon show when they apply, and it is quiet otherwise', st.H === 20 && has(st, 'B', 0, 0, 34, 20) && !has(calm, 'B', 0, 0, 200, 20) && !has(calm, 's', 0, 0, 200, 20));
+  const rows = CJ.legendRows(C);
+  check('Legend_OnlyWhatIsDrawn: the legend says the scale, and has a row only for marks on screen', rows[0].startsWith('1 row = 1 floor') && rows.some((r) => r.startsWith('Beacon')) && !rows.some((r) => r.startsWith('Skip')) && CJ.legendRows(CJ.cityOf(null, S, [], NOW)).length === 0);
+  const keys = new Set([...Object.keys(SP.PALETTE), ...Object.keys(ARTS.PAINT), '.']);
+  const sprites = [...ARTS.WORKER, ...Object.values(ARTS.TOOLS), ARTS.PALLET, ARTS.LOCK, ARTS.FLAG, ARTS.SKIP, ...Object.values(ARTS.GL)];
+  check('Art_Palette: every City sprite uses only the sprites.js palette (plus the two local crane paints), with even rows', sprites.every((rows) => rows.every((r) => r.length === rows[0].length && [...r].every((ch) => keys.has(ch)))));
+  check('Art_Glyphs: the City\'s signs can be written (PAUSED, OPEN, GH!, +12, ?)', [...'PAUSEDOPENGH!+0123456789?'].every((ch) => ARTS.GL[ch]));
+  // the City's Purpose Ledger (purpose.js CITY_PURPOSE, review F7): nothing drawn without a row, every row bound and every field a change
+  const { CITY_PURPOSE } = await import('./public/purpose.js'); const DATA = CITY_PURPOSE.filter((r) => r.kind === 'data');
+  const declared = new Set(CITY_PURPOSE.flatMap((r) => r.fields)); const full = CJ.cityOf(towersOf({ private: true, publicFrom: ago(3600e3), blueprint: { total: 40, shipped: 30 } }), { ...S, stalled: false, breaker: true }, [], NOW);
+  const paths = [...Object.keys(full).filter((k) => !['lots', 'gate', 'yard'].includes(k)), ...['lots', 'gate', 'yard'].flatMap((k) => Object.keys(k === 'lots' ? full.lots[0] : full[k]).map((f) => `${k}.${f}`))];
+  const has2 = (p) => (p.includes('.') ? (p.startsWith('lots.') ? p.slice(5) in full.lots[0] : p.split('.')[1] in full[p.split('.')[0]]) : p in full);
+  const art = new Set(CITY_PURPOSE.flatMap((r) => r.art || [])); const artNames = Object.keys(ARTS);
+  check(`CityPurpose_Declared: every field of the City's model (${paths.length}) and every City sprite (${artNames.length}: ${artNames.join(', ')}) has a ledger row, and every row names real fields and sprites`,
+    paths.every((p) => declared.has(p)) && [...declared].every(has2) && artNames.every((n) => art.has(n)) && [...art].every((n) => n in ARTS), paths.filter((p) => !declared.has(p)).concat([...declared].filter((p) => !has2(p))).join(', '));
+  check('CityPurpose_Bound: every data row says where its field comes from (/api/towers or the state) and what a missing field draws; ground (no field) is capped at 5 rows',
+    DATA.every((r) => /api\/(towers|state)/.test(r.from) && r.absent && r.fields.length) && CITY_PURPOSE.filter((r) => r.kind === 'ground').length <= 5 && CITY_PURPOSE.every((r) => ['data', 'ground', 'words', 'route'].includes(r.kind)));
+  const lines = CJ.legendRows(full); const owner = (line) => DATA.filter((r) => r.legend && line.startsWith(r.legend));
+  check(`CityPurpose_Legend: every legend line (${lines.length} on a full City) is one data row's line`, lines.length >= 10 && lines.every((l) => owner(l).length === 1), lines.filter((l) => owner(l).length !== 1).join(' | '));
+  const base = CJ.cityOf(towersOf(), { jobs: [] }, [], NOW); const L0 = base.lots[0];
+  const lot0 = (o) => ({ ...base, lots: [{ ...L0, ...o }, ...base.lots.slice(1)] }); const gate = (o) => ({ ...base, gate: { ...base.gate, ...o } });
+  const crewM = { id: 'J1', cook: 'claude', tool: 'build', lift: 0.5, private: false, moving: true };
+  const FLIP = {
+    building: lot0({ floors: 31, rows: 31 }), base: lot0({ plinth: 0 }), lit: lot0({ lit: 0 }), public: lot0({ publicAt: 10 }), blueprint: lot0({ blueprint: { total: 40, shipped: 30 } }),
+    crane: lot0({ cranes: [], craneMore: 0 }), crew: lot0({ crews: [crewM] }), pallets: lot0({ pallets: 2 }), beacon: lot0({ beacon: 'red' }), scaffold: lot0({ scaffold: 'red' }),
+    tape: lot0({ tape: 'now' }), skip: lot0({ skip: [{ pr: 1, job: null, unknown: false }] }), flag: lot0({ fresh: 2 }), private: lot0({ private: true }), manual: lot0({ manual: true }),
+    sign: gate({ paused: false }), meter: gate({ budget: { level: 3, stop: false } }), breaker: gate({ breaker: true }), clock: gate({ stalled: false }),
+    github: gate({ github: { err: true, text: 'GitHub read failed' } }), yard: { ...base, yard: { ...base.yard, running: 2 } },
+  };
+  const pic = (m) => CJ.paintCity(m, W, 13, ph).g.buf; const b0 = pic(base); const flat = DATA.filter((r) => !FLIP[r.id] || pic(FLIP[r.id]).every((v, i) => v === b0[i])).map((r) => r.id);
+  check(`CityPurpose_Flips: each data row's field changes the picture (${Object.keys(FLIP).length} flips)${flat.length ? '; flat or missing: ' + flat.join(', ') : ''}`, flat.length === 0);
+  check('CityPurpose_Route: the focus mark (a route row) is drawn only for the building the route is on', CITY_PURPOSE.some((r) => r.id === 'focus' && r.kind === 'route') && CJ.paintCity(base, W, 13, { ...ph, focus: 'td' }).g.buf.some((v, i) => v !== b0[i]) && CJ.paintCity(base, W, 13, { ...ph, focus: 'nowhere' }).g.buf.every((v, i) => v === b0[i]));
+  function BEACONK(k) { return ARTS.BEACON[k]; }
+}
+
+// ---- G5: navigation (public/city-nav.js): routes, Back, breadcrumb, gestures, camera ----
+{
+  const N = await import('./public/city-nav.js');
+  check('Nav_Routes: #/pass is the City, #/city/<key> one building, #/city/<key>/f/<pr> a floor; junk is the City', JSON.stringify([N.routeOf('#/pass'), N.routeOf('#/city/td'), N.routeOf('#/city/td/f/121'), N.routeOf('#/city/../x'), N.routeOf('#/city/TD')]) === JSON.stringify([{ level: 0, key: null, pr: null }, { level: 1, key: 'td', pr: null }, { level: 2, key: 'td', pr: 121 }, { level: 0, key: null, pr: null }, { level: 0, key: null, pr: null }]));
+  check('Nav_BackZoomsOut: Back from a floor is its building, from a building the City; a route and its hash go both ways', N.hashOf(N.upOf(N.routeOf('#/city/td/f/9'))) === '#/city/td' && N.hashOf(N.upOf(N.routeOf('#/city/td'))) === '#/pass' && ['#/pass', '#/city/td', '#/city/td/f/9'].every((h) => N.hashOf(N.routeOf(h)) === h));
+  check('Nav_SwipeNeighbour: a sideways swipe on a building goes to the next one and wraps around', N.neighbourOf(['a', 'b', 'c'], 'c', 1) === 'a' && N.neighbourOf(['a', 'b', 'c'], 'a', -1) === 'c' && N.neighbourOf(['a'], 'x', 1) === null);
+  const r0 = N.routeOf('#/pass'), r1 = N.routeOf('#/city/b'), keys = ['a', 'b', 'c'];
+  check('Nav_Gestures: tap a building = in one level (never the gate); pinch out = in on the building under the fingers; pinch in = out one level; swipe left = the next building',
+    N.gestureTo({ gesture: 'tap' }, r0, 'b', keys)?.key === 'b' && N.gestureTo({ gesture: 'tap' }, r0, 'gate', keys) === null && N.gestureTo({ gesture: 'pinch-out' }, r0, 'c', keys)?.key === 'c'
+    && N.gestureTo({ gesture: 'pinch-in' }, r1, 'b', keys)?.level === 0 && N.gestureTo({ gesture: 'swipe', dx: -80 }, r1, null, keys)?.key === 'c' && N.gestureTo({ gesture: 'swipe', dx: 80 }, r0, null, keys) === null);
+  const esc2 = (v) => String(v).replace(/</g, '&lt;');
+  const cr = N.crumbsHtml(N.routeOf('#/city/td/f/121'), (k) => (k === 'td' ? 'Tide' : k), esc2);
+  check('Nav_Breadcrumb: City › Tide › PR #121, every crumb but the last a link; none on the City itself', cr.includes('<a href="#/pass">City</a>') && cr.includes('<a href="#/city/td">Tide</a>') && cr.includes('<span aria-current="page">PR #121</span>') && N.crumbsHtml(r0, (k) => k, esc2) === '' && !N.crumbsHtml(N.routeOf('#/city/x'), () => '<b>', esc2).includes('<b>'));
+  let cut = 0; N.cameraMove({ animate: () => { throw new Error('animated under reduced motion'); } }, 0.5, true, true, () => cut++);
+  let anim = null; N.cameraMove({ animate: (k, o) => (anim = { k, o, onfinish: null }) }, 0.25, true, false, () => cut++); anim.onfinish(); let out = null; N.cameraMove({ animate: (k, o) => (out = o) }, 0.5, false, false, () => {});
+  check('Nav_Camera: zoom in 280 ms and out 220 ms toward the building, ease-out; an instant cut under reduced motion', cut === 2 && anim.o.duration === 280 && out.duration === 220 && anim.k[1].transformOrigin.startsWith('25%'));
+  // review F2: the gestures listen on the City's box, but only a pointer that starts on its canvas is one (a tap on the (i) key zoomed
+  // into the rightmost building; a tap on a name pushed a second, wrong route first)
+  const ls = {}; const got = []; N.attachGestures({ style: {}, addEventListener: (t, f) => { ls[t] = f; }, getBoundingClientRect: () => ({ left: 0, width: 300 }) }, { at: (x) => x, onGesture: (g) => got.push(g.gesture) });
+  const tap = (tagName, id) => { const target = { tagName }; for (const type of ['pointerdown', 'pointerup']) ls[type]({ type, pointerId: id, clientX: 290, clientY: 10, target }); };
+  tap('BUTTON', 1); tap('A', 2); tap('SPAN', 3); const offCanvas = got.length; tap('CANVAS', 4);
+  let menus = 0; ls.contextmenu({ target: { tagName: 'A' }, preventDefault: () => menus++ }); ls.contextmenu({ target: { tagName: 'CANVAS' }, preventDefault: () => menus++ });
+  check('Nav_GesturesOnCanvasOnly: a tap on the (i) key, a name link or a crumb is no gesture; a tap on the canvas is one; only the canvas keeps the long-press menu off', offCanvas === 0 && got.join() === 'tap' && menus === 1);
+}
+// ---- the City's frame loop (review F1): mountCity on a fake page, a fake clock and a fake 120 Hz screen for 2 s; frame.js's contract
+// (frame() returns the wait; Infinity stops the loop) makes a still City idle like the stage, and a moving one wake only for its steps ----
+async function cityLoop({ towers, s, rm = false, ms = 2000, api = async () => towers, every = 0, view = 'pass', names = null, act = null }) {
+  const CJ = await import('./public/city.js'); const T0 = Date.parse('2026-10-26T20:00:00Z'); let t = 0; let q = []; const timers = []; const n = { raf: 0, blits: 0 };
+  const keep = { now: Date.now, st: globalThis.setTimeout, ct: globalThis.clearTimeout, si: globalThis.setInterval };
+  const had = ['requestAnimationFrame', 'document', 'location', 'history', 'matchMedia'].map((k) => [k, Object.getOwnPropertyDescriptor(globalThis, k)]);
+  const ctx = { createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }), putImageData() {}, drawImage() { n.blits++; } };
+  const canvas = () => ({ width: 0, height: 0, style: {}, setAttribute() {}, getContext: () => ctx });
+  const cv = canvas(); const el = (x = {}) => ({ hidden: false, clientWidth: 343, style: {}, firstChild: null, addEventListener() {}, setAttribute() {}, classList: { toggle() {} }, querySelector: () => cv, insertBefore: (c) => c, appendChild: (c) => c, contains: () => false, ...x });
+  const set = (k, v) => Object.defineProperty(globalThis, k, { value: v, configurable: true, writable: true });
+  try {
+    Date.now = () => T0 + t; globalThis.setInterval = () => 0;
+    globalThis.setTimeout = (f, d) => { const h = { f, at: t + (Number(d) || 0) }; timers.push(h); return h; }; globalThis.clearTimeout = (h) => { const i = timers.indexOf(h); if (i >= 0) timers.splice(i, 1); };
+    set('requestAnimationFrame', (f) => { q.push(f); return q.length; }); set('document', { hidden: false, createElement: canvas, addEventListener() {}, querySelector: () => null, activeElement: null });
+    const loc = { hash: '#/pass', replace(h) { loc.hash = h; } }; set('location', loc); set('history', { back() {} }); set('matchMedia', () => ({ matches: rm }));
+    const page = { home: el(), strip: el(), names: names || el({ innerHTML: '' }) };
+    const city = CJ.mountCity({ ...page, cap: null, api, go() {}, legend() {}, buzz() {}, get: () => ({ s, ev: [], view, lastSeen: null }) });
+    city.update(); await new Promise((r) => keep.st(r, 5)); n.raf = 0; n.blits = 0;   // the towers read (a resolved promise) and its redraw
+    if (act) await act({ city, loc });
+    for (let i = 0; t <= ms; i++, t = i * 1000 / 120) {   // one vsync: timers due, the state's own renders (every ms), then the frame callbacks asked for before it
+      const due = timers.filter((x) => x.at <= t); for (const h of due) { timers.splice(timers.indexOf(h), 1); h.f(); }
+      const tick = every && i % Math.round(every * 120 / 1000) === 0; if (tick) city.update();
+      if (due.length || tick) for (let k = 0; k < 6; k++) await null;   // the towers read's promise settles
+      const now = q; q = []; for (const f of now) { n.raf++; f(t); }
+    }
+    return { ...n, names: page.names.innerHTML, stripHidden: page.strip.hidden };
+  } finally { Object.assign(Date, { now: keep.now }); Object.assign(globalThis, { setTimeout: keep.st, clearTimeout: keep.ct, setInterval: keep.si }); for (const [k, d] of had) if (d) Object.defineProperty(globalThis, k, d); else delete globalThis[k]; }
+}
+{
+  const NOW = Date.parse('2026-10-26T20:00:00Z'); const ago = (ms) => new Date(NOW - ms).toISOString();
+  const towers = { ok: true, towers: [{ key: 'td', name: 'Tide', kind: 'tower', folder: 'tide', floors: [{ pr: 1, at: ago(864e5) }], open: [] }] };
+  const crew = { id: 'J1', status: 'running', step: 1, steps: 2, station: 'agent', role: 'do', cook: 'claude', tower: 'td', updated: ago(6e4) };
+  const still = await cityLoop({ towers, s: { towersV: 'v1', paused: true, jobs: [] } });
+  const busy = await cityLoop({ towers, s: { towersV: 'v1', paused: false, jobs: [crew] } });
+  const calm = await cityLoop({ towers, s: { towersV: 'v1', paused: false, jobs: [crew] }, rm: true });
+  check(`Loop_StillCityIdles: a still City (PAUSED alone is still) asks for no frame in 2 s at 120 Hz (${still.raf} callbacks, ${still.blits} draws; before the fix: 241)`, still.raf <= 1 && still.blits === 0);
+  check(`Loop_MovingCityWakesForSteps: a City with a crew at work wakes only for its 260 ms steps and 500 ms blinks (${busy.raf} callbacks, ${busy.blits} draws in 2 s), never every frame`, busy.raf <= 40 && busy.blits >= 6 && busy.blits <= 20);
+  check(`Loop_ReducedMotion: under reduced motion the loop never runs (${calm.raf} callbacks)`, calm.raf === 0 && calm.blits === 0);
+  // review F4: a failed /api/towers read is tried again with a back-off (30 s, then 60 s ...), not only at the next merge, and never on
+  // every state render; the strip stays hidden (no empty, unnamed button) until the City has been read
+  const at = []; let fails = 2; const flaky = async () => { at.push(Date.now() - NOW); return fails-- > 0 ? { ok: false, error: 'the server answered 500' } : towers; };
+  const re = await cityLoop({ towers, s: { towersV: 'v1', jobs: [] }, api: flaky, every: 1000, ms: 100000 });
+  const gaps = at.slice(1).map((x, i) => Math.round((x - at[i]) / 1000));
+  check(`Towers_RetryBackoff: a failed read is tried again after 30 s, then 60 s, and stops once it is read (reads at ${at.map((x) => Math.round(x / 1000)).join(', ')} s; the state rendered every second)`,
+    at.length === 3 && gaps[0] === 30 && gaps[1] === 60 && !/could not be read/.test(re.names) && /Tide/.test(re.names));
+  const off = await cityLoop({ towers, s: { towersV: 'v1', jobs: [] }, api: async () => ({ ok: false, error: 'x' }), view: 'cooks', ms: 100 });
+  const on = await cityLoop({ towers, s: { towersV: 'v1', jobs: [] }, view: 'cooks', ms: 100 });
+  // review F5: following a City link rebuilds the names row; the focus stays on that link (it dropped to <body>), and a tap on the
+  // canvas never moves the focus into the row
+  const fakeNames = () => { const N = { html: '', focused: null, addEventListener() {}, contains: (a) => !!a?.inNames, get innerHTML() { return N.html; }, set innerHTML(v) { N.html = v; },
+    querySelector(sel) { const m = /^a(?:\[(href|aria-current)="([^"]*)"\])?$/.exec(sel); const links = m ? [...N.html.matchAll(/<a href="([^"]*)"([^>]*)>/g)].map((x) => ({ href: x[1], cur: x[2].includes('aria-current="page"') })) : [];
+      const hit = links.find((l) => !m[1] || (m[1] === 'href' ? l.href === m[2] : l.cur)); return hit ? { focus: () => { N.focused = hit.href; } } : null; } }; return N; };
+  const two = { ok: true, towers: [...towers.towers, { key: 'side', name: 'Side', kind: 'lot', folder: 'side', floors: [], open: [] }] };
+  const follow = (activeElement) => async ({ city, loc }) => { globalThis.document.activeElement = activeElement; loc.hash = '#/city/side'; city.update(); };
+  const viaLink = fakeNames(); await cityLoop({ towers: two, s: { towersV: 'v1', jobs: [] }, names: viaLink, ms: 50, act: follow({ inNames: true, hasAttribute: () => true, getAttribute: () => '#/city/side' }) });
+  const viaCanvas = fakeNames(); await cityLoop({ towers: two, s: { towersV: 'v1', jobs: [] }, names: viaCanvas, ms: 50, act: follow({ inNames: false }) });
+  check(`City_FocusKept: after following the "Side" link the focus is back on it in the rebuilt row (${viaLink.focused}); after a tap on the canvas it is not moved`, viaLink.focused === '#/city/side' && /aria-current="page"[^>]*><b>Side/.test(viaLink.html) && viaCanvas.focused === null);
+  check('Strip_HiddenUntilRead: on the other tabs the strip button stays hidden until the City is read (never an empty button with no name), then shows', off.stripHidden === true && on.stripHidden === false);
+}
+
+// ---- G6: a building's own level (the big tower, the cutaway, a floor's sheet) ----
+{
+  const N = await import('./public/city-nav.js'); const CJ = await import('./public/city.js');
+  const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const at = (d) => `2026-10-${String(d).padStart(2, '0')}T10:00:00.000Z`;
+  const T = { key: 'td', name: 'Tide', repo: 'demo-owner/demo-project', publicFrom: at(20), open: [{ pr: 41, title: 'Open <one>', ci: 'red', createdAt: at(25) }],
+    floors: [{ sha: sha('4'), at: at(1), by: 'yard', job: 'J20', past: true }, { pr: 40, at: at(2), by: 'session', title: 'Old forty', pour: 'p1', past: true },
+      ...Array.from({ length: 30 }, (_, i) => ({ pr: i + 1, at: at(20 + (i >> 3)), by: 'github', title: `Floor ${i + 1}`, ...(i < 2 ? { pour: 'p2' } : {}), ...(i === 5 ? { job: 'J7', undone: at(26) } : {}) }))] };
+  const cut = N.cutawayHtml(T, esc); const links = [...cut.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+  check('Cutaway_NewestFirst: open PRs on top, then the floors newest first', links[0] === '#/city/td/f/41' && links[1] === '#/city/td/f/30' && links[2] === '#/city/td/f/29' && cut.includes('building, CI red'));
+  const all = N.cutawayHtml(T, esc, 70); const lineAt = all.indexOf('city-line');
+  check('Cutaway_PublicLine: the "public from" line sits once, right above the first old floor; old floors open as /old', all.split('city-line').length === 2 && all.indexOf('#/city/td/f/1"') < lineAt && all.indexOf('#/city/td/f/40/old') > lineAt && all.includes('public from 10-20'));
+  check('Cutaway_Windowed: 20 floors, then "Show N more" (rows.js: 50 a tap); once every floor is shown the button goes', (cut.match(/<li>/g) || []).length === 21 && cut.includes('Show 12 more of 32 floors') && (all.match(/<li>/g) || []).length === 33 && !all.includes('data-city-more'));
+  check('Cutaway_NoPrFloor: a Yard merge with no PR is a row with its work order and no link; a taken-down floor says so', all.includes('<b>WO-0020</b><i>10-01, no PR</i>') && /f\/6"><b>#6<\/b><span>Floor 6<\/span><i>10-20, taken down/.test(all));
+  check('Cutaway_Escaped: titles are escaped', cut.includes('Open &lt;one&gt;') && !cut.includes('<one>'));
+  const f1 = N.floorHtml(T, 1, false, esc), f6 = N.floorHtml(T, 6, false, esc), old = N.floorHtml(T, 40, true, esc), op = N.floorHtml(T, 41, false, esc);
+  check('Floor_Sheet: a floor says when it merged and by whom, its Pour (floors tested together) and a GitHub link', f1.includes('PR #1: Floor 1') && f1.includes('2026-10-20 10:00 on GitHub') && f1.includes('p2: 2 floors tested together') && f1.includes('href="https://github.com/demo-owner/demo-project/pull/1"'));
+  check('Floor_WorkOrder: a floor from a work order links to it; a taken-down one says when', f6.includes('href="#/job/J7">WO-0007') && f6.includes('<dt>Taken down</dt><dd>10-26</dd>'));
+  check('Floor_Old: a floor under the line is the old history and has no GitHub link (the public repo may reuse its number)', old.includes('PR #40: Old forty') && old.includes('the older history') && !old.includes('github.com'));
+  check('Floor_OpenPr: an open PR is under construction with its CI', op.includes('Under construction') && op.includes('<dd>red</dd>'));
+  check('Floor_Missing: a number with no floor says so', N.floorHtml(T, 77, false, esc).includes('No floor or open PR #77') && N.floorHtml(T, 40, false, esc).includes('No floor'));
+  // review F3 at the building's level: a private repo's row as towers.mjs sends it (neutral name and key, no titles; folder and repo kept
+  // only for matching records) shows no repo name anywhere, and its floor sheet has no GitHub link (the link would carry the name)
+  const P = { key: 'private', name: 'Private project', private: true, folder: 'secret-folder', repo: 'demo-owner/secret-demo', floors: [{ pr: 1, at: at(20), by: 'github' }], open: [{ pr: 2, ci: 'green', createdAt: at(21) }] };
+  const pv = N.cutawayHtml(P, esc) + N.floorHtml(P, 1, false, esc) + N.floorHtml(P, 2, false, esc);
+  check('Private_BuildingLevel: a private repo\'s cutaway and floor sheets name no repo and link nowhere outside the City (no GitHub link); a public one keeps its link',
+    !/secret|github\.com/.test(pv) && pv.includes('Private project: floors') && pv.includes('PR #1') && f1.includes('github.com'));
+  check('Nav_OldRoute: #/city/<key>/f/<pr>/old is an old floor, and goes both ways', N.routeOf('#/city/td/f/9/old').old === true && N.hashOf(N.routeOf('#/city/td/f/9/old')) === '#/city/td/f/9/old' && !N.routeOf('#/city/td/f/9').old);
+  const NOW = Date.parse(at(26)); const C = CJ.cityOf({ ok: true, towers: [{ ...T, kind: 'tower', folder: 'tide', plinth: { commits: 40 } }] }, {}, [], NOW); const l = C.lots[0];
+  const rows = CJ.rowsOf(l, C, true), small = CJ.rowsOf(l, C, false);
+  check('Render_BigRows: a building\'s own level draws its newest 22 floors 4 px each and bands the older ones; the City packs k a row', rows.filter((r) => r.h === 4).length === 22 && rows.filter((r) => r.h === 2).length === Math.ceil((l.floors - 22) / C.band) && small.every((r) => r.h === 2) && small.length === Math.ceil(l.floors / C.k) && rows.filter((r) => r.pub).length === 1);
+  const big = CJ.paintCity(C, 120, 13, { blink: 1, step: 0, big: 'td' });
+  check('Render_BigLevel: a building\'s own level is that tower alone, 200 art px tall; an unknown key draws the City', big.g.H === CJ.ART.bigH && big.items.length === 1 && CJ.paintCity(C, 120, 13, { blink: 1, step: 0, big: 'nope' }).g.H === CJ.ART.H);
+  let ended = 0; N.cameraMove({ animate: () => ({ cancel() {} }) }, 0.5, true, false, () => ended++); await new Promise((r) => setTimeout(r, 500));
+  check('Nav_CameraStall: a camera move whose clock stalls (a hidden page) still ends, once', ended === 1);
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

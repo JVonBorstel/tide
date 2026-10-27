@@ -2104,9 +2104,13 @@ import { siteChip, withFloor, siteBar, siteFilterOf, bySite } from './sites.js';
 wireWorld($('world-body'), { post: (b) => api('/api/lobe', { method: 'POST', body: JSON.stringify(b) }), toast: (m, o) => toast(m, o), confirm: confirmBox, after: () => { S.sig.world = ''; if (S.view === 'world') renderWorld(); } });
 paintWorld(document.documentElement);   // the World tab's pixel icon, before the view is first opened
 import { syncList, windowed, WINDOW_FIRST, WINDOW_STEP } from './rows.js';
+// the City (city.js, loaded on its own: if it cannot load, the Board works without it): the Board's home, the strip on the other tabs
+import('./city.js').then((m) => { S.city = m.mountCity({ home: $('city'), names: $('city-names'), strip: $('city-strip'), cap: $('city-key'), api, go, buzz,
+  get: () => ({ s: S.stale ? null : S.state, ev: S.events, view: S.view, lastSeen: S.sinceFrom }), legend: (html) => { $('legend-body').innerHTML = html; openSheet('legend-sheet'); } }); renderScene(); }).catch(() => {});
 function renderScene() {
-  const s = S.state; const el = S.view === 'pass' ? $('scene-pass') : S.view === 'cooks' ? $('scene-live') : null; if (!el || !s) return;
-  mountScene(el, s, S.events, { compact: S.view === 'pass' });
+  S.city?.update();
+  const s = S.state; const el = S.view === 'cooks' ? $('scene-live') : null; if (!el || !s) return;
+  mountScene(el, s, S.events, { compact: false });
   if ($('legend-sheet').open) { $('legend-body').innerHTML = sceneLegend(el); applyCss($('legend-body')); }
 }
 // the room's (i) chip: "What am I looking at?", one row per thing in the room with its number in words (the text twin of the world)
