@@ -16,7 +16,7 @@ The engine carries each work order (WO) from build to closed. It retries, waits 
 | `fake.mjs` | The in-process engine. It needs no install and keeps everything in files in its own folder. It is used by the tests and as the stand-in until Temporal runs. |
 | `temporal/` | The Temporal engine: the workflow, the activities, the worker and the client. It needs Jordan's two installs (`temporal/INSTALL.md`). |
 | `cli.mjs` | Read-only looks (see below). |
-| `converge/` | The convergence workflows (build-way 3.6): freshen-pr, re-review, retry (a fresh crew, at most 2, then a card), re-cook from intent, the PICKUP archive, worktree tidy, close-superseded, the contradiction finder and the morning card. Each is a pure plan over a snapshot; `run.mjs` carries the actions out or only prints them (dry run). An action that needs Jordan's yes only creates a card, unless a standing yes is in the log. `schedule.mjs` says when each one runs. |
+| `converge/` | The convergence workflows (build-way 3.6): freshen-pr, re-review, retry (a fresh crew, at most 2, then a card), re-cook from intent, the PICKUP archive, worktree tidy, close-superseded, the contradiction finder and the morning card. Each is a pure plan over a snapshot; `run.mjs` carries the actions out or only prints them (dry run). An action that needs Jordan's yes only creates a card, unless a standing yes is in the log. Section 9 allows a standing yes only for removing done worktrees and for freshening; closing a PR needs a yes each time. Every repeatable action is bounded (`BOUNDS`: tries per key, a cool-down, then one re-plan-or-drop card), and at most 2 heavy or bulk starts happen per tick. `schedule.mjs` says when each one runs. |
 
 ## Safety lines (each one has a named test)
 

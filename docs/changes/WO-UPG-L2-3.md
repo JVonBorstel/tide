@@ -32,8 +32,36 @@
 - Build-way 3.6: cleanup and re-queueing happen on a schedule, not when someone remembers.
 - Jordan's standing yeses in section 9 are honoured only as events in the log, never as a chat's word.
 
+**Review fixes** (from the verifier, 2026-10-26: `audits/review-tide-39-2026-10-26.md`):
+- **Closing a PR needs a one-off yes every time.** A standing card no longer covers it, both for close-superseded and for recook's pr-close.
+  - Only section 9's two standing yeses are honoured: remove done worktrees, and update held PRs by merging main in.
+- **Every repeatable action is bounded** (`BOUNDS`), counted per key:
+  - freshen-pr: at most 2 tries per head, at most one every 1 h;
+  - review: 2 per head, one every 6 h;
+  - retry: 2 per WO, one every 24 h;
+  - recook: 1 per PR, one every 24 h;
+  - pick: 1 per PR, one every 6 h.
+  
+  After the last try comes one re-plan-or-drop card per round. Each try is counted from an `x.converge.intent` written before the run, so a throw or a crash still counts.
+- **A run that throws** is a failed run (exit 1), and the rest of the workflow goes on.
+- **Jordan's answers are acted on:**
+  - Re-plan on a bound's card writes `x.converge.reset` and starts a new round;
+  - Drop, or any other answer, is remembered;
+  - on the interrupted-run card (one per interruption), Yes runs it once and No skips it.
+- **Per tick:**
+  - at most 2 heavy or bulk starts, from one budget a caller can share across workflows;
+  - `pick` runs only after the re-cook has finished.
+- **The morning card** no longer counts earlier morning cards as waiting work.
+
 **Tests:**
-- Engine 164/0 with 4 skipped (Temporal). Converge 45/0 of them:
+- Engine 180/0 with 4 skipped (Temporal). Converge 61/0 of them, including the review's probes as tests:
+  - a failing or slow re-review;
+  - a failing re-cook, and pick-after-recook;
+  - a throwing retry, and a retry whose record is lost;
+  - Re-plan, Drop, and interrupted Yes or No;
+  - the per-tick cap;
+  - a standing card on closing PRs, which must not count.
+- Earlier coverage:
   - all 9 workflows dry-run with nothing called and nothing written;
   - the yes rule tested both ways for 4 yes-needing actions (freshen-pr, worktree-remove, private PR close, recook's freshen);
   - no duplicate cards; a one-off Yes; a No; a withdrawn standing yes; a standing yes on another topic does not count;
