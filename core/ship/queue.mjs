@@ -1,7 +1,8 @@
 // Owns the Handover queue (our own merge queue): test a PR merged onto the latest main, then, only on Jordan's yes, move main forward to that tested commit.
 // Called by the engine (lane L2) one PR at a time per repo, behind flag ship.merge-queue; tests/core/ship/test-queue.mjs; and by hand for a dry run (usage below).
 //   node core/ship/queue.mjs --dir <scratch clone> --branch <pr branch> [--base main] [--remote origin] [--pr tide#30] [--test '["node","tests/x.mjs"]']
-// The command line only ever dry-runs. Landing is landPr({ land: true, yes, flags }) from the engine: it needs the flag on, a decision.answered
+// The command line only ever dry-runs. Landing is landPr({ land: true, yes, flags }) from the engine: it needs the upgrade switch ship.queue at new
+// (kitchen/kitchen.json), the flag on, a decision.answered
 // "Yes" event, the agent-review status when ship.review-check is on, and main unmoved since the test; the push is a fast-forward, never forced.
 // scripts/merge-pr.ps1 and kitchen/train.ps1 stay the merge path while the flag is off.
 // @ts-check
@@ -11,6 +12,12 @@ import { checkIdentity } from './freshen-pr.mjs';
 import { isOn } from './flags.mjs';
 import { toActivityResult, eventDraft } from './activity.mjs';
 import { validate } from '../contracts/validate.mjs';
+import { switchOf } from '../contracts/upgrade.mjs';
+import fs from 'node:fs'; import { fileURLToPath } from 'node:url';
+
+const KITCHEN_JSON = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'kitchen', 'kitchen.json');
+/** The upgrade switches: kitchen/kitchen.json, read only; unreadable reads as {} (every switch old). */
+const readKitchen = () => { try { return JSON.parse(fs.readFileSync(KITCHEN_JSON, 'utf8')); } catch { return {}; } };
 
 /**
  * @typedef {{ ok: boolean, status: 'ready' | 'landed' | 'held', reason: string, files: string[], merge: string | null, base: string | null,
@@ -38,7 +45,7 @@ export function yesProblem(yes) {
  * Test a PR merged onto the latest main in a scratch clone; land it only when asked and allowed.
  * @param {{ dir: string, branch: string, base?: string, remote?: string, pr?: string, wo?: string | null, test?: string[] | null,
  *   timeoutSec?: number, expectEmail?: string, land?: boolean, yes?: any, flags?: { declared?: any, current?: Record<string, boolean> },
- *   review?: { context: string, state: string, sha: string } | null }} o
+ *   review?: { context: string, state: string, sha: string } | null, upgrade?: any }} o (upgrade: the parsed kitchen/kitchen.json, default read from the repo)
  * @returns {QueueReport}
  */
 export function landPr(o) {
@@ -85,6 +92,8 @@ export function landPr(o) {
   if (!o.land) return report({ ok: true, status: 'ready', reason: `dry run: ${branch} merges cleanly onto ${base} ${mainHead.slice(0, 7)} and its tests pass; nothing pushed`, ...ready });
 
   // 4. landing: flag, yes, review, main unmoved, then a fast-forward push
+  const sw = switchOf(o.upgrade ?? readKitchen(), 'ship.queue');
+  if (sw !== 'new') return report({ reason: `the upgrade switch ship.queue is ${sw}: the queue only dry-runs beside scripts/merge-pr.ps1 until it is new (Jordan's card)`, ...ready });
   if (!o.pr || !/^[a-z0-9][a-z0-9._-]*#[0-9]+$/.test(o.pr)) return report({ reason: 'landing needs the PR as <repo>#<n> (for the merged event)', ...ready });
   const flags = o.flags || {};
   if (!isOn('ship.merge-queue', flags)) return report({ reason: 'flag ship.merge-queue is off: scripts/merge-pr.ps1 stays the merge path', ...ready });
