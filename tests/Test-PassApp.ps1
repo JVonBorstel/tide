@@ -423,8 +423,8 @@ console.log(JSON.stringify({ all: mainStatusBanners(towers, { when: () => 'Fri 1
 
     # seamless updates
     $hl = Invoke-RestMethod "$base/api/health"
-    $srvHash = (Get-FileHash (Join-Path $repo 'pass-app\server.mjs') -Algorithm SHA256).Hash.ToLower().Substring(0, 12)
-    Check 'health names the app build and the server hash (for update.ps1)' ($hl.build -match '^[0-9a-f]{10}$' -and $hl.server -eq $srvHash)
+    $srvHash = "$(& node (Join-Path $repo 'pass-app\server-id.mjs'))".Trim()
+    Check 'health names the app build and the server fingerprint (server-id.mjs, for update.ps1)' ($hl.build -match '^[0-9a-f]{10}$' -and $hl.server -eq $srvHash)
     Check 'state carries the build (phones swap over when it changes)' ((Invoke-RestMethod "$base/api/state" -Headers $auth).build -eq $hl.build)
     $swr = Invoke-WebRequest "$base/sw.js" -Headers $auth
     Check 'service worker is stamped with the build (a new build replaces the old shell)' ($swr.Content -match "chef-shell-$($hl.build)" -and $swr.Content -notmatch '__BUILD__')
