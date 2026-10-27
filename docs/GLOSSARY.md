@@ -155,6 +155,19 @@ How finished work lands on main. Code: `core/ship/`, `flags.json`, `scripts/chec
 | **Decision gate** | the gate for the Board's look: a PR that changes it names the Owner's answered decision (D-7) | `scripts/check-decision-gate.mjs` |
 | **Generated file** | a file a tool writes (MAP.md). A PR never changes it; the Docs step does after the merge | `core/ship/gates.json` `generated` |
 
+## The ledger (upgrade lane L1)
+Names from `core/ledger/` (lane L1's PR), added here so the glossary stays the one source.
+| New | What it is | Code name |
+|---|---|---|
+| **Event store** | the append-only record of every change (who, what, proof) on this PC; the ledger, the queue and the Toolbox talk are read from it | `tide.db`, `core/ledger/store.mjs` |
+| **Source key** | the name an importer gives each event from what it says, so a rerun over the same files adds no events | an event's `key` |
+| **Row** | one work order in the ledger view: stage, state, owner, what it waits on, what happens next | `core/contracts/row.schema.json` |
+| **Stream** | one line of work with its own open work orders (CITY, ART ...) | `stream` |
+| **Card** | one question for the Owner (Yes / Hold / No, or A/B/C), oldest first in the Needs-you queue | `core/contracts/decision.schema.json` |
+| **Parity** | the check that a new piece gives the same answer as the old one before it replaces it | a parity report |
+| **Shadow database** | the event store a new piece writes in shadow, next to the old files, which still serve | `<state>\tide.db` in shadow |
+| **WO-PR-TIDE-21** | the work order id a PR gets when it names none (repo short name and PR number) | `woOfPr` in `core/ledger/ids.mjs` |
+
 ## Collision list (same word, different thing)
 - "Spec" (recipe) is not `specs/B-##.md`.
 - `W-TOOL-07`, `W1-E2`, `A-1001`, `C-##` are not Pours or Sign-offs. `D-7` is a decision (a card for the Owner), not a Sign-off.

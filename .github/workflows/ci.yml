@@ -100,6 +100,22 @@ jobs:
           $keep = @(($flags + $out) -split "`n" | Where-Object { $_ -match '^(Flags:|Ship tests:|FAIL:)' } | ForEach-Object { "- $($_.Trim())" })
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value (@('', '## Ship', '') + $keep)
           if ($c1 -ne 0 -or $c2 -ne 0) { exit 1 }
+      # Every .mjs under core/ passes node --check (ci-quick-checks.ps1 covers kitchen/ and pass-app/ only), and the ledger suite (lane L1)
+      # runs once its file exists on the branch. It needs node:sqlite (Node 22 or later); an older runner Node is named, not skipped silently.
+      - name: Core (node --check core/**/*.mjs; ledger suite when present)
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -LiteralPath core -Recurse -File -Filter *.mjs | Sort-Object FullName)
+          $bad = @(foreach ($f in $files) { node --check $f.FullName 2>&1 | Out-Null; if ($LASTEXITCODE -ne 0) { "FAIL: node --check $([IO.Path]::GetRelativePath($PWD, $f.FullName))" } })
+          $lines = @("Core: $($files.Count) .mjs files checked with node --check $(node --version), $($bad.Count) failed") + $bad
+          $code = [int]($bad.Count -gt 0)
+          if (Test-Path -LiteralPath tests/Test-CoreLedger.ps1) {
+            if ([int]((node --version).TrimStart('v').Split('.')[0]) -lt 22) { $lines += "FAIL: tests/Test-CoreLedger.ps1 needs Node 22 or later; the runner has $(node --version)"; $code = 1 }
+            else { $out = pwsh -NoProfile -File tests/Test-CoreLedger.ps1 2>&1 | Out-String; if ($LASTEXITCODE -ne 0) { $code = 1 }; Write-Output $out; $lines += @($out -split "`n" | Where-Object { $_ -match '^(\w[\w ]* tests:|FAIL:)' } | ForEach-Object { $_.Trim() }) }
+          } else { $lines += 'Ledger suite: tests/Test-CoreLedger.ps1 is not on this branch yet (lane L1)' }
+          $lines | ForEach-Object { Write-Output $_ }
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value (@('', '## Core', '') + ($lines | ForEach-Object { "- $_" }))
+          exit $code
       - name: Rust check (kitchen-sandbox targets Windows; checked from Linux, no linking)
         working-directory: rust/kitchen-sandbox
         run: |
