@@ -16,8 +16,10 @@
   const C2 = window.CanvasRenderingContext2D && CanvasRenderingContext2D.prototype, draw = C2 && C2.drawImage;
   if (draw) C2.drawImage = function (...a) { P.draws++; return draw.apply(this, a); };
   const watch = (type, fn, extra = {}) => { try { new PerformanceObserver((l) => l.getEntries().forEach(fn)).observe({ type, buffered: true, ...extra }); } catch { /* not in this browser */ } };
-  watch('paint', (e) => { if (e.name === 'first-contentful-paint') P.fcp = e.startTime; });
-  watch('largest-contentful-paint', (e) => { P.lcp = e.startTime; });
+  // FCP is the paint entry that is not 'first-paint'; LCP's entry type is looked up by its 'largest-' prefix (Chrome's own list)
+  watch('paint', (e) => { if (e.name !== 'first-paint') P.fcp = e.startTime; });
+  const lcpType = (PerformanceObserver.supportedEntryTypes || []).find((t) => t.startsWith('largest-'));
+  if (lcpType) watch(lcpType, (e) => { P.lcp = e.startTime; });
   watch('layout-shift', (e) => { if (!e.hadRecentInput) P.shifts += e.value; });
   watch('event', (e) => { if (e.interactionId) P.events.push({ name: e.name, id: e.interactionId, ms: e.duration, phase: P.phase }); }, { durationThreshold: 16 });
   watch('long-animation-frame', (e) => P.loaf.push({ ms: e.duration, phase: P.phase }));

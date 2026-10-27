@@ -9,7 +9,7 @@ The Board must look its best **and** run at the phone's full rate: 120 frames a 
 `pass-app/speed/run.mjs` starts two throwaway Board servers (`server.mjs`) on fixture Yards written by `pass-app/speed/fixture.mjs` (made-up work orders only, never real data), then drives headless Chrome through `playwright-core` (Apache-2.0, pinned in `pass-app/speed/package-lock.json`; it uses the Chrome already installed, nothing else is downloaded):
 
 - **Phone profile:** 412 x 915 CSS px at 3x, touch, CPU **4x slower** (Chrome DevTools throttling), the tailnet's network (40 ms round trip, 10 Mbps), service worker off (a cold open every run).
-- **Busy Yard** (6 crews at work, 2 sign-offs waiting, 6 queued cards, one handed over, one set aside): cold open, 8 s of the scene at work, taps (the scene's (i) legend, a crew member, the Live tab, back to the Board), a view change (World tab and back: today a View Transition, later the drone-camera flight), a pinch zoom in and out over the scene, then the JS heap after a garbage collection.
+- **Busy Yard** (6 crews at work, 2 sign-offs waiting, 6 queued cards, one handed over, one failed): cold open, 8 s of the scene at work, taps (the scene's (i) legend, a crew member, the Live tab, back to the Board), a view change (World tab and back: today a View Transition, later the drone-camera flight), a pinch zoom in and out over the scene, then the JS heap after a garbage collection.
 - **Calm Yard** (nothing building or waiting): after it settles, 10 s of counting how often the page wakes for a frame and how much it scripts.
 - **The probe** (`pass-app/speed/probe.js`) is injected before the Board's own scripts. It wraps `requestAnimationFrame` and times every callback, summed per vsync (the frame's JS work), counts canvas draws, and keeps Chrome's own paint, layout-shift, Event Timing (INP) and long-animation-frame entries. It reads nothing from the app's code, so the same numbers carry over when the renderer changes (Canvas2D today, WebGL later).
 - Each run is repeated (3 by default) and the **median** of each metric is judged. The full numbers of every run go to `speed-report.json` (a CI artifact for 30 days).
@@ -27,7 +27,7 @@ The Board must look its best **and** run at the phone's full rate: 120 frames a 
 | Frame work p95 during a view change | 8.3 ms | 16.7 ms | the drone-camera flight is measured here when it lands |
 | **INP** (slowest tap) | 100 ms | **200 ms** | Google's "good" line is 200 ms |
 | First useful paint (status line, scene or its still card, first number) | 1.5 s | 2.0 s | the app may set `performance.mark('board-first-useful')`; the probe uses it when present |
-| Largest contentful paint | 2.0 s | 2.5 s | |
+| Largest paint (LCP) | 2.0 s | 2.5 s | |
 | Cumulative layout shift | 0.02 | 0.05 | catches the card-to-canvas jump |
 | JS heap after the session (after a GC) | 15 MB | 25 MB | catches leaking observers |
 | Frame callbacks per second, calm Yard | 1 | 12 | the loop must stop when nothing moves (battery) |
