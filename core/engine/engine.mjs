@@ -2,8 +2,8 @@
 // Owns the engine adapter interface: the one shape every durable engine gives the rest of Tide, so the lifecycle (wo.mjs), the
 // activities (activity.mjs, driver.mjs) and the convergence workflows never name an engine. Two engines implement it:
 //   fake      core/engine/fake.mjs: in-process, files in its own folder; no install; the tests and the stand-in until Temporal runs
-//   temporal  core/engine/temporal/client.mjs: Temporal (build-way 10.2, Jordan's pick 2026-10-26); needs Jordan's two installs
-//             (the Temporal CLI and pinned @temporalio/* packages, core/engine/temporal/INSTALL.md); until then temporalStatus() says why not
+//   temporal  core/engine/temporal/client.mjs: Temporal (build-way 10.2, Jordan's pick 2026-10-26); needs the Temporal CLI
+//             and the pinned @temporalio/* packages (core/engine/temporal/INSTALL.md); where either is missing temporalStatus() says why not
 // Called by core/engine/cli.mjs, the convergence workflows (later slice) and tests/core/engine/*.
 import { spawnSync } from 'node:child_process';
 
@@ -29,7 +29,7 @@ export async function temporalStatus({ cli = 'temporal' } = {}) {
   // Resolved from core/engine/temporal/ (where Jordan's install puts node_modules), not from here.
   for (const pkg of await (await import('./temporal/load.mjs')).missingPackages()) missing.push(`the package ${pkg}`);
   return { ok: missing.length === 0, cliVersion: v.status === 0 ? String(v.stdout).trim() : null, missing,
-    why: missing.length ? `Temporal is not available: missing ${missing.join('; ')}. See core/engine/temporal/INSTALL.md (Jordan's install taps).` : 'Temporal is available' };
+    why: missing.length ? `Temporal is not available: missing ${missing.join('; ')}. See core/engine/temporal/INSTALL.md (CLI: winget; packages: npm ci --ignore-scripts in core/engine/temporal).` : 'Temporal is available' };
 }
 
 /**

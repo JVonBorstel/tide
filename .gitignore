@@ -8,3 +8,6 @@ data/
 
 # kitchen-sandbox build output: commit the source, never the binary
 rust/kitchen-sandbox/target/
+
+# Temporal packages of the engine (installed from core/engine/temporal/package-lock.json; never committed)
+core/engine/temporal/node_modules/

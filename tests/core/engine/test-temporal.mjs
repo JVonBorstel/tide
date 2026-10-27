@@ -4,7 +4,8 @@
 //   with Temporal installed (Jordan's taps, core/engine/temporal/INSTALL.md): the runner's acceptance lines on a real dev server in a
 //           scratch folder: kill the worker mid-wait and restart it (the tech-scan spike), a timer that fires after a restart (about
 //           2 minutes: ci-wait's poll), and a signal that wakes a waiting order. Without Temporal each one is SKIPPED, saying why.
-// UNVERIFIED until the install: the Temporal part has never run on this PC (no temporal CLI, no @temporalio packages on 2026-10-26).
+// First real run 2026-10-26: Temporal CLI 1.9.1, @temporalio 1.24.0, Node 22.12 and 24.22: all four live tests pass (about 2.5 min;
+// the timer test waits for ci-wait's 2-minute poll). Without the CLI or the packages (a CI runner, a fresh clone) they skip, saying why.
 // Called by tests/core/engine/test-engine.mjs. Every process it starts is killed in finally.
 import fs from 'node:fs'; import net from 'node:net'; import path from 'node:path'; import { spawn, spawnSync } from 'node:child_process'; import { fileURLToPath, pathToFileURL } from 'node:url';
 import { temporalStatus, openEngine, ADAPTER_METHODS } from '../../../core/engine/engine.mjs';

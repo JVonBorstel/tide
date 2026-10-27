@@ -45,6 +45,7 @@ export function memorySink(seed = []) {
 // A short exclusive lock: create <file>.lock with wx, retry for up to waitMs, then fail with the holder's age (never steal it silently).
 function withLock(file, fn, waitMs = 5000) {
   const lock = `${file}.lock`; const until = Date.now() + waitMs;
+  fs.mkdirSync(path.dirname(file), { recursive: true }); // the log's folder may not exist yet (a first append, a first decision id)
   for (;;) {
     try { fs.writeFileSync(lock, String(process.pid), { flag: 'wx' }); break; } catch (err) {
       if (/** @type {any} */ (err).code !== 'EEXIST') throw err;
