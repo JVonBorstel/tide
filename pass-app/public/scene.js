@@ -428,7 +428,7 @@ function mountPixel(el, L) {
     dropStage(sc);
     el.innerHTML = `<div class="px-stage${L.compact ? ' compact' : ''}" role="group"><canvas class="px-canvas" width="${STAGE.w}" height="${STAGE.h}" aria-hidden="true"></canvas><div class="px-hit"></div>`
       + '<button class="px-info" type="button" aria-haspopup="dialog" aria-label="What am I looking at?">i</button></div>';
-    // gl.js (behind its flag) or Canvas2D; gl.js leaves a fresh canvas in place when it gives up after taking one
+    // gl.js (when on) or Canvas2D; gl.js leaves a fresh canvas in place when it gives up after taking one
     const root = el.firstElementChild, gl = GLM?.glStage(root.querySelector('canvas'), remount), canvas = root.querySelector('canvas');
     sc = el._px = { root, canvas, ctx: gl || canvas.getContext('2d'), hit: root.querySelector('.px-hit'), st: stageNew(), compact: L.compact };
     sc.ctx.imageSmoothingEnabled = false;
