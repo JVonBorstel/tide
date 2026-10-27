@@ -39,7 +39,7 @@ try {
   const noKey = p.ok ? await fetch(`${p.url}api/state`) : { status: 0 };
   check('the preview keeps the Board\'s auth: no key, 401', noKey.status === 401, String(noKey.status));
   check('the preview is listed while it runs', listPreviews().some((x) => x.id === p.id && x.port === p.port));
-  check('stopping a preview frees its port and removes its scratch folder', p.ok && stopPreview(p.id) && (await sleep(1500), await portFree(p.port)) && !fs.existsSync(p.scratch), p.scratch);
+  check('stopping a preview frees its port and removes its scratch folder', p.ok && await stopPreview(p.id) && await portFree(p.port) && !fs.existsSync(p.scratch), p.scratch);
 
   // ---- refusals ----
   const inLive = path.join(decoy, 'wt'); fs.mkdirSync(path.join(inLive, 'pass-app'), { recursive: true }); fs.writeFileSync(path.join(inLive, 'pass-app', 'server.mjs'), '');
@@ -68,7 +68,7 @@ try {
   check('the port is freed after the time limit: the process is gone and the port is free', q.ok && await portFree(q.port), String(q.port));
   check('the port is freed after the time limit: the scratch folder is removed and the preview unlisted', q.ok && !fs.existsSync(q.scratch) && listPreviews().length === 0, q.scratch);
 } catch (e) { check('the preview tests ran to the end without a crash', false, e.stack || e.message); }
-finally { stopAll(); await sleep(800); try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { } }
+finally { await stopAll(); try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { } }
 
 const failed = results.filter((r) => !r.pass);
 for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}: ${r.name}`);

@@ -72,11 +72,16 @@ export function previewEnv(scratch, port) {
     PASS_INCOME_DIR: empty, PASS_CAREER_DIR: empty, TIDE_DB: path.join(scratch, 'state', 'tide.db'), PASS_PREVIEW: '1' };
 }
 
-/** End a process and its children (taskkill /T on Windows). @param {import('node:child_process').ChildProcess} proc */
-function killTree(proc) {
+/**
+ * End a process and its children (taskkill /T on Windows; the process group elsewhere) and wait until it has exited (at most 5 s).
+ * @param {import('node:child_process').ChildProcess} proc
+ */
+async function killTree(proc) {
   if (proc.exitCode !== null || proc.signalCode !== null) return;
-  if (process.platform === 'win32' && proc.pid) { try { execFileSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); return; } catch { } }
-  try { proc.kill('SIGKILL'); } catch { }
+  const gone = new Promise((ok) => proc.once('exit', ok));
+  if (process.platform === 'win32' && proc.pid) { try { execFileSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); } catch { } }
+  else { try { if (proc.pid) process.kill(-proc.pid, 'SIGKILL'); } catch { try { proc.kill('SIGKILL'); } catch { } } }
+  await Promise.race([gone, new Promise((ok) => setTimeout(ok, 5000))]);
 }
 
 /**
@@ -102,7 +107,7 @@ export async function startPreview(o) {
   if (o.users?.length) fs.writeFileSync(path.join(state, 'pass-users.txt'), o.users.join('\n') + '\n');
   const env = previewEnv(scratch, port);
   const log = fs.openSync(path.join(scratch, 'server.log'), 'a');
-  const proc = spawn(process.execPath, [...(o.nodeArgs || []), server], { cwd: wt, env, stdio: ['ignore', log, log], windowsHide: true });
+  const proc = spawn(process.execPath, [...(o.nodeArgs || []), server], { cwd: wt, env, stdio: ['ignore', log, log], windowsHide: true, detached: process.platform !== 'win32' });   // its own process group, so the whole tree ends
   fs.closeSync(log);
   const ttl = Math.max(1000, o.ttlMs ?? TTL_MS);
   const rec = { id, port, url: `http://127.0.0.1:${port}/`, scratch, proc, expires: Date.now() + ttl, worktree: wt, timer: setTimeout(() => { stopPreview(id); }, ttl) };
@@ -110,23 +115,25 @@ export async function startPreview(o) {
   running.set(id, rec);
   proc.once('exit', () => { if (running.has(id)) stopPreview(id); });
   for (let i = 0; i < 100 && !(await answers(port)); i++) await new Promise((r) => setTimeout(r, 150));
-  if (!(await answers(port))) { stopPreview(id); return { ok: false, error: 'the preview server did not start (see its server.log before it is removed)' }; }
+  if (!(await answers(port))) { await stopPreview(id); return { ok: false, error: 'the preview server did not start (see its server.log before it is removed)' }; }
   return { ok: true, id, url: rec.url, port, expires: new Date(rec.expires).toISOString(), scratch, serve: `tailscale serve --bg --https=${port} http://127.0.0.1:${port}` };
 }
 /** Does the Board answer /api/health on this port? @param {number} port */
 async function answers(port) { try { const r = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(1000) }); return r.status === 200; } catch { return false; } }
 
-/** End a preview: its process tree, its timer and its scratch folder. @param {string} id */
-export function stopPreview(id) {
+/** End a preview: its process tree, its timer and its scratch folder; resolves when the port is free and the folder gone. @param {string} id */
+export async function stopPreview(id) {
   const r = running.get(id); if (!r) return false;
-  running.delete(id); clearTimeout(r.timer); killTree(r.proc);
-  const rm = (n = 0) => { try { fs.rmSync(r.scratch, { recursive: true, force: true }); } catch { if (n < 10) setTimeout(() => rm(n + 1), 300); } };   // Windows keeps a dying process's files a moment
-  rm();
+  running.delete(id); clearTimeout(r.timer); await killTree(r.proc);
+  for (let n = 0; n < 20; n++) {   // a dying process can hold its files a moment (Windows) or still be writing one (elsewhere)
+    try { fs.rmSync(r.scratch, { recursive: true, force: true }); if (!fs.existsSync(r.scratch)) break; } catch { }
+    await new Promise((ok) => setTimeout(ok, 250));
+  }
   return true;
 }
 /** @returns {Array<{ id: string, url: string, port: number, expires: string, worktree: string }>} */
 export const listPreviews = () => [...running.values()].map((r) => ({ id: r.id, url: r.url, port: r.port, expires: new Date(r.expires).toISOString(), worktree: r.worktree }));
-export function stopAll() { for (const id of [...running.keys()]) stopPreview(id); }
+export const stopAll = () => Promise.all([...running.keys()].map((id) => stopPreview(id)));
 
 /** @param {string[]} argv */
 async function main(argv) {
@@ -136,7 +143,7 @@ async function main(argv) {
   const r = await startPreview({ worktree: a.worktree, fixture: a.fixture, port: a.port ? Number(a.port) : undefined, ttlMs: a['ttl-min'] ? Number(a['ttl-min']) * 60000 : undefined, users });
   console.log(JSON.stringify(r));
   if (!r.ok) return 1;
-  for (const sig of ['SIGINT', 'SIGTERM', 'SIGBREAK']) process.on(sig, () => { stopAll(); process.exit(0); });
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGBREAK']) process.on(sig, () => { stopAll().then(() => process.exit(0)); });
   await new Promise((done) => { const t = setInterval(() => { if (!running.size) { clearInterval(t); done(null); } }, 1000); });
   console.log(JSON.stringify({ ok: true, ended: r.id }));
   return 0;
