@@ -27,6 +27,7 @@ const here = path.dirname(fileURLToPath(import.meta.url)); const args = process.
 if (args[0] === 'pr' && fs.existsSync(path.join(here, 'hold'))) { fs.writeFileSync(path.join(here, 'held'), ''); while (fs.existsSync(path.join(here, 'hold'))) await new Promise((r) => setTimeout(r, 25)); }
 const a = JSON.parse(fs.readFileSync(path.join(here, 'answers.json'), 'utf8'));
 if (a.fail) { process.stderr.write('To get started with GitHub CLI, please run:  gh auth login'); process.exit(4); }
+if (args[0] === 'api' && String(args[1]).startsWith('repos/')) { process.stdout.write(String(a.private === true)); process.exit(0); }   // a repo's visibility: public here
 if (args[0] === 'api') { process.stdout.write(JSON.stringify({ resources: { graphql: { remaining: 4999 } } })); process.exit(0); }
 process.stdout.write(JSON.stringify(a[args[args.indexOf('--state') + 1]] || []));
 '@ -Encoding utf8
@@ -1108,7 +1109,12 @@ console.log(JSON.stringify({ banners: siteStopBanners(items, { when }), rows: si
     try { $sceneTest = ($sceneOut -join "`n") | ConvertFrom-Json } catch { $sceneTest = $null }
     Check 'scene 2.0: test-scene.mjs exits 0 (a node crash is a failure, not silence)' ($sceneExit -eq 0)
     Check 'scene 2.0: test-scene.mjs reported at least 20 checks' ($null -ne $sceneTest -and @($sceneTest).Count -ge 20)
-    Check 'scene: the Pass tab renders the compact scene' ($appJs -match "compact: S\.view === 'pass'")
+    # City G4: the Board tab's top is the City (city.js), not the compact scene; the scene stays whole on the Live tab
+    $cityHtml = Get-Content (Join-Path $repo 'pass-app\public\index.html') -Raw; $cityCss = Get-Content (Join-Path $repo 'pass-app\public\app.css') -Raw
+    Check 'City_Home: the Board tab opens on the City and the Live tab keeps the scene (renderScene mounts only #scene-live)' ($appJs -match "import\('\./city\.js'\)\.then" -and $appJs -match 'S\.city\?\.update\(\)' -and $appJs -match "const el = S\.view === 'cooks' \? \`$\('scene-live'\) : null" -and $cityHtml -match '<div class="city" id="city"' -and $cityHtml -notmatch 'id="scene-pass"')
+    Check 'City_LoadsAlone: city.js is imported on its own (a failure leaves the Board working), and both City files are in the offline shell' ($appJs -match "import\('\./city\.js'\)[^\r\n]*" -and $appJs -match '\}\)\.catch\(\(\) => \{\}\);' -and (Get-Content (Join-Path $repo 'pass-app\public\sw.js') -Raw) -match "'/city\.js', '/city-art\.js'")
+    Check 'City_Strip: the horizon strip sits under the header, is a 44 px button, and city.js shows it only off the Board tab' ($cityHtml -match '<button class="city-strip" id="city-strip" type="button" aria-label="The City: open the Board" hidden></button>\s*<div id="banners"' -and $cityCss -match '\.city-strip\{[^}]*min-height:44px' -and (Get-Content (Join-Path $repo 'pass-app\public\city.js') -Raw) -match 'o\.strip\.hidden = home \|\| !s \|\| c\.loading')
+    Check 'City_Css: crisp pixels, the (i) key 44 px, tokens only (no new colours) in the City block' ($cityCss -match '\.city-canvas\{[^}]*image-rendering:pixelated' -and $cityCss -match '\.city-key\{[^}]*min-width:44px;min-height:44px' -and $cityCss.Substring($cityCss.IndexOf('/* The City (public/city.js')) -notmatch '#[0-9a-fA-F]{3,6}\b')
     foreach ($t in @($sceneTest)) {
         if ($null -eq $t) { continue }
         Check "scene 2.0: $($t.name)" ($t.pass -eq $true)

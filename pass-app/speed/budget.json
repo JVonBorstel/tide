@@ -7,6 +7,7 @@
     "frameP99Ms": { "label": "Scene frame work p99 (busy Yard)", "unit": "ms", "target": 16.7, "hard": 33.3 },
     "longFrames33": { "label": "Scene frames over 33 ms (8 s busy)", "unit": "", "target": 0, "hard": 3 },
     "zoomP95Ms": { "label": "Frame work p95 during a pinch zoom", "unit": "ms", "target": 8.3, "hard": 16.7 },
+    "cityZoomP95Ms": { "label": "Frame work p95 during a City pinch zoom (City home only)", "unit": "ms", "target": 8.3, "hard": 16.7 },
     "flightP95Ms": { "label": "Frame work p95 during a view change", "unit": "ms", "target": 8.3, "hard": 16.7 },
     "inpMs": { "label": "INP (slowest tap: legend, crew, tabs)", "unit": "ms", "target": 100, "hard": 200 },
     "firstUsefulPaintMs": { "label": "First useful paint (status line, scene, first number)", "unit": "ms", "target": 1500, "hard": 2000 },
