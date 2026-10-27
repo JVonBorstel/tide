@@ -3,7 +3,9 @@
 //   - an action that needs Jordan's yes runs only with a standing yes in the event log (a standing card of that kind and topic answered
 //     Yes) or a one-off card for exactly that action answered Yes; otherwise it creates one card (never two for the same action) and stops;
 //   - heavy and bulk actions ask the governor first (governor.mjs); a hold is said, not dropped;
-//   - every run is recorded as an x.converge.<act> event; a dry run prints what would happen and calls nothing, writes nothing.
+//   - every run is recorded as an x.converge.<act> event; a dry run prints what would happen and calls nothing, writes nothing;
+//   - an action that changes things (EFFECTFUL) writes an x.converge.intent first; if an earlier run was interrupted after its intent,
+//     the probe port looks first (done: recorded, not rerun; not done: run; unknown or no probe: one card, never a blind second run).
 // Called by the engine's schedules (schedule.mjs), its command line (below: dry run only) and tests/core/engine/test-converge.mjs.
 //   node core/engine/converge/run.mjs <workflow> --snapshot <json> [--events <events.jsonl>] [--now <ISO time>]
 import fs from 'node:fs'; import path from 'node:path'; import { fileURLToPath } from 'node:url';
@@ -15,7 +17,8 @@ import { decide } from '../governor.mjs';
 /**
  * @typedef {{ events: any[], dryRun?: boolean, now?: Date, usage?: () => any, run?: (a: Action) => Promise<{ exit: number, out?: string }>,
  *   ask?: (d: { kind: string, wo: string|null, ask: string, options: string[], recommended: string, why: string }) => string,
- *   record?: (e: { kind: string, wo: string|null, data: any, proof: string|null }) => void }} Ports
+ *   record?: (e: { kind: string, wo: string|null, data: any, proof: string|null }) => void,
+ *   probe?: (a: Action) => Promise<{ state: 'done'|'not-done'|'unknown', why: string }> }} Ports
  */
 
 export const cardAsk = (/** @type {Action} */ a) => (a.act === 'card' ? String(a.args && a.args.Ask) : `${a.yes ? a.yes.topic : a.act}: ${a.target}? (${a.why})`).slice(0, 300);
@@ -54,10 +57,39 @@ async function one(a, p) {
     if (!v.go) return would('hold', v.why);
   }
   const because = y.state === 'standing' ? `standing yes ${y.decision}` : y.state === 'one-off' ? `Jordan said yes on ${y.decision}` : 'allowed without asking (build-way 3.6)';
+  const done = (r, why) => {
+    if (p.record) p.record({ kind: `x.converge.${a.act}`, wo: a.wo, data: { workflow: a.workflow, target: a.target, exit: r.exit, because: why }, proof: y.decision ? `yes ${y.decision}` : null });
+    return { ...a, outcome: r.exit === 0 ? 'ran' : `failed (exit ${r.exit})`, because: why, out: String(r.out || '').slice(-500) };
+  };
+  if (EFFECTFUL.has(a.act) && interrupted(a, p.events)) {
+    // An earlier run wrote its intent and never recorded the end: it may have taken effect. Look before running it again.
+    let pr;
+    try { pr = p.probe ? await p.probe(a) : { state: 'unknown', why: 'no probe for this action' }; } catch (err) { pr = { state: 'unknown', why: `the probe failed: ${/** @type {Error} */ (err).message}` }; }
+    if (pr.state === 'done') return p.dryRun ? would('record', `interrupted earlier, and it had taken effect: ${pr.why}`) : done({ exit: 0, out: pr.why }, `interrupted earlier, and it had taken effect: ${pr.why}`);
+    if (pr.state !== 'not-done') {
+      const ask = `${a.act} ${a.target} was interrupted mid-run and whether it took effect is unknown (${pr.why}). Run it again?`.slice(0, 300);
+      if (p.dryRun) return would('ask', ask);
+      if ([...cardsIn(p.events)].some(([, c]) => c.decision.ask === ask && c.answer === null)) return would('wait', 'the interrupted-run card is still open');
+      const id = /** @type {any} */ (p.ask)({ kind: 'question', wo: a.wo, ask, options: ['Yes', 'No'], recommended: 'No', why: 'Running it twice could do it twice; check first.' });
+      return would('ask', `held, not run twice: card ${id}`);
+    }
+  }
   if (p.dryRun) return would('run', because);
-  const r = await /** @type {any} */ (p.run)(a);
-  if (p.record) p.record({ kind: `x.converge.${a.act}`, wo: a.wo, data: { workflow: a.workflow, target: a.target, exit: r.exit, because }, proof: y.decision ? `yes ${y.decision}` : null });
-  return { ...a, outcome: r.exit === 0 ? 'ran' : `failed (exit ${r.exit})`, because, out: String(r.out || '').slice(-500) };
+  if (EFFECTFUL.has(a.act) && p.record) p.record({ kind: 'x.converge.intent', wo: a.wo, data: { workflow: a.workflow, act: a.act, target: a.target }, proof: null });
+  return done(await /** @type {any} */ (p.run)(a), because);
+}
+
+// Actions that change things outside the engine: each writes an intent before it runs (see interrupted()).
+export const EFFECTFUL = new Set(['freshen-pr', 'worktree-remove', 'pr-close', 'pickup-archive']);
+// The last intent for this action's target has no x.converge.<act> after it: a crash came between the start and the record.
+export function interrupted(/** @type {Action} */ a, events) {
+  let open = false;
+  for (const e of events) {
+    if (!e.data || e.data.target !== a.target) continue;
+    if (e.kind === 'x.converge.intent' && e.data.act === a.act) open = true;
+    if (e.kind === `x.converge.${a.act}`) open = false;
+  }
+  return open;
 }
 
 /**

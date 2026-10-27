@@ -143,4 +143,24 @@ async function testScheduleAndCli() {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
 
-export async function run() { await testDryRun(); await testYesBothWays(); await testCardsLifecycle(); await testPlans(); testMorning(); await testScheduleAndCli(); }
+export async function run() { await runInterrupted(); await testDryRun(); await testYesBothWays(); await testCardsLifecycle(); await testPlans(); testMorning(); await testScheduleAndCli(); }
+
+// A crash between an effectful action's intent and its record: look before running it again (the #33 review fix, here too).
+export async function runInterrupted() {
+  const snap = SNAP['worktree-tidy']; const target = snap.worktrees[0].path;
+  const crashed = () => {
+    const sink = memorySink(); standing(sink, YES.worktree);
+    sink.append({ at: '2030-01-08T08:00:00Z', actor: 'engine', kind: 'x.converge.intent', wo: HOUSE_WO, data: { workflow: 'worktree-tidy', act: 'worktree-remove', target }, proof: null });
+    return sink;
+  };
+  const cases = [['done', 0, 'ran', 0], ['not-done', 1, 'ran', 0], ['unknown', 0, 'ask', 1], [null, 0, 'ask', 1]];
+  for (const [state, runs, outcome, cards] of cases) {
+    const s = spies(); const sink = crashed();
+    const r = await runWorkflow('worktree-tidy', snap, { events: sink.all(), now: NOW, ...s, ...(state ? { probe: async () => ({ state, why: `example ${state}` }) } : {}) });
+    check(`interrupted action (${state || 'no probe'}): ${runs ? 'runs it again' : outcome === 'ask' ? 'asks one card, never a blind rerun' : 'records it as done, not run again'}`,
+      s.calls.run.length === runs && r.actions[0].outcome === outcome && s.calls.ask.length === cards, `${r.actions[0].outcome}: ${r.actions[0].because}; runs ${s.calls.run.length}; cards ${s.calls.ask.length}`);
+  }
+  const s = spies(); const sink = memorySink(); standing(sink, YES.worktree);
+  await runWorkflow('worktree-tidy', snap, { events: sink.all(), now: NOW, ...s });
+  check('effectful action: the intent is recorded before the run, then the action\'s own record', s.calls.record.map((e) => e.kind).join() === 'x.converge.intent,x.converge.worktree-remove', s.calls.record.map((e) => e.kind).join());
+}
