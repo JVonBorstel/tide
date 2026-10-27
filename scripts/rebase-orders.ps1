@@ -65,7 +65,7 @@ function Created($j) { $c = $j.created; if ($c -is [DateTime]) { return $c.ToUni
 # ---- the affected orders, derived from the job store's live set (kitchen/jobs-lib.ps1, oldest first) and git
 . (Join-Path $kd 'jobs-lib.ps1')
 $affected = [ordered]@{}
-$store = Update-KitchenJobs $kroot 'live' -OnDamaged { param($file, $why) Say "$($file.BaseName): job file unreadable, skipped" }
+$store = Update-KitchenJobs $kroot 'live' -OnDamaged { param($file, $cause) Say "$($file.BaseName): job file unreadable ($cause), skipped" }
 foreach ($j in @($store.jobs)) {
     $f = [IO.FileInfo]::new((Join-Path $kroot "jobs\$($j.id).json"))
     if ([string]$j.status -in 'done', 'closed' -or (JobRepo $j) -ne $Repo) { continue }
