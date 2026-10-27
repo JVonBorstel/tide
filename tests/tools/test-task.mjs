@@ -349,6 +349,22 @@ try {
       && /not from anyone's report/.test(mp) && /note 5 --text "Board not redeployed/.test(mp) && !/touchesPassApp/.test(wfSrc));
     check('wf gate: privacy counts the scanner\'s "hits", never its "live" counts', /"hits" array/.test(byLabel('gate (final)').prompt) && !/sum of "live"/.test(wfSrc));
     check('wf: never sees or sends the private title (only public_title travels)', !r.calls.some((c) => /Private words/.test(c.prompt)));
+    // findings of the first live run: what a real builder met that the fake agent never did
+    check('wf live: a new task branch is made with --no-track, so it never has main as its upstream before its first push',
+      w.includes('worktree add --no-track X:\\wt\\task-5 -b task/5 origin/main') && /push -u origin task\/5/.test(w));
+    check('wf live: tests are named in public words for the behaviour they check, never in the task\'s own wording',
+      /in public words for the behaviour it checks/.test(w) && !/a test named after it/.test(w) && /no acceptance lines/.test(w));
+    check('wf live: docs/changes/task-<n>.md belongs to every task, so it is never listed as an outside path',
+      /docs\/changes\/task-5\.md is part of every task's paths/.test(w));
+    check('wf live: a builder never starts another orchestrator from inside a run (the lock refuses it)',
+      /Never start another orchestrator/.test(w) && /\/task-start/.test(w) && /\/task-orchestrate/.test(w));
+    check('wf live: the plan writes "Done means" lines in public words, because they name public tests', /Done means \(each line becomes a test name, so write it in public words/.test(promptOf(r, 'plan')));
+  }
+  {
+    const r = await runWf('', std(pickSeq([task(40, { public_title: 'Say "hi" to $HOME `now` \\ it\'s fine' })], [])));
+    const w = promptOf(r, 'work 40');
+    check('wf live: the PR title is shell-safe: no quote, $, backtick or backslash from the public title reaches the command',
+      w.includes('--title "WO-TASK-40: Say hi to HOME now it\'s fine"'), (/--title "[^\n]*/.exec(w) || [''])[0]);
   }
   {
     let reviews = 0;
