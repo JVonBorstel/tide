@@ -73,14 +73,18 @@ const flagsFile = (/** @type {any} */ o) => o.flags || path.join(REPO_ROOT, 'fla
 const privateWordsFile = (/** @type {any} */ o) => o['private-words'] || (o.state ? path.join(o.state, 'ledger-private-words.json') : undefined);
 
 /** @param {any} o */
+/** Private words a read command found in the events (the repo names of private orders); the --json answers redact them too. */
+const viewWords = /** @type {string[]} */ ([]);
+
 async function viewFrom(o) {
   if (!o.db) throw new UsageError('give --db <file> (the event store)');
   const store = await openStore(o.db, { readOnly: true });
   try {
     const events = store.events(); const view = buildView(events, { now: nowOf(o), flagDefaults: readJson(flagsFile(o)) });
     // the --json answers use the shared view: a private order shows no goal (emit then redacts every string)
-    const { internal, ...work } = view; const shared = shareWork(work, privateOf(view), (x) => x);
-    return { events, view, shared };
+    const priv = privateOf(view); viewWords.push(...priv.words);
+    const { internal, ...work } = view; const shared = shareWork(work, priv, (x) => x);
+    return { events, view, shared, priv };
   } finally { store.close(); }
 }
 
@@ -114,12 +118,16 @@ async function build(o, say, live = []) {
     // private words; ledger.next.json is paged (page 1 is the file the Board reads; ledger.next.page-<n>.json holds the rest)
     const pw = readPrivateWords(privateWordsFile(o)); const priv = privateOf(view); const redact = makeRedactor({ privateWords: [...pw.words, ...priv.words] });
     const { internal, ...work } = view;
-    writeAtomic(path.join(out, 'work.json'), { ok: true, ...shareWork(work, priv, redact) });
+    writeAtomic(path.join(out, 'work.json'), { ok: true, warnings: pw.warning ? [redact(pw.warning)] : [], ...shareWork(work, priv, redact) });
     const pages = pageLedger(shareLedger(exportLedgerJson(view), priv, redact));
     pages.forEach((pg, i) => writeAtomic(path.join(out, i === 0 ? 'ledger.next.json' : `ledger.next.page-${i + 1}.json`), pg));
-    report.share = { privateWords: pw.words.length + priv.words.length, privateOrders: priv.ids.size, why: pw.why, pages: pages.length, items: pages[0].paging.itemsTotal };
+    // a page this writer made before, above the new page count, is removed (only ledger.next.page-<n>.json in this --out folder)
+    const stale = fs.readdirSync(out).filter((f) => { const m = /^ledger\.next\.page-(\d+)\.json$/.exec(f); return !!m && Number(m[1]) > pages.length; });
+    for (const f of stale) fs.rmSync(path.join(out, f));
+    report.share = { privateWords: pw.words.length + priv.words.length, privateOrders: priv.ids.size, why: pw.why, warning: pw.warning, stalePagesRemoved: stale.length, pages: pages.length, items: pages[0].paging.itemsTotal };
     report.store = store.info(); report.top = view.top; report.rows = view.rows.length;
     say(view.top);
+    if (pw.warning) say(redact(pw.warning));
     say(`events: ${report.store.events} (added: yard ${report.added.yard}, github ${report.added.github ?? 0}, local ${report.added.local}, ideas ${report.added.ideas}, roadmaps ${report.added.roadmaps}, lobe ${report.added.lobe}); rows ${view.rows.length}; wrote ${path.join(out, 'work.json')} and ledger.next.json`);
     if (report.github?.state && report.github.state !== 'ok') say(`GitHub: ${report.github.state}${report.github.lastGoodAt ? ` (last good read ${report.github.lastGoodAt})` : ''}`);
     return report;
@@ -138,16 +146,16 @@ export async function main(argv, io = {}) {
     o = parseArgs(argv);
     const cmd = o._[0] || 'build';
     // a --json answer may be piped anywhere, so it is redacted like the files (the state folder's private words, when --state is given)
-    const jsonRedact = () => makeRedactor({ privateWords: readPrivateWords(privateWordsFile(o)).words });
+    const jsonRedact = () => makeRedactor({ privateWords: [...readPrivateWords(privateWordsFile(o)).words, ...viewWords] });
     const emit = (/** @type {any} */ obj, /** @type {() => void} */ text) => { if (o.json) say(JSON.stringify(redactDeep(obj, jsonRedact()))); else text(); };
     if (cmd === 'build') { const r = await build(o, o.json ? () => { } : say, io.liveState || []); if (o.json) say(JSON.stringify(redactDeep({ ok: true, ...r }, jsonRedact()))); return 0; }
     if (cmd === 'show') {
       const id = String(o._[1] || ''); if (!id) throw new UsageError('give an id: show WO-312 (or J312)');
-      const { events, view, shared } = await viewFrom(o); const wo = /^J\d+$/.test(id) ? woOfJob(id) : id;
+      const { events, view, shared, priv } = await viewFrom(o); const wo = /^J\d+$/.test(id) ? woOfJob(id) : id;
       const row = view.rows.find((r) => r.id === wo || r.alias === id);
       if (!row) { emit({ ok: false, code: 'not-found', error: `nothing named ${id} in the ledger` }, () => say(`nothing named ${id} in the ledger`)); return 1; }
       const evs = events.filter((e) => e.wo === row.id);
-      emit({ ok: true, row: shared.rows.find((/** @type {any} */ r) => r.id === row.id), events: evs.map((e) => publicEvent(e).doc) }, () => {
+      emit({ ok: true, row: shared.rows.find((/** @type {any} */ r) => r.id === row.id), events: evs.map((e) => publicEvent(e, { private: priv.ids.has(row.id) }).doc) }, () => {
         say(`${row.id}${row.alias ? ` (${row.alias})` : ''} [${row.stream}] ${row.goal.slice(0, 120)}`);
         say(`  ${row.state} at ${row.stage} for ${row.stageAgeH} h (age ${row.ageH} h); owner ${row.owner}${row.blockedOn ? `; waits on: ${row.blockedOn}` : ''}`);
         if (row.next) say(`  next: ${row.next}`); if (row.proof) say(`  proof: ${row.proof}`); if (row.pr) say(`  ${row.pr} ${row.branch} -> ${row.base}${row.stackParent ? ` (stacked on ${row.stackParent})` : ''}`);
@@ -197,7 +205,9 @@ export async function main(argv, io = {}) {
   } catch (e) {
     const usage = e instanceof UsageError; const code = e instanceof StoreError ? e.code : usage ? 'usage' : 'error';
     const msg = String(/** @type {any} */ (e)?.message || e);
-    if (o.json) say(JSON.stringify({ ok: false, code, error: msg })); else say(`ERROR (${code}): ${msg}`);
+    // the error line may name a path (the --db file), so it is redacted like every answer
+    const safe = makeRedactor({ privateWords: [...readPrivateWords(privateWordsFile(o)).words, ...viewWords] })(msg);
+    if (o.json) say(JSON.stringify({ ok: false, code, error: safe })); else say(`ERROR (${code}): ${safe}`);
     return usage ? 2 : 1;
   }
 }

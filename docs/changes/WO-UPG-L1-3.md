@@ -23,9 +23,22 @@ items in 2 pages; page 1 starts with the order waiting on Jordan. No user path i
 **Not done here:** the Board's own display of the pages and the needs-you section is lane L5's. A ledger built before this change keeps
 its `wo.created` events without the private mark: build a fresh shadow store.
 
+**Review fixes (verifier on #37: SHIP AFTER FIXES, audits/review-tide-37-2026-10-26.md):**
+- F1: `show <private> --json` sends every event of a private order without data (no goal, reason or card text).
+- F2: a private order's flags, card question, why and note, mock-up titles and reasons are masked in `work.json`, `ledger.next.json`
+  and the `--json` answers.
+- F3: the `--json` error line (and the text one) is redacted too, with the private words found in the events.
+- F4: paths right after a colon (`cwd:C:\...`), `file:///` URLs, paths with spaces (`Program Files`), `\\server\share`, home paths
+  and unique-local IPv6 (the tailnet's `fd7a:`) are redacted whole. `appsettings.local.json` stays as written. E-mail matching is
+  linear (200 000 characters in under 1 s).
+- F5: a page file this writer made earlier (`ledger.next.page-<n>.json` above the new page count, in the same `--out` folder) is removed.
+- F6: `core/ledger/ledger-private-words.example.json` (placeholders only). A missing list prints a WARNING line and goes into
+  `work.json` `warnings`; paths, emails, hosts, addresses and private orders are still redacted.
+- F7 (the ledger suite in CI) is lane L4's #30.
+
 **L1-L4:**
 - Person: when the ledger serves, nothing private is shown off this PC through it, and the first screen is what needs Jordan.
 - Business: none. MSP: none.
 - Community: a reusable redaction step for event-sourced work data.
 
-**Tests:** `tests/core/ledger/test-ledger.mjs`: 170/0 (14 new, named `l3: ...`).
+**Tests:** `tests/core/ledger/test-ledger.mjs`: 186/0 (30 new, named `l3: ...` and `l3-37: ...`).
