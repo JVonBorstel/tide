@@ -286,16 +286,18 @@ try {
   check('Home_StatsOneGrid: home stats sit in one grid of equal cells (no ragged second row), and the plain-words line ("Nothing handed over today") is on its own line under them',
     !!hs1 && hs1.display === 'grid' && hs1.cells.length >= 4 && sameW(hs1.cells) && rowsOf(hs1.cells) <= 2 && !hs1.noteInside && hs1.noteTop >= hs1.statsBottom && /handed over/.test(hs1.note || ''), JSON.stringify(hs1));
   const fail = await ev(`(() => { const a = [...document.querySelectorAll('#summary .home-stats a, #summary .home-stats button')].find((x) => /fail|stop/i.test(x.textContent)); const older = document.querySelector('#sec-aside [data-older]');
-    return { stat: a?.textContent.replace(/\\s+/g, ' ').trim() || '', older: older?.textContent.replace(/\\s+/g, ' ').trim() || '', asideRows: document.querySelectorAll('#sec-aside .rows > li').length,
+    return { stat: a?.textContent.replace(/\\s+/g, ' ').trim() || '', older: older?.textContent.replace(/\\s+/g, ' ').trim() || '', asideRows: document.querySelectorAll('#sec-aside .rows > li.row').length,
       head: document.querySelector('#sec-aside .sec-head')?.textContent.replace(/\\s+/g, ' ').trim() || '', stopped: [...document.querySelectorAll('#sec-aside .rows > li')].some((li) => /stopped by hand/i.test(li.textContent)) }; })()`);
   // the label and the count agree: the number is every row of the section it opens (failed, and stopped by hand, in the last day: J50, J51,
   // the fixture's recent one and the killed J53), and its words name both, as the section's own heading does
   const failN = Number((/^(\d+) /.exec(fail.stat) || [])[1]);
-  check('Home_FailedMeansNow: the red number counts only recent failed or stopped orders not dealt with (4 here, a stopped one among them, not the 7 days-old ones), its words say "failed or stopped in the last day" like the section it opens, and the older ones are one tap away in "Cleared / older"',
-    /^4 failed or stopped in the last day$/i.test(fail.stat) && failN === fail.asideRows && fail.stopped && /^failed or stopped/i.test(fail.head) && /older/i.test(fail.older) && /7/.test(fail.older), JSON.stringify(fail));
+  // (task 32, failure care: the number is the failures that need Jordan now, open and from the last 72 h, in plain words; the section is
+  // the Failures list, grouped by class; the 7 days-old ones and every cleared order are one tap away in "Older and cleared")
+  check('Home_FailedMeansNow: the red number counts only recent failed or stopped orders not dealt with (4 here, a stopped one among them, not the 7 days-old ones), its words say "failures need you" and it opens the Failures list, and the older ones are one tap away in "Older and cleared"',
+    /^4 failures need you$/i.test(fail.stat) && failN === fail.asideRows && fail.stopped && /^Failures/i.test(fail.head) && /older/i.test(fail.older) && /7/.test(fail.older), JSON.stringify(fail));
   await ev(`document.querySelector('#sec-aside [data-older]')?.click()`); await settle(400);
-  const olderOpen = await ev(`document.querySelectorAll('#sec-aside .rows > li').length`);
-  check('Home_OlderOneTap: one tap on "Cleared / older" lists the days-old failed or stopped orders (4 recent + 7 older)', olderOpen === 11, String(olderOpen));
+  const olderOpen = await ev(`document.querySelectorAll('#sec-aside .rows > li.row').length`);
+  check('Home_OlderOneTap: one tap on "Older and cleared" lists the days-old failed or stopped orders (4 recent + 7 older)', olderOpen === 11, String(olderOpen));
   await ev(`document.querySelector('#sec-aside [data-older]')?.click()`); await settle(200);
   const signBtn = await ev(`(() => { const b = document.querySelector('#summary [data-signoff]'); return b ? { text: b.textContent.trim(), tag: b.tagName } : null; })()`);
   await ev(`document.querySelector('#summary [data-signoff]')?.click()`); await settle(900);
@@ -363,8 +365,8 @@ try {
       && floorWords({ at: '2026-10-23T12:00:00Z' }) === 'merged Oct 23' && floorWords({ at: '2026-10-22T12:00:00Z', undone: '2026-10-23T12:00:00Z' }) === 'taken down Oct 23', JSON.stringify([openWords({ ci: 'green' }), floorWords({ at: '2026-10-23T12:00:00Z' })]));
   if (homeStats) {
     const j = (status, ageH) => ({ id: 'J1', status, updated: iso(now - ageH * H) });
-    const st = homeStats([j('quarantined', 1), j('killed', 2), j('quarantined', 30), j('killed', 200), j('done', 1)], now);
-    check('HomeStats_RecentOnly: homeStats counts failed or stopped orders of the last day as "need you", the rest as older', st.recent.length === 2 && st.older.length === 2, JSON.stringify({ r: st.recent.length, o: st.older.length }));
+    const st = homeStats([j('quarantined', 1), j('killed', 2), j('quarantined', 30), j('killed', 200), j('done', 1), { ...j('closed', 1), cleared: { state: 'stale', reason: 'x' } }], now);
+    check('HomeStats_RecentOnly: homeStats counts failed or stopped orders of the last 72 h (task 32) as "need you", the rest and every cleared order as older', st.recent.length === 3 && st.older.length === 2, JSON.stringify({ r: st.recent.length, o: st.older.length }));
   } else check('HomeStats_RecentOnly: public/plain.js exists and exports homeStats', false);
 } catch (e) { if (e !== null) check('the readable tests ran to the end without a crash', false, e?.stack || e?.message || String(e)); }
 finally {

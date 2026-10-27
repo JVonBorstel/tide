@@ -2139,7 +2139,8 @@ switch ($Action) {
             # task 32: the close is its cleared state: duplicate (-ReplacedBy with a Why that starts 'duplicate'), superseded (-ReplacedBy, or
             # -Proof: a merged PR, a commit, a file) or dropped (-Why 'dropped: ...'), with the reason and the time, on the order and in events
             $state = if ($rb -and $Why.Trim() -match '^(?i)duplicate\b') { 'duplicate' } elseif ($rb -or $pf) { 'superseded' } else { 'dropped' }
-            $cev = Set-JobCleared $j $state $Why.Trim() $(if ($rb) { $rb } else { $pf }) (Iso (Now))
+            $cwhy = $Why.Trim(); if ($state -eq 'dropped' -and ($cwhy -replace '^(?i)dropped\s*:?\s*', '')) { $cwhy = $cwhy -replace '^(?i)dropped\s*:?\s*', '' }   # (the state already says dropped)
+            $cev = Set-JobCleared $j $state $cwhy $(if ($rb) { $rb } else { $pf }) (Iso (Now))
             Save-Job $j
             $ev = @{ reason = $Why.Trim().Substring(0, [math]::Min(300, $Why.Trim().Length)); by = $(if ($env:KITCHEN_FROM_CHEF -eq '1') { 'Jordan' } else { 'cli' }) }
             if ($rb) { $ev.replacedBy = $rb }; if ($pf) { $ev.proof = $pf }; if ($dropped) { $ev.dropped = $true }

@@ -97,8 +97,11 @@ try {
     Check 'recipes listed for bots' ($rl.ok -and @($rl.data.name) -contains 'research')
     $bc = Api '{"op":"cook","args":{"recipe":"research","vars":{"question":"test question"}}}' 'rail'
     Check 'bot recipe order is gated' ($bc.ok -and $bc.data.needsApproval -and (Job $bc.data.job).steps[0].approve)
-    $cc = Api '{"op":"cook","args":{"recipe":"research","vars":{"question":"test question"}}}'
+    # (task 32: the same question again while the first is open is a duplicate at the door, so the chef's order asks another one)
+    $cc = Api '{"op":"cook","args":{"recipe":"research","vars":{"question":"another test question"}}}'
     Check 'chef recipe order starts without a gate' ($cc.ok -and -not $cc.data.needsApproval)
+    $dc = Api '{"op":"cook","args":{"recipe":"research","vars":{"question":"Test question!"}}}'
+    Check 'task 32: the same question while the first is open is refused as a duplicate and names that order' (-not $dc.ok -and "$($dc.error)" -match "$($bc.data.job) is open with the same goal")
     Check 'cook with a missing value refused' (-not (Api '{"op":"cook","args":{"recipe":"improve","vars":{}}}').ok)
     Check 'cook with a bad recipe refused' (-not (Api '{"op":"cook","args":{"recipe":"../x"}}').ok)
     Check 'a failed order does not poison the next answer' ((Api '{"op":"status"}').ok -and (Api '{"op":"doctor"}').ok)

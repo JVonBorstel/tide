@@ -29,3 +29,97 @@ What task 32 builds on top, as one system (one policy table, one lifecycle, the 
 - `kitchen/failure-policy.json` + its reader `kitchen/failure-policy.ps1` replace the hard-coded regexes in `backoff-lib.ps1 Get-FailureClass` (the back-off split is now a field of each class) and the raw last line on the Board.
 - The existing mechanisms above are the actions: freshen is the merge-conflict loop, wait for the window is the hiccup and cook waits, ask Jordan is the hold and sign-off, retry once on fresh main is a requeue from the freshen step (or a re-cook), stop and say why is quarantine with the plain sentence.
 - The doctor (already hourly, already the archiver, already `-FindOnly`) is where every not-done order ends.
+
+## What
+
+**The policy table** (`kitchen/failure-policy.json`, read only by `kitchen/failure-policy.ps1`):
+
+- Known failure signatures map to a class and each class to one action:
+
+  | Class | Action | Back-off |
+  |---|---|---|
+  | flaky timing (a timeout, a hang, a crash) | retry once on fresh main | code |
+  | merge conflict | freshen | code |
+  | stale base | retry once on fresh main | code |
+  | crews resting / usage cap | wait for the window | wait |
+  | privacy hold | ask Jordan | code |
+  | real test or code failure | stop and say why | code |
+  | infrastructure (GitHub, CI, the network) | wait for the window | wait |
+  | stopped by hand | ask Jordan | code |
+
+- An unknown failure is "real failure, needs a look": never retried by itself.
+- `backoff-lib.ps1 Get-FailureClass` now reads the back-off from the table. Its hard-coded regexes are gone, and its 48 tests pass unchanged.
+
+**Plain words:**
+
+- `Fail-Step` writes `j.failure`: the class, the action, one sentence of what happened and the next step, and the raw detail.
+  - Example: "The tests failed at step 4 of 15 (tests); next: needs a look: See why has the detail, then Retry or Close."
+  - The step event, the history line, `job.quarantined` and the alert carry the same sentence.
+- `kill` writes one too: "It was stopped by hand ...".
+- The doctor gives the words to an order that failed before this change.
+
+**The lifecycle** (`Set-JobCleared`, `Get-CarePlan`): every order that is not done ends in exactly one cleared state. The state, its reason, the time and what it was before go on the order (`j.cleared`) and into `events.jsonl` (`job.cleared`).
+
+- **retried**: `requeue` made it again from today's recipe on fresh main. The new order carries `retryOf`.
+- **superseded**: `close -ReplacedBy J12`, `close -Proof <PR or commit>`, or the same goal handed over by another order.
+- **duplicate**: the same goal is open as another order (`close -ReplacedBy J12 -Why "duplicate ..."`, or found by the doctor).
+- **stale**: killed, failed or closed with no human action for 3 days. When git shows it, the reason names the files its brief named that main changed since.
+- **dropped**: `close -Why "dropped: ..."`, or Close on the Board.
+
+Killed, quarantined and closed are working states: the doctor clears them. `doctor -FindOnly` (and the paused doctor) lists what it would clear and changes nothing. `kitchen.ps1 reopen -Id J5` puts a cleared order back as it was, from the archive too.
+
+**The one action, once** (doctor):
+
+- A fresh failure (under 24 h, never an old one) whose class says retry or freshen goes back to its freshen step, which merges fresh main.
+- If it has no freshen step behind it and is a recipe order that has not committed yet, it is made again from today's recipe on fresh main.
+- A wait class is requeued once after 30 min.
+- Never twice, never a retry of a retry, never a real failure.
+
+**Duplicates at the door:**
+
+- `kitchen.ps1 add` refuses a goal that matches an open order and prints `DUPLICATE: J12 is open with the same goal ...` (exit 4). An open order is anything not done or cleared.
+- It matches on normalized text, on the same files and the same title, or on the same roadmap item (`jobs-lib.ps1 Get-OrderDupKeys`). The keys are kept in `jobs-index.json`, so the check opens no job file.
+- `-Force` adds it anyway and notes `forcedOver`. `cook.ps1 -Force` passes it through, and `cook.ps1 -Json` returns `duplicate`.
+
+**The Board** (`pass-app/public/app.js`, `plain.js`, `app.css`, `server.mjs`):
+
+- The home's number is the failures that need Jordan now, in plain words ("5 failures need you"): failed or stopped, not cleared, last 72 h.
+- The Failures list is grouped by class, real failures first:
+  - each row shows its one sentence (wrapped, never cut) with Retry, Close and See why;
+  - See why opens the raw line in the row;
+  - Close ends it as dropped, with the reason, through the new `close` action and `kitchen.ps1 close`.
+- "Older and cleared" (one tap) lists days-old failures and every cleared order, with its end and the Yard's reason.
+- The job sheet leads with the same sentence and keeps the raw line under "The full detail".
+- No failure is a red bar: red bars stay for broken things (D-1).
+
+Pictures at 412 x 900 (`docs/changes/task-32/`, a throwaway Board with made-up orders, `node pass-app/test-failures.mjs --shots`): home, Failures list and Older, in dark, and the list in light, before and after, plus See why open.
+
+**Not in this change:**
+
+- Running the doctor for real on the live Yard, so the old killed, quarantined and closed orders get cleared with reasons (item 6). The lead does this after the merge: run `kitchen.ps1 doctor -FindOnly` first, then `kitchen.ps1 doctor -Json`. Its `care` block has the counts by state.
+- The Brief and Since you looked still count `job.quarantined` events since the last look, unchanged.
+
+## Why
+
+On 10-27 the Yard had 31 killed, 43 quarantined and 36 closed orders sitting forever, and 9 re-queued duplicates. The Board's home said "47 failed or stopped" about days-old things. D-14 asks for one failure-care system: a reason, a plain next step and an end for every failure, built on the parts the map above shows already exist (one policy, not a second system). D-11 asks for plain words on every screen; D-1 keeps red bars for broken things only.
+
+## Tests
+
+One check per acceptance line, named after it:
+
+- `tests/Test-KitchenCare.ps1` (new), 21 checks:
+  - each cleared state written with reason (retried, superseded twice, duplicate twice, stale, dropped, on the order and in events);
+  - a 3-day-old quarantined order cleared as stale and reopenable;
+  - -FindOnly clears nothing;
+  - policy table maps each class and an unknown failure to "needs a look";
+  - add refuses a duplicate and the force flag works;
+  - every failure has a plain sentence (a real failing run, a stopped order, an older order given words by the doctor);
+  - plus the one action once (flaky back to freshen; a real failure left alone), and the stale reason naming files main changed (a real git repo).
+- `pass-app/test-failures.mjs` (new, run by `tests/Test-PassApp.ps1`), 12 checks:
+  - `Home_CountIgnoresClearedAndOld`;
+  - `FailuresList_GroupedByClass`, `FailuresList_PlainSentence`, `FailuresList_OneTapActions`;
+  - `FailuresList_SeeWhy` (two checks), `FailuresList_Retry`, `FailuresList_Close` (the real `kitchen.ps1` on the throwaway folder);
+  - `OlderList_HasCleared`, `RedBars_StayForBroken`, `NoHScroll360`;
+  - `SpeedBudget_NotWorse`: no canvas, animation or frame loop added, a few nodes per row. The budget itself is measured by CI's report-only `speed` job on the pull request.
+- `pass-app/test-readable.mjs` (task 30): its home-count checks now expect the task 32 words and window.
+- `tests/Test-KitchenApi.ps1`: its second cook of the same question now asks another one, and a new check proves the duplicate is refused over the API.

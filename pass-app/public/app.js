@@ -38,6 +38,8 @@ const prLink = (p) => p && Number.isInteger(p.number) && /^https:\/\/github\.com
 const jobLink = (id) => /^J\d{1,6}$/.test(String(id || '')) ? `<a href="#/job/${id}">${ticket(id)}</a>` : esc(ticket(id));
 const NEEDS = (j) => j.status === 'waiting-approval' || j.status === 'needs-human';
 const ASIDE = (j) => ['quarantined', 'killed', 'failed'].includes(j.status);
+// task 32: a cleared order's end in one or two words (its row in Older; the Yard's reason follows in full)
+const CLEARED_SHORT = { retried: 'retried', superseded: 'superseded', duplicate: 'duplicate', stale: 'cleared as stale', dropped: 'dropped' };
 const OLD_ASIDE = (j) => ASIDE(j) && since(j.updated) > 86400;
 const isOldRecipe = (j) => ASIDE(j) && !!j.created && ((Date.now() - new Date(j.created).getTime()) >= 12 * 3600 * 1000) && !!(j.recipe || splitName(j.name).kind);
 const money = (x) => '$' + (Number(x) || 0).toFixed(2);
@@ -200,6 +202,13 @@ async function doJob(kind, id, btn) {
       if (!await confirmBox({ title: `Retry ${ticket(id)}?`, html: `<p>${esc(nameOf(j).text)}</p><p>It goes back in the queue at step ${Number(j.step)} of ${Number(j.steps)}, which runs again from its start.</p>`, yes: 'Retry' })) return;
       await act({ op: 'requeue', id }, { btn, ok: `${ticket(id)} is back in the queue` });
     }
+  } else if (kind === 'close') {   // task 32: the failure ends as dropped, with the reason; it moves to Older (kitchen.ps1 reopen brings it back)
+    if (!await confirmBox({ title: `Close ${ticket(id)}?`, html: `<p>${esc(nameOf(j).text)}</p>${j.failure?.text ? `<p>${esc(j.failure.text)}</p>` : ''}<p>It ends as dropped, closed by you, and moves to Older. Nothing is deleted; it can be reopened.</p>`, yes: 'Close', danger: true })) return;
+    buzz(); S.whyOpen.delete(id);
+    await act({ op: 'close', id }, { btn, ok: `${ticket(id)} closed` });
+  } else if (kind === 'why') {   // task 32: the raw detail of the last failure, one tap away, in the row itself
+    if (S.whyOpen.has(id)) S.whyOpen.delete(id); else S.whyOpen.add(id);
+    S.sig.pass = ''; renderAll(); return;
   } else if (kind === 'diagnose') {
     if (!await confirmBox({ title: `Find the fix for ${ticket(id)}?`, html: `<p>A crew reads why it failed (its record, its log and the Yard's code) and explains the fix. It only reads; nothing is changed.${j.private ? '' : ''}</p>`, yes: 'Find the fix' })) return;
     const r = await act({ op: 'diagnose', id }, { btn }); if (r.ok && r.data?.job) toast(`${ticket(r.data.job)} is looking into it`, { action: { label: 'Open', fn: () => go('#/job/' + r.data.job) } });
@@ -221,7 +230,7 @@ function rowMenu(id) {
   const items = [['open', 'Open work order'], ['logs', 'Logs']];
   if (NEEDS(j)) items.unshift(['approve', 'Approve'], ['reject', 'Reject']);
   if (j.status === 'running' || j.status === 'pending') items.push(['stop', 'Cancel work order']);
-  if (ASIDE(j)) items.unshift(['retry', retryLabel(j)]);
+  if (ASIDE(j)) items.unshift(['retry', retryLabel(j)], ['close', 'Close (ends it as dropped)']);
   $('row-menu-body').innerHTML = `<div class="set-group">${items.map(([k, l]) => `<button class="set-row${['reject', 'stop'].includes(k) ? ' danger' : ''}" data-do="${k}" data-id="${id}"><span>${l}</span></button>`).join('')}</div>`;
   openSheet('row-menu');
 }
@@ -288,9 +297,18 @@ function row(j, kind) {
     side = `<span class="pos">${wait ? 'in ' + words(-since(j.notBefore)) : ord(j.pos) + ' up'}</span>`;
     if (rw) extra = `<div class="row-reason">${esc(cap(rw))}${j.last ? ' · ' + esc(plainDetail(reason(j.last))) : ''}</div>`;
     swipe = `<button class="swipe-act danger" data-do="stop" data-id="${j.id}" tabindex="-1">Cancel</button>`;
+  } else if (kind === 'grp') {
+    return `<li class="fail-grp" data-row="${esc(j.id)}" data-cls="${esc(j.cls)}"><span>${esc(j.label)}</span><span class="n">${Number(j.n)}</span></li>`;
+  } else if (kind === 'aside' && j.cleared) {   // task 32: a cleared order in Older: its end and the Yard's reason, no actions
+    glyph = 'g-cleared'; cls += ' compact cleared'; meta.push(esc(CLEARED_SHORT[j.cleared.state] || 'cleared'), agoTag(j.cleared.at || j.updated));
+    extra = `<div class="row-reason fail-say">${esc(clearedWords(j.cleared))}</div>`;
   } else if (kind === 'aside') {
+    // task 32: what happened and the next step in one plain sentence (the Yard's failure policy); the raw line one tap away (See why);
+    // Retry, Close and See why are one tap each, on the row
     glyph = 'g-fail'; meta.push(esc(statusLabel(j).toLowerCase()), agoTag(j.updated));
-    extra = j.last ? `<div class="row-reason">${esc(plainDetail(reason(j.last)))}</div>` : '';
+    const said = j.failure?.text || (j.last ? plainDetail(reason(j.last)) : ''); const why = S.whyOpen.has(j.id);
+    extra = `${said ? `<div class="row-reason fail-say">${esc(said)}</div>` : ''}${why ? `<pre class="why-detail">${esc(j.last || 'No detail was recorded for this one.')}</pre>` : ''}`
+      + `<div class="row-buttons fail-acts"><button class="btn primary" data-do="retry" data-id="${j.id}">Retry</button><button class="btn" data-do="close" data-id="${j.id}">Close</button><button class="btn" data-do="why" data-id="${j.id}" aria-expanded="${why}">${why ? 'Hide why' : 'See why'}</button></div>`;
     swipe = `<button class="swipe-act" data-do="retry" data-id="${j.id}" tabindex="-1">Retry</button>`;
   } else { glyph = 'g-done'; cls += ' compact'; meta.push(esc(who(j)), j.cost ? money(j.cost) : '', agoTag(j.updated)); }
   const more = kind !== 'need' && kind !== 'done' ? `<button class="icon-btn row-more" data-do="menu" data-id="${j.id}" aria-label="Actions for ${ticket(j.id)}">${icon('more')}</button>` : '';
@@ -324,6 +342,7 @@ function cookCard(j, stable = false) {
 // between renders and made again only when its own markup changed, so one job's change touches one row. Long lists (On the rail, Set
 // aside, and Plated after "Show all") show their first 20 rows and 50 more each time the "showing N of M" line scrolls into view.
 S.win = { rail: WINDOW_FIRST, aside: WINDOW_FIRST, plated: WINDOW_FIRST };
+S.whyOpen = new Set();   // task 32: the failure rows whose raw detail (See why) is open
 S.siteFilter = store.get('siteFilter', 'all');   // TD-4: the Site filter, remembered on this phone
 const newest = (a, b) => (String(a.updated) < String(b.updated) ? 1 : String(a.updated) > String(b.updated) ? -1 : 0);   // ISO times: plain order (localeCompare cost ms at 10x)
 const secShell = (id, title, hot) => `<section class="sec${hot ? ' hot' : ''}" id="sec-${id}" aria-labelledby="h-${id}"><h2 class="sec-head" id="h-${id}"><span>${title}<span class="n"></span></span></h2><ul class="rows"></ul><p class="empty-line" hidden></p><div class="sec-after"></div></section>`;
@@ -333,7 +352,7 @@ function fillSec(el, { list, kind, count, empty = '', after = '' }) {
   const n = el.querySelector('.n'), ul = el.querySelector('.rows'), p = el.querySelector('.empty-line');
   if (n.textContent !== String(count ?? list.length)) n.textContent = String(count ?? list.length);
   ul.hidden = !list.length; p.hidden = !!list.length; setHtml(p, list.length ? '' : empty);
-  const made = syncList(ul, list, { key: (j) => j.id, html: (j) => row(j, kind), sig: kind === 'cook' ? (j) => cookCard(j, true) : undefined });
+  const made = syncList(ul, list, { key: (j) => j.id, html: (j) => row(j, j.grp ? 'grp' : kind), sig: kind === 'cook' ? (j) => cookCard(j, true) : undefined });
   setHtml(el.querySelector('.sec-after'), after);
   return made;
 }
@@ -348,18 +367,22 @@ function renderPass() {
   const plated = jobs.filter((j) => j.status === 'done').sort(newest);
   // task 30 (Jordan's phone 10-27): the failed number counts what needs him now (failed or stopped in the last day); older ones are one
   // tap away under "Cleared / older" in the same section
-  const hs = homeStats(jobs); const aside = S.showOlder ? [...hs.recent, ...hs.older] : hs.recent; const anyAside = hs.recent.length + hs.older.length;
+  // task 32 (failure care): the number counts the failures that need him now (open, not cleared, last 72 h); the Failures list groups
+  // them by class (the Yard's failure policy) with Retry, Close and See why on each row; Older holds the older ones and every cleared order
+  const hs = homeStats(jobs); const anyAside = hs.recent.length + hs.older.length;
+  const grouped = (list) => failureGroups(list).flatMap((g) => [{ id: 'grp-' + g.cls, grp: true, cls: g.cls, label: g.label, n: g.items.length }, ...g.items]);
+  const aside = [...grouped(hs.recent), ...(S.showOlder && hs.older.length ? [{ id: 'grp-older', grp: true, cls: 'older', label: 'Older and cleared', n: hs.older.length }, ...hs.older] : [])];
   // the headline says the state of the Yard in one sentence, with its one action under it (the sign-off); then one grid of equal stats
   // (each a jump), then one plain-words line of its own
   const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
-  const L = STATUS_LABEL, low = (s) => s.toLowerCase(), asideWord = `${low(L.failed)} or ${low(L.killed)}`;
+  const L = STATUS_LABEL, low = (s) => s.toLowerCase();
   const head = needs.length ? [`hot`, `${n(needs.length, 'work order needs', 'work orders need')} your sign-off.`]
     : cooking.length ? ['', `${n(cooking.length, 'work order', 'work orders')} ${low(L.running)}.`]
     : rail.length ? ['', `${n(rail.length, 'work order', 'work orders')} ${low(L.pending)}.`] : ['', 'All quiet.'];
   const sign = needs.length ? `<button class="btn primary signoff-btn" type="button" data-signoff="${needs.length === 1 ? esc(needs[0].id) : ''}">${needs.length === 1 ? 'Open the sign-off' : `Open the ${needs.length} sign-offs`}${icon('chev')}</button>` : '';
   const stat = (num, words, attrs, bad = false) => `<a href="#/pass" class="stat${bad ? ' bad' : ''}" ${attrs}><b>${num}</b> <span>${words}</span></a>`;
   const stats = [stat(cooking.length, low(L.running), 'data-jump="cooking"'), stat(rail.length, low(L.pending), 'data-jump="rail"'),
-    stat(hs.recent.length, `${asideWord} in the last day`, 'data-jump="aside"', hs.recent.length > 0),
+    stat(hs.recent.length, hs.recent.length === 1 ? 'failure needs you' : 'failures need you', 'data-jump="aside"', hs.recent.length > 0),
     s.leads ? stat(Number(s.leads), s.leads > 1 ? 'leads' : 'lead', 'data-clients-open') : stat('', 'Clients', 'data-clients-open'),
     s.ideas ? stat(Number(s.ideas), s.ideas > 1 ? 'ideas' : 'idea', 'data-ideas-open') : stat('', 'Ideas', 'data-ideas-open'), stat('', 'Brief', 'data-brief-open')];
   const platedToday = plated.filter((j) => isToday(j.updated)).length;
@@ -374,8 +397,8 @@ function renderPass() {
     needs: needs.length && { title: L['waiting-approval'], hot: true, list: needs, kind: 'need', after: nAsk ? `<button class="btn primary approve-all" id="approve-all">Approve all ${nAsk}</button>` : '' },
     cooking: cooking.length && { title: L.running, list: cooking, kind: 'cook' },
     rail: rail.length && { title: L.pending, list: railW.shown, count: rail.length, kind: 'rail', after: moreLine('rail', railW.shown.length, rail.length) },
-    aside: anyAside && { title: cap(asideWord), list: asideW.shown, count: aside.length, kind: 'aside', empty: `Nothing ${low(L.failed)} or ${low(L.killed)} in the last day.`,
-      after: moreLine('aside', asideW.shown.length, aside.length) + (hs.older.length ? `<button class="show-all" type="button" data-older aria-expanded="${!!S.showOlder}">${S.showOlder ? 'Hide' : 'Show'} cleared / older (${hs.older.length})${icon('chev')}</button>` : '')
+    aside: anyAside && { title: 'Failures', list: asideW.shown, count: hs.recent.length, kind: 'aside', empty: 'No failures need you: nothing open from the last 3 days.',
+      after: moreLine('aside', asideW.shown.length, aside.length) + (hs.older.length ? `<button class="show-all" type="button" data-older aria-expanded="${!!S.showOlder}">${S.showOlder ? 'Hide' : 'Show'} older and cleared (${hs.older.length})${icon('chev')}</button>` : '')
         + (S.showOlder && hs.older.some(OLD_ASIDE) ? `<button class="btn approve-all" id="clear-aside">Clear old (${hs.older.filter(OLD_ASIDE).length})</button>` : '') },
     plated: { title: L.done, list: platedW.shown, count: plated.length, kind: 'done', empty: `Nothing ${low(L.done)} yet.`,
       after: (S.showPlated ? moreLine('plated', platedW.shown.length, plated.length) : '') + (plated.length > 3 ? `<button class="show-all" id="toggle-plated">${S.showPlated ? 'Show fewer' : `Show all ${plated.length} ${low(L.done)}`}${icon('chev')}</button>` : '') },
@@ -659,6 +682,8 @@ function stateSentence(j) {
   if (rw) return ['', `${STATUS_LABEL.pending}. ${esc(cap(rw))}${j.retry.cls === 'wait' ? ' (it was waiting on CI, GitHub or the network)' : ''}.${j.last ? ' Last try: ' + esc(plainDetail(reason(j.last))) : ''}`];
   if (j.status === 'pending') return ['', j.notBefore && new Date(j.notBefore) > Date.now() ? `${STATUS_LABEL.pending}. Tries again in ${words(-since(j.notBefore))}.` : `${STATUS_LABEL.pending}. Starts when a crew is free.`];
   if (j.status === 'done') return ['', `${j.autoMerged && isImprove(j) ? 'Merged on its own · ' : ''}${STATUS_LABEL.done} at ${j.updated ? clock(j.updated) : ''}${j.costUsd ? ` · ${money(j.costUsd)}` : ''}.`];
+  if (j.cleared) return ['', `${esc(clearedWords(j.cleared))}.`];   // task 32: the order's end, with the Yard's reason
+  if (ASIDE(j) && j.failure?.text) return ['fail', esc(j.failure.text)];   // task 32: what happened and the next step; the detail one tap below
   if (j.status === 'killed') return ['fail', `${STATUS_LABEL.killed}. Retry puts it back in the queue.`];
   return ['fail', `${esc(statusLabel(j))} after ${(j.attempt || 0) + 1} ${j.attempt ? 'tries' : 'try'}.${j.last ? ' ' + esc(plainDetail(reason(j.last))) : ''}`];
 }
@@ -704,7 +729,7 @@ async function loadJob(id) {
   const total = j.created && endAt ? words(Math.max(0, (new Date(endAt) - new Date(j.created)) / 1000)) : '';
   const cooksUsed = [...new Set(j.steps.flatMap((st) => st.runs.map((x) => x.cost?.supplier).filter(Boolean)))];
   $('job-body').innerHTML = `
-    <div class="ticket job-hero ${pill[0]}"><span class="status-pill ${pill[0]}">${pill[1]}</span><h2>${nameHtml(j)}</h2><p class="state ${cls}">${sentence}</p>${j.last && plainDetail(reason(j.last)) !== reason(j.last) ? `<details class="more full-detail"><summary>The full detail</summary><pre class="prompt" data-detail>${esc(j.last)}</pre></details>` : ''}
+    <div class="ticket job-hero ${pill[0]}"><span class="status-pill ${pill[0]}">${pill[1]}</span><h2>${nameHtml(j)}</h2><p class="state ${cls}">${sentence}</p>${j.last && ((ASIDE(j) && j.failure?.text) || plainDetail(reason(j.last)) !== reason(j.last)) ?`<details class="more full-detail"><summary>The full detail</summary><pre class="prompt" data-detail>${esc(j.last)}</pre></details>` : ''}
       <div class="job-progress" aria-hidden="true">${j.steps.map((st, i) => `<i class="${st.state === 'done' ? 'done' : i === current ? (ASIDE(j) ? 'fail' : NEEDS(j) ? 'need' : 'now') : ''}"></i>`).join('')}</div>
       <div class="stat-chips">${total ? `<span><b>${esc(total)}</b> on the line</span>` : ''}<span><b>${Number(j.step)}/${j.steps.length}</b> steps</span><span><b>${Number(j.attempt || 0) + 1}</b> ${j.attempt ? 'tries' : 'try'}</span>${cooksUsed.length ? `<span>${cooksUsed.map((c) => `<em data-css="--cook:${COOK_COLORS[cookOf({ cook: c, station: 'agent' })] || 'var(--ink-3)'}">${esc(cookLabel(c))}</em>`).join('')}</span>` : ''}${j.costUsd ? `<span><b>${money(j.costUsd)}</b> pay-per-use</span>` : ''}</div></div>
     ${NEEDS(j) && j.approval?.text ? `<div class="ask-block"><b>Asking</b><br>${esc(askText(j))}</div>` : ''}
@@ -2259,7 +2284,7 @@ import { startLive, floorStep } from './live.js';
 import { mainStatusBanners } from './main-status.js';   // TD-EH-03a main-is-red banner
 import { markNotices, keysOf } from './notices.js';   // D-12 cleared notices and thin red bars, keyed so a change shows again
 import { titleOf, cleanTitle, splitName, plainDetail } from './titles.js';   // D-11 the one title helper (every list's titles), and details in plain words
-import { homeStats, agoWords, exactTime } from './plain.js';   // task 30: what the home counts (recent failures only), times in words
+import { homeStats, failureGroups, clearedWords, agoWords, exactTime } from './plain.js';   // task 30: what the home counts (recent failures only), times in words
 import { ciBudgetBanners } from './ci-budget.js';   // TD-11 CI budget per Site
 import { undoPushBanners, autoMergePauseBanner } from './undo-pause.js';   // TD-EH-10 undo not pushed, TD-EH-11 auto-merge paused
 import { siteStopBanners, siteStopRows } from './site-stop.js';   // TD-8: a Site stopped by you, a Site's own Stop-work order

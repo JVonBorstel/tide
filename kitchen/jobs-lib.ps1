@@ -152,8 +152,9 @@ function Update-KitchenJobs([string]$Root, [string]$Mode = 'all', [scriptblock]$
     foreach ($f in (Get-JobFiles $Root)) {
         $id = $f.Name.Substring(0, $f.Name.Length - 5); [void]$seen.Add($id)
         $e = $idx[$id]
-        # (an entry from before task 32 has no dup keys (d): its file is read once more to add them)
-        $fresh = -not $rebuilt -and $e -and [long]$e.t -eq $f.LastWriteTimeUtc.Ticks -and [long]$e.n -eq $f.Length -and $e.ContainsKey('d')
+        # (an entry from before task 32 has no dup keys (d): an order still in play is read once more to add them; a finished one never
+        # is, since only open orders can be a duplicate at the door)
+        $fresh = -not $rebuilt -and $e -and [long]$e.t -eq $f.LastWriteTimeUtc.Ticks -and [long]$e.n -eq $f.Length -and ($e.ContainsKey('d') -or [string]$e.s -in $script:JobsFinished)
         if ($fresh -and ($Mode -eq 'index' -or ($Mode -eq 'live' -and -not (Test-JobLive $e)))) { continue }
         $j = $null; $why = ''
         try { $j = [IO.File]::ReadAllText($f.FullName) | ConvertFrom-Json -AsHashtable; if ($j -isnot [hashtable] -or -not $j.id) { $why = 'missing id' } elseif ($RequireSteps -and -not $j.steps) { $why = 'missing id or steps' } }
