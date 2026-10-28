@@ -50,7 +50,7 @@ function Scenario([hashtable]$s) {
     Remove-Item $log -ErrorAction SilentlyContinue
 }
 function Run([hashtable]$more = @{}) {
-    $o = & $script -Repo "JVonBorstel/demo" -Pr 7 @more *>&1 | Out-String   # in this process: exit inside the script returns here
+    $o = & $script -Repo "VonBorstel-J/demo" -Pr 7 @more *>&1 | Out-String   # in this process: exit inside the script returns here
     [pscustomobject]@{ Out = $o; Code = $LASTEXITCODE; Merged = ((MainNow) -ne $M); Log = @(if (Test-Path $log) { Get-Content $log | ForEach-Object { $_ | ConvertFrom-Json } }) }
 }
 $old = @{ path = $env:PATH; k = $env:BRAIN_KITCHEN; gh = $env:KITCHEN_GH; d = $env:FAKE_GH_DIR; n = $env:KITCHEN_FREEZE_NOW; r = $env:KITCHEN_GITHUB_REMOTE }
@@ -64,10 +64,10 @@ try {
 
     Scenario @{}; $r = Run @{ Why = 'CI green, Jordan asked for it' }
     $call = if ($r.Merged) { MergeCommit } else { '' }
-    Check 'all checks green: merges' ($r.Code -eq 0 -and $r.Merged -and $r.Out -match 'MERGED JVonBorstel/demo#7' -and $r.Out -match 'all 3 check')
+    Check 'all checks green: merges' ($r.Code -eq 0 -and $r.Merged -and $r.Out -match 'MERGED VonBorstel-J/demo#7' -and $r.Out -match 'all 3 check')
     Check 'all checks green: one merge commit of main and exactly the checked head, labelled a Claude session merge' ($call -like "$M $A|*" -and $call -match '\(Claude session\)' -and $call -match 'Merged by a Claude session')
     Check 'GitHub is never asked to merge (it would stamp the primary email)' ((Get-Content (Join-Path $bin 'calls.log') -Raw) -notmatch 'pr merge')
-    Check 'all checks green: logs pr, repo, sha, actor claude-session, why, at' ($r.Log.Count -eq 1 -and $r.Log[0].pr -eq 7 -and $r.Log[0].repo -eq 'JVonBorstel/demo' -and $r.Log[0].sha -eq $A -and $r.Log[0].actor -eq 'claude-session' -and $r.Log[0].why -eq 'CI green, Jordan asked for it' -and $r.Log[0].at -and $r.Log[0].ok -eq $true)
+    Check 'all checks green: logs pr, repo, sha, actor claude-session, why, at' ($r.Log.Count -eq 1 -and $r.Log[0].pr -eq 7 -and $r.Log[0].repo -eq 'VonBorstel-J/demo' -and $r.Log[0].sha -eq $A -and $r.Log[0].actor -eq 'claude-session' -and $r.Log[0].why -eq 'CI green, Jordan asked for it' -and $r.Log[0].at -and $r.Log[0].ok -eq $true)
 
     Check "all checks green: the merge commit's author and committer are the account's noreply address, never its primary email" ($call -like '*|1001+fake-owner@users.noreply.github.com|1001+fake-owner@users.noreply.github.com|*')
     Scenario @{ noUser = $true }; $r = Run
@@ -144,23 +144,23 @@ try {
             since = '2026-10-23T13:14:00.0000000Z'; sha = '9228e6f229278eb369c24b28b875f6dcef2ff057'; at = '2026-10-23T16:00:00.0000000Z'; job = 'J209' } | ConvertTo-Json | Set-Content (Join-Path $ms $file) -Encoding utf8
     }
     Status 'aaaaaaaaaaaa.json' 'demo' 'red'; Scenario @{}; $r = Run
-    Check 'main red: refuses, naming the suites and the why, nothing merged, nothing logged' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'REFUSED JVonBorstel/demo#7: site closed: demo main is red since at least 10-23 13:14 UTC \(Failed: Test-VerifyCache, Test-PassApp; why: Test-VerifyCache: FAIL: train\.ps1 not found; last checked 9228e6f22927\)' -and $r.Out -match '-FixesRed' -and $r.Log.Count -eq 0)
+    Check 'main red: refuses, naming the suites and the why, nothing merged, nothing logged' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'REFUSED VonBorstel-J/demo#7: site closed: demo main is red since at least 10-23 13:14 UTC \(Failed: Test-VerifyCache, Test-PassApp; why: Test-VerifyCache: FAIL: train\.ps1 not found; last checked 9228e6f22927\)' -and $r.Out -match '-FixesRed' -and $r.Log.Count -eq 0)
     Check 'main red: refused before GitHub is asked anything' (-not (Test-Path (Join-Path $bin 'calls.log')))
     Check 'main red: the refusal names the way out, scripts/recheck-main.ps1 on the red Tower''s checkout (TD-EH-03d)' ($r.Out -match "(?m)^merge-pr: the way out: once the fix is on main, pwsh -File scripts/recheck-main\.ps1 -Repo 'C:\\nowhere\\demo' checks main again and records it green" -and $r.Out -notmatch 'recheck-main\.ps1 -Repo \S+ -All')
     Scenario @{}; $r = Run @{ DryRun = $true }
     Check 'main red: -DryRun refuses too' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'site closed')
     Scenario @{}; $r = Run @{ FixesRed = $true; Why = 'fixes train.ps1 not found' }
     $call = if ($r.Merged) { MergeCommit } else { '' }
-    Check 'main red, -FixesRed: merges, says it is the fix' ($r.Code -eq 0 -and $r.Merged -and $r.Out -match 'MERGED JVonBorstel/demo#7 .*as the fix for a red main \(demo main is red' -and $r.Out -match 'fixesRed' -and $call -match 'as the fix for a red main')
+    Check 'main red, -FixesRed: merges, says it is the fix' ($r.Code -eq 0 -and $r.Merged -and $r.Out -match 'MERGED VonBorstel-J/demo#7 .*as the fix for a red main \(demo main is red' -and $r.Out -match 'fixesRed' -and $call -match 'as the fix for a red main')
     Check 'main red, -FixesRed: logged as the fix, with what main was and why' ($r.Log.Count -eq 1 -and $r.Log[0].ok -eq $true -and $r.Log[0].fixesRed -eq $true -and $r.Log[0].mainWas -eq 'red' -and $r.Log[0].mainStatus -match 'Failed: Test-VerifyCache, Test-PassApp' -and $r.Log[0].actor -eq 'claude-session' -and $r.Log[0].why -eq 'fixes train.ps1 not found')
     Status 'aaaaaaaaaaaa.json' 'Demo' 'red'; Scenario @{}; $r = Run
     Check 'main red: the Tower name matches the slug name ignoring case' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'site closed')
     Status 'aaaaaaaaaaaa.json' 'other-tower' 'red'; Scenario @{}; $r = Run
     Check 'another Tower red: this one stays open' ($r.Code -eq 0 -and $r.Merged -and $r.Log.Count -eq 1 -and $null -eq $r.Log[0].fixesRed)
-    $named = Join-Path $root 'checkout-x'; New-Item -ItemType Directory -Force $named | Out-Null; '{"github":"JVonBorstel/demo"}' | Set-Content (Join-Path $named 'kitchen.repo.json')
+    $named = Join-Path $root 'checkout-x'; New-Item -ItemType Directory -Force $named | Out-Null; '{"github":"VonBorstel-J/demo"}' | Set-Content (Join-Path $named 'kitchen.repo.json')
     Status 'aaaaaaaaaaaa.json' 'checkout-x' 'red' $named; Scenario @{}; $r = Run
     Check 'main red: a checkout whose kitchen.repo.json names this github counts, whatever its folder is called' ($r.Code -eq 1 -and -not $r.Merged -and $r.Out -match 'checkout-x main is red')
-    '{"github":"JVonBorstel/elsewhere"}' | Set-Content (Join-Path $named 'kitchen.repo.json'); Status 'aaaaaaaaaaaa.json' 'demo' 'red' $named; Scenario @{}; $r = Run
+    '{"github":"VonBorstel-J/elsewhere"}' | Set-Content (Join-Path $named 'kitchen.repo.json'); Status 'aaaaaaaaaaaa.json' 'demo' 'red' $named; Scenario @{}; $r = Run
     Check 'main red: a checkout named demo whose kitchen.repo.json names another github does not close this one' ($r.Code -eq 0 -and $r.Merged)
     Status 'aaaaaaaaaaaa.json' 'demo' 'green'; Scenario @{}; $r = Run
     Check 'main green: merges, logged without fixesRed' ($r.Code -eq 0 -and $r.Merged -and $r.Log.Count -eq 1 -and $null -eq $r.Log[0].fixesRed)

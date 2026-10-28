@@ -91,7 +91,7 @@ function redactRemotes(t) {
   });
 }
 // a repo named in plain text (not in a URL): after a command or flag that takes one (gh repo clone X, --repo X, -R X, repo: X, repos/X),
-// as an issue or commit reference (X#12, X@abc1234), with the public owner (JVonBorstel/anything but the public repo), or shaped like
+// as an issue or commit reference (X#12, X@abc1234), with the public owner (VonBorstel-J/anything but the public repo), or shaped like
 // one: a Capitalized owner and a repo name with a dash, dot, underscore or digit (Example/private-repo). A plain lower-case owner/repo
 // with no cue (a path like core/ledger) is not guessed: the private words list covers those.
 const BARE_CUE = /((?:\bgh\s+repo\s+(?:clone|view|fork|create|delete|sync|edit|archive|rename|set-default)\s+|--repo(?:sitory)?[=\s]+|(?<![\w-])-R\s+|\brepo(?:sitory)?\s*[:=]\s*|\brepos\/)["']?)([A-Za-z0-9][\w-]{0,38})\/([\w.-]+?)(?![\w-]|\.[\w-])/gi;

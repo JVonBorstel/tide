@@ -93,7 +93,7 @@ export function run(check) {
   check('freshen: a commit identity that is not a noreply address is held', !ri.ok && /not a GitHub noreply address/.test(ri.reason), ri.reason);
   setIdentity(i.clone);
   const rdef = freshenPr({ dir: i.clone, branch: 'feature' });
-  check("freshen: by default a noreply address other than the owner's is held", !rdef.ok && rdef.reason.includes('not the expected 204934145+JVonBorstel@users.noreply.github.com'), rdef.reason);
+  check("freshen: by default a noreply address other than the owner's is held", !rdef.ok && rdef.reason.includes('not the expected 104696717+VonBorstel-J@users.noreply.github.com'), rdef.reason);
   const rx =freshenPr({ expectEmail: EMAIL, dir: i.clone, branch: 'feature', expectEmail: '2000002+other@users.noreply.github.com' });
   check('freshen: a noreply identity that is not the expected one is held', !rx.ok && /not the expected/.test(rx.reason), rx.reason);
   fs.writeFileSync(path.join(i.clone, 'dirty.txt'), 'x');

@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '..\kitchen\github-lib.ps1')
 $script:pass = 0; $script:fail = 0
 function Check($n, $c) { if ($c) { $script:pass++ } else { $script:fail++; Write-Host "FAIL: $n" } }
-$want = 'JVonBorstel/demo-project'
+$want = 'VonBorstel-J/demo-project'
 function Slug([string]$v) { (ConvertTo-GithubSlug $v).slug }
 
 Check 'URL: https://github.com/owner/repo gives owner/repo (the J193 value)' ((Slug "https://github.com/$want") -eq $want)
@@ -15,7 +15,7 @@ Check '.git: https URL and plain name ending in .git give owner/repo' ((Slug "ht
 Check 'plain: owner/repo stays owner/repo' ((Slug $want) -eq $want -and -not (ConvertTo-GithubSlug $want).bad)
 Check 'empty keeps today''s behaviour (derived later): empty slug, no error' ((Slug '') -eq '' -and -not (ConvertTo-GithubSlug '').bad -and (Slug '   ') -eq '')
 Check 'none/off are kept for "no GitHub home"' ((Slug 'none') -eq 'none' -and (Slug 'off') -eq 'off' -and (Resolve-GithubSlug '.' (Slug 'none')).none)
-foreach ($junk in 'not a repo', 'https://gitlab.com/JVonBorstel/x', 'https://github.com/JVonBorstel', 'owner/repo/extra', '../etc', 'a/..') {
+foreach ($junk in 'not a repo', 'https://gitlab.com/VonBorstel-J/x', 'https://github.com/VonBorstel-J', 'owner/repo/extra', '../etc', 'a/..') {
     $r = ConvertTo-GithubSlug $junk
     Check "garbage fails with the value named: '$junk'" (-not $r.slug -and $r.bad -match [regex]::Escape("'$junk'"))
 }

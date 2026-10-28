@@ -6,7 +6,7 @@ $kd = (Resolve-Path (Join-Path $PSScriptRoot '..\kitchen')).Path; $st = Join-Pat
 . (Join-Path $kd 'train.ps1')   # Get-TrainPath: the merge train is one file per repo
 $root = Join-Path ([IO.Path]::GetTempPath()) ('kpr-' + [guid]::NewGuid().ToString('N'))
 $kr = Join-Path $root 'kitchen'; $repo = Join-Path $root 'brain-monitor'; $bare = Join-Path $root 'github.git'; $gh = Join-Path $root 'gh'
-$slug = 'JVonBorstel/brain-monitor'
+$slug = 'VonBorstel-J/brain-monitor'
 # the bare repo is reached through git's ext:: transport (git runs 'git receive-pack <path>' itself): a plain path makes git start the
 # MSYS sh.exe, which cannot run at Low integrity inside the kitchen's test sandbox. Turned on for this suite only (GIT_CONFIG_* env).
 $remote = "ext::git %s $($bare -replace '\\', '/')"
@@ -245,10 +245,10 @@ try {
     $r = Station 'pr' 'J23' @() $ciRepo
     Check 'pr: a guessed name not on GitHub, but the repo has CI workflows -> held (10)' ($r.code -eq 10 -and $r.out -match 'CI workflows')
     # its kitchen.repo.json "github" (from the main checkout) is used before any guess
-    Set-Content (Join-Path $ciRepo 'kitchen.repo.json') '{"github":"JVonBorstel/configured-name"}'
+    Set-Content (Join-Path $ciRepo 'kitchen.repo.json') '{"github":"VonBorstel-J/configured-name"}'
     foreach ($gargs in @(@('add', '-A'), @('commit', '-q', '-m', 'config'))) { & git -C $ciRepo -c user.name=t -c user.email=t@localhost @gargs 2>&1 | Out-Null }
     $r = Station 'pr' 'J23' @() $ciRepo
-    Check 'pr: kitchen.repo.json "github" is the name asked for (not found -> exit 1, named)' ($r.code -eq 1 -and $r.out -match 'JVonBorstel/configured-name was not found' -and (Get-Content (Join-Path $gh 'calls.log') -Raw) -match 'repo view JVonBorstel/configured-name')
+    Check 'pr: kitchen.repo.json "github" is the name asked for (not found -> exit 1, named)' ($r.code -eq 1 -and $r.out -match 'VonBorstel-J/configured-name was not found' -and (Get-Content (Join-Path $gh 'calls.log') -Raw) -match 'repo view VonBorstel-J/configured-name')
     $calls = @(Get-Content (Join-Path $gh 'calls.log')).Count
     $null = NewJob 'J6' 'f.txt'
     $r = Station 'pr' 'J6' @('-GitHub', 'none')
@@ -256,7 +256,7 @@ try {
     $null = NewJob 'J7' 'g.txt' $repo @{ goal = 'private thing'; private = 'yes' }
     $r = Station 'pr' 'J7'
     Check 'pr: a private order never leaves the PC (skipped, nothing pushed)' ($r.code -eq 0 -and $r.out -match 'private order' -and -not (BareRef 'refs/heads/kitchen/J7') -and @(Get-Content (Join-Path $gh 'calls.log')).Count -eq $calls)
-    $r = Station 'pr' 'J6' @('-GitHub', 'JVonBorstel/not-there')
+    $r = Station 'pr' 'J6' @('-GitHub', 'VonBorstel-J/not-there')
     Check 'pr: a GitHub repo Jordan named that does not exist -> exit 1' ($r.code -eq 1 -and $r.out -match 'not found')
     $r = Station 'pr' 'J6' @('-GitHub', 'bad slug!')
     Check 'pr: a malformed github value is refused (exit 2)' ($r.code -eq 2)

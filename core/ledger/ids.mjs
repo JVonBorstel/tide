@@ -14,7 +14,7 @@ export const jobOfWo = (wo) => (/^WO-(\d+)$/.test(wo) ? `J${wo.slice(3)}` : null
 export function woOfTitle(title) { const m = /^\s*(WO-[A-Z0-9]+(?:-[A-Z0-9]+)*)\s*:/.exec(String(title || '')); return m && isWo(m[1]) ? m[1] : null; }
 /** kitchen/J312 -> WO-312 @param {string} branch */
 export function woOfBranch(branch) { const m = /^kitchen\/(J\d+)(?:$|[^\d])/.exec(String(branch || '')); return m ? woOfJob(m[1]) : null; }
-/** JVonBorstel/tide -> tide (the prRef short name) @param {string} repo */
+/** VonBorstel-J/tide -> tide (the prRef short name) @param {string} repo */
 export const repoShort = (repo) => String(repo || '').split('/').pop()?.toLowerCase().replace(/[^a-z0-9._-]/g, '-').replace(/^[^a-z0-9]+/, '') || 'repo';
 /** @param {string} repo @param {number} n */
 export const prRef = (repo, n) => `${repoShort(repo)}#${n}`;

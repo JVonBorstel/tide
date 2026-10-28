@@ -21,8 +21,8 @@
 # Exit: 0 PR opened or reused (or committed, with -NoPush); 1 refused (the reason is printed; nothing pushed); 2 bad input or a tool failed.
 param(
     [Parameter(Mandatory)][ValidateRange(1, 999999)][int]$Pr,
-    [ValidatePattern('^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')][string]$PrivateRepo = 'JVonBorstel/brain-monitor',
-    [ValidatePattern('^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')][string]$TideRepo = 'JVonBorstel/tide',
+    [ValidatePattern('^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')][string]$PrivateRepo = 'VonBorstel-J/brain-monitor',
+    [ValidatePattern('^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')][string]$TideRepo = 'VonBorstel-J/tide',
     [string]$Repo = '',                 # the checkout whose remotes are tide and the private repo (default: this script's main checkout)
     [string]$PrivateRemote = 'private',
     [string]$TideRemote = 'origin',
@@ -37,7 +37,7 @@ param(
     [string[]]$Trailer = @(),           # extra commit-message trailer lines (e.g. Co-Authored-By)
     [string]$Note = '',                 # what the porter did by hand (a conflict, a restored cleaning): PR body, commit, change note
     [string]$AuthorName = '',          # default: git config user.name of the checkout (the name is never written into a file)
-    [string]$AuthorEmail = '204934145+JVonBorstel@users.noreply.github.com',
+    [string]$AuthorEmail = '104696717+VonBorstel-J@users.noreply.github.com',
     [switch]$AcceptRejects,
     [switch]$Continue,
     [switch]$NoCommit,                  # stop after the apply: a hand fix in the worktree, then -Continue scans and commits it

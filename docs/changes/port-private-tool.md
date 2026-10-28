@@ -25,7 +25,7 @@ It opens a tide PR whose body links the private PR. The private PR stays open. I
    - A live hit that is already on tide `main` in that file is not the port's to add or remove. It is named in a WARNING line and in the PR body, and it is not refused. The first case was private #132: `kitchen/BUILDING.md` on main carries the owner's full name in its commit-identity rule.
    - Any other class that is new in a changed file refuses, unless `-Allow <class>` says a person read it.
    - A hit only in the private PR's title or description leaves that text out of tide. The PR then gets a neutral title, `Port of private PR #N`.
-5. **Writes a change note** `docs/changes/port-<N>.md` (the cleaned description, how it was ported, L1-L4). It commits with the owner's name (`-AuthorName`, else `git config user.name`; the name is never written into a file) and the noreply email `204934145+JVonBorstel@users.noreply.github.com`, and the message names the private PR and its full head commit.
+5. **Writes a change note** `docs/changes/port-<N>.md` (the cleaned description, how it was ported, L1-L4). It commits with the owner's name (`-AuthorName`, else `git config user.name`; the name is never written into a file) and the noreply email `104696717+VonBorstel-J@users.noreply.github.com`, and the message names the private PR and its full head commit.
 6. **Pushes the branch** (never forced) and opens the tide PR, or reuses the open one. `-Comment` also puts the tide link on the private PR. Each port is one line in `ports.jsonl` in the kitchen state folder.
 
 **Other refusals:**

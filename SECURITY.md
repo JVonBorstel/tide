@@ -16,4 +16,4 @@ release and no support channel; this file says how secrets are handled and what 
 3. Remove it from the code, then decide with Jordan whether history needs rewriting. Rotation matters more than the rewrite.
 
 ## Reporting a vulnerability
-Report to the owner, Jordan von Borstel (GitHub: @JVonBorstel), privately: never in a public issue. Include what you found, where, and how to reproduce it; do not include live secret values.
+Report to the owner, Jordan von Borstel (GitHub: @VonBorstel-J), privately: never in a public issue. Include what you found, where, and how to reproduce it; do not include live secret values.

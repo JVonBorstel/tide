@@ -1,6 +1,6 @@
 # Port #132: Multi-site Pour 1-3 (TD-2..TD-12), reconciled
 
-Ported on 2026-10-26 by `scripts/port-private.ps1` from JVonBorstel/brain-monitor#132 (https://github.com/JVonBorstel/brain-monitor/pull/132) at `1e91c72aadc120974429fa7a529f3032ab01553c`, onto tide `main` at `a722438`. The private repo is on a GitHub billing hold, so its work lands here; the private PR stays open.
+Ported on 2026-10-26 by `scripts/port-private.ps1` from VonBorstel-J/brain-monitor#132 (https://github.com/VonBorstel-J/brain-monitor/pull/132) at `1e91c72aadc120974429fa7a529f3032ab01553c`, onto tide `main` at `a722438`. The private repo is on a GitHub billing hold, so its work lands here; the private PR stays open.
 
 ## What it does (the private PR's description, cleaned)
 
@@ -75,7 +75,7 @@ The private branch's changes since its merge-base `d37031d` with the old private
 
 ## Done by hand in the port
 
-Done with -AcceptRejects -NoCommit, then by hand in the worktree before the commit. (1) kitchen.repo.json: a conflict with the cut-over commit; tide's "github": "JVonBorstel/tide" kept and #132's "site": "TD" added. (2) scripts/verify-all.ps1: a conflict with the cut-over commit; tide's state-folder verify-all.json lookup ($ConfigPath = '') kept with #132's Sites comment and -KitchenRoot; and the public cleaning's [Environment]::ExpandEnvironmentVariables on each suite dir restored inside #132's rewritten loop (that cleaning-patch hunk did not apply on the head, so the plain diff would have undone it). (3) scripts/merge-pr.ps1: a header-comment conflict with merge-noreply; both texts kept (Site-closed windows, and the merge commit made by the script as the noreply address). No code line conflicted. (4) tests/Test-Sandbox.ps1: the cleaning had turned the any-case Tower name into demo-AI-Program, which no longer matched demo-project (3 checks red); the cleaning now maps the project folder name in any case to Demo-Project (R8), and this file is that output (Sandbox 44/0).
+Done with -AcceptRejects -NoCommit, then by hand in the worktree before the commit. (1) kitchen.repo.json: a conflict with the cut-over commit; tide's "github": "VonBorstel-J/tide" kept and #132's "site": "TD" added. (2) scripts/verify-all.ps1: a conflict with the cut-over commit; tide's state-folder verify-all.json lookup ($ConfigPath = '') kept with #132's Sites comment and -KitchenRoot; and the public cleaning's [Environment]::ExpandEnvironmentVariables on each suite dir restored inside #132's rewritten loop (that cleaning-patch hunk did not apply on the head, so the plain diff would have undone it). (3) scripts/merge-pr.ps1: a header-comment conflict with merge-noreply; both texts kept (Site-closed windows, and the merge commit made by the script as the noreply address). No code line conflicted. (4) tests/Test-Sandbox.ps1: the cleaning had turned the any-case Tower name into demo-AI-Program, which no longer matched demo-project (3 checks red); the cleaning now maps the project folder name in any case to Demo-Project (R8), and this file is that output (Sandbox 44/0).
 
 ## L1-L4
 
@@ -102,7 +102,7 @@ The independent review (`SHIP AFTER FIXES`) found F1-F10. What changed, per find
 - **F6:** tide's `inspector._why` and the RepoConfig check no longer call tide private.
 - **F8:** `ciPrivatePoolMinutes` and the `KITCHEN_CI_COUNT*` switches are in the `kitchen/kitchen.json` template; `PAUSED-<code>` is
   in `TD-8.md`; change notes added for TD-4, TD-5, TD-8 and TD-12.
-- **F9:** the fake slug in `Test-CiBudget.ps1` is `JVonBorstel/private-app`; this note's and `TD-2.md`'s "brain-monitor" wording
+- **F9:** the fake slug in `Test-CiBudget.ps1` is `VonBorstel-J/private-app`; this note's and `TD-2.md`'s "brain-monitor" wording
   for tide's own file is fixed; the stray "Generated with" line in the middle of this note is gone.
 - **Not changed, follow-ups:** F7's silent end of an open Yard-wide Stop-work order when a registry is added, and the code check
   mismatch between `Get-SiteList` (any 2-3 capitals) and `Get-KitchenSites` (`RepoSiteCodes` only). F10: weights and

@@ -148,7 +148,7 @@ export async function pushCards(o) {
   if (!(Number.isInteger(o.n) && o.n > 0)) { res.skipped = 'no cards wait'; return res; }
   let vapid; try { vapid = vapidKeys(o.state); } catch (e) { res.failed = subs.length; res.errors.push(/** @type {Error} */ (e).message); return finish(o, res); }
   const body = Buffer.from(JSON.stringify({ n: o.n, text: cardsText(o.n) }));
-  const subject = o.subject || process.env.PASS_PUSH_SUBJECT || 'https://github.com/JVonBorstel/tide';
+  const subject = o.subject || process.env.PASS_PUSH_SUBJECT || 'https://github.com/VonBorstel-J/tide';
   const gone = new Set();
   await Promise.all(subs.map(async (s) => {
     const ok = checkSubscription(s, o); if (!ok.ok) { gone.add(s.endpoint); res.gone++; return; }

@@ -1,6 +1,6 @@
 # Port #133: Scheduled tasks run hidden and keep pwsh's exit code (no console flash)
 
-Ported on 2026-10-26 by `scripts/port-private.ps1` from JVonBorstel/brain-monitor#133 (https://github.com/JVonBorstel/brain-monitor/pull/133) at `71ae78e03329250f405293fd16e8229382dcc255`, onto tide `main` at `8af1796`. The private repo is on a GitHub billing hold, so its work lands here; the private PR stays open.
+Ported on 2026-10-26 by `scripts/port-private.ps1` from VonBorstel-J/brain-monitor#133 (https://github.com/VonBorstel-J/brain-monitor/pull/133) at `71ae78e03329250f405293fd16e8229382dcc255`, onto tide `main` at `8af1796`. The private repo is on a GitHub billing hold, so its work lands here; the private PR stays open.
 
 ## What it does (the private PR's description, cleaned)
 

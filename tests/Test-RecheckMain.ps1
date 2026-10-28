@@ -55,7 +55,7 @@ $rn = "results\nojob.tests-why-$([guid]::NewGuid().ToString('N').Substring(0, 8)
     # the Tower: Test-A and Test-B, main broken in Test-A (red.txt), its GitHub a local bare repo; the Owner's checkout then left on a branch
     Set-Content (Join-Path $tower 'tests\Test-A.ps1') "'A'"; Set-Content (Join-Path $tower 'tests\Test-B.ps1') "'B'"
     Set-Content (Join-Path $tower 'app.txt') 'v1'; Set-Content (Join-Path $tower 'red.txt') 'Test-A'
-    Set-Content (Join-Path $tower 'kitchen.repo.json') '{"github":"JVonBorstel/tower"}'
+    Set-Content (Join-Path $tower 'kitchen.repo.json') '{"github":"VonBorstel-J/tower"}'
     & git init -q -b main $tower 2>&1 | Out-Null; G $tower add -A | Out-Null; G $tower commit -q -m 'main, Test-A broken' | Out-Null
     & git init -q --bare -b main $gh 2>&1 | Out-Null; G $tower push -q $gh main | Out-Null
     & git clone -q $gh $other 2>&1 | Out-Null
@@ -83,7 +83,7 @@ $rn = "results\nojob.tests-why-$([guid]::NewGuid().ToString('N').Substring(0, 8)
     $fixSha = Land-OnGitHub '' 'fix Test-A'
     $r = Recheck
     $ms = Read-MainStatus $state $tower; $run = @(Runs)[-1]
-    Check 'after a fix: checks GitHub''s main, which is ahead of this PC''s, and says so' ($r.Code -eq 0 -and $r.Out -match "checking Test-A on GitHub's main \(JVonBorstel/tower\), ahead of this PC's main at $($fixSha.Substring(0, 12))" -and $run -match "only=Test-A head=$fixSha ")
+    Check 'after a fix: checks GitHub''s main, which is ahead of this PC''s, and says so' ($r.Code -eq 0 -and $r.Out -match "checking Test-A on GitHub's main \(VonBorstel-J/tower\), ahead of this PC's main at $($fixSha.Substring(0, 12))" -and $run -match "only=Test-A head=$fixSha ")
     Check 'after a fix: recorded green at the fix, no suites, no why, says the Tower is open again' ($ms.state -eq 'green' -and $ms.sha -eq $fixSha -and -not @($ms.suites).Count -and $ms.why -eq '' -and $ms.note -match "^recheck of GitHub's main .*only the suites that were red \(Test-A\)$" -and $r.Out -match 'tower main is green at .* \(Test-A passed\); recorded, the Tower is open to merges again')
     $ev = @(Events 'main.status')
     Check 'after a fix: one main.status event, green, at the fix' ($ev.Count -eq 2 -and $ev[-1].state -eq 'green' -and $ev[-1].sha -eq $fixSha)
@@ -130,7 +130,7 @@ $rn = "results\nojob.tests-why-$([guid]::NewGuid().ToString('N').Substring(0, 8)
     $r = Recheck
     Check 'this PC''s main and GitHub''s split apart: exit 2, says so and names -Local, runs nothing' ($r.Code -eq 2 -and $r.Out -match 'have split apart, so which one is main is not known; -Local' -and (Runs).Count -eq $runs0 -and (Read-MainStatus $state $tower).at -eq $before.at)
     $env:KITCHEN_GITHUB_REMOTE = Join-Path $root 'no-such-remote.git'; $r = Recheck; $env:KITCHEN_GITHUB_REMOTE = $gh
-    Check 'GitHub cannot be reached: exit 2, names -Local, nothing recorded' ($r.Code -eq 2 -and $r.Out -match 'could not fetch main from GitHub \(JVonBorstel/tower\); -Local checks' -and (Read-MainStatus $state $tower).at -eq $before.at)
+    Check 'GitHub cannot be reached: exit 2, names -Local, nothing recorded' ($r.Code -eq 2 -and $r.Out -match 'could not fetch main from GitHub \(VonBorstel-J/tower\); -Local checks' -and (Read-MainStatus $state $tower).at -eq $before.at)
     $localSha = (G $tower rev-parse main).Trim()
     $r = Recheck -Local
     Check '-Local: checks this PC''s main (still red there in Test-A)' ($r.Code -eq 1 -and @(Runs)[-1] -match "head=$localSha " -and (Read-MainStatus $state $tower).sha -eq $localSha -and $r.Out -match "checking Test-A on this PC's main")

@@ -22,10 +22,10 @@ const WIP = 4 // build streams open at once (tools/task.mjs WIP_LIMIT; build-way
 // --max 40 by default: a task costs about 6 agents when it ships first time and up to ~20 with fix rounds, and a workflow stops at 1000.
 const DEF = {
   lanes: 1, max: 40, gateEvery: 3, rounds: 3, planBatch: 5, planRounds: 10, task: 0, plan: true,
-  repo: 'JVonBorstel/tide', checkout: '', wtRoot: '',
+  repo: 'VonBorstel-J/tide', checkout: '', wtRoot: '',
   // scan-diff.ps1 runs public-tide-scan.ps1 on a change's files and keeps only hits on lines the change adds
   privacyScan: '%USERPROFILE%\\gemini-brain\\projects\\tide\\audits\\scan-diff.ps1',
-  gitName: 'JVonBorstel', gitEmail: '204934145+JVonBorstel@users.noreply.github.com',
+  gitName: 'VonBorstel-J', gitEmail: '104696717+VonBorstel-J@users.noreply.github.com',
 }
 function options(a) {
   const o = { ...DEF }
