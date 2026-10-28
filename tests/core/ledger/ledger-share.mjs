@@ -334,11 +334,11 @@ export async function testRedactionHardening() {
     ['codeload', 'https://codeload.github.com/Example/private-repo/zip/main'],
     ['gh clone', 'gh repo clone Example/private-repo'], ['--repo', 'gh pr view 3 --repo Example/private-repo'], ['--repo=', '--repo=Example/private-repo'], ['-R', 'gh issue list -R Example/private-repo'],
     ['repo:', 'repo: Example/private-repo'], ['issue ref', 'fixes Example/private-repo#12'], ['commit ref', 'Example/private-repo@a1b2c3d'], ['bare shape', 'pushed to Example/private-repo today'], ['bare sentence end', 'pushed to Example/private-repo.'],
-    ['bare in parens', '(Example/private-repo)'], ['public owner, other repo', 'VonBorstel-J/other-repo'], ['public owner lower', 'jvonborstel/Other_Repo'], ['public owner, tide lookalike', 'VonBorstel-J/tide-private']]) {
+    ['bare in parens', '(Example/private-repo)'], ['public owner, other repo', 'VonBorstel-J/other-repo'], ['public owner lower', 'vonborstel-j/Other_Repo'], ['public owner, tide lookalike', 'VonBorstel-J/tide-private']]) {
     const out = r(t); check(`l4f: ${name} is redacted`, !out.includes('private-repo') && !out.includes('Example') && !/other-repo|other_repo|tide-private/i.test(out) && out.includes(MARK.repo), out);
   }
-  for (const t of ['https://github.com/VonBorstel-J/tide', 'HTTPS://GITHUB.COM/JVONBORSTEL/TIDE.git', 'GIT@GITHUB.COM:VonBorstel-J/tide.git', 'git@github.com:jvonborstel/tide.git', 'ssh://git@github.com/VonBorstel-J/tide.git',
-    'https://api.github.com/repos/VonBorstel-J/tide/pulls/38', 'https://raw.githubusercontent.com/VonBorstel-J/tide/main/README.md', 'gh pr view 38 --repo VonBorstel-J/tide', 'VonBorstel-J/tide', 'VonBorstel-J/tide#38', 'jvonborstel/Tide.',
+  for (const t of ['https://github.com/VonBorstel-J/tide', 'HTTPS://GITHUB.COM/VONBORSTEL-J/TIDE.git', 'GIT@GITHUB.COM:VonBorstel-J/tide.git', 'git@github.com:vonborstel-j/tide.git', 'ssh://git@github.com/VonBorstel-J/tide.git',
+    'https://api.github.com/repos/VonBorstel-J/tide/pulls/38', 'https://raw.githubusercontent.com/VonBorstel-J/tide/main/README.md', 'gh pr view 38 --repo VonBorstel-J/tide', 'VonBorstel-J/tide', 'VonBorstel-J/tide#38', 'vonborstel-j/Tide.',
     'https://github.com/VonBorstel-J/tide/pull/38', 'see https://github.com/VonBorstel-J/tide, then']) check(`l4f: the public repo stays (${t.slice(0, 40)})`, r(t) === t, r(t));
   check('l4f: a user part is dropped from a public https remote, "git@" is kept', r(`https://someuser${at}github.com/VonBorstel-J/tide.git`) === 'https://github.com/VonBorstel-J/tide.git' && r(`ssh://git${at}github.com/VonBorstel-J/tide.git`) === `ssh://git${at}github.com/VonBorstel-J/tide.git`);
   // near misses: paths, files, ordinary words and links are not repos
