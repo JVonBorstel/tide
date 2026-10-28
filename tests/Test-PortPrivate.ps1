@@ -9,8 +9,8 @@ $tool = (Resolve-Path (Join-Path $PSScriptRoot '..\scripts\port-private.ps1')).P
 $fx = Join-Path $PSScriptRoot 'fixtures'
 $root = Join-Path ([IO.Path]::GetTempPath()) ('tpp-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 $repo = Join-Path $root 'co'; $priv = Join-Path $root 'priv.git'; $tide = Join-Path $root 'tide.git'; $gh = Join-Path $root 'gh'; $wtRoot = Join-Path $root 'wt'
-$privSlug = 'JVonBorstel/brain-monitor'; $tideSlug = 'JVonBorstel/tide'
-$noreply = '204934145+JVonBorstel@users.noreply.github.com'
+$privSlug = 'VonBorstel-J/brain-monitor'; $tideSlug = 'VonBorstel-J/tide'
+$noreply = '104696717+VonBorstel-J@users.noreply.github.com'
 $script:pass = 0; $script:fail = 0
 function Check($n, $c) { if ($c) { $script:pass++ } else { $script:fail++; Write-Host "FAIL: $n" } }
 function G { & git -C $repo -c user.name=t -c user.email=t@localhost @args 2>&1 | Out-Null }

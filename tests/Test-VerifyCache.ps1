@@ -169,7 +169,7 @@ if ($env:VC_FLAKY) { "tests: PASS $($env:VC_FLAKY) RESULT note: flaky (passed on
     # fixed words, the Board's record (<kitchen>\undo-unpushed\J6.json) names the Tower, the GitHub repo and the undo commit
     $bare = Join-Path $root 'github.git'; & git clone -q --bare $repo $bare 2>&1 | Out-Null   # GitHub's main: main as it is before J6
     New-Item -ItemType Directory -Force "$state\results" | Out-Null
-    function PrRec($jid, $n) { @{ repo = 'JVonBorstel/repo'; number = $n; url = "https://github.com/JVonBorstel/repo/pull/$n" } | ConvertTo-Json | Set-Content "$state\results\$jid.pr.json" }
+    function PrRec($jid, $n) { @{ repo = 'VonBorstel-J/repo'; number = $n; url = "https://github.com/VonBorstel-J/repo/pull/$n" } | ConvertTo-Json | Set-Content "$state\results\$jid.pr.json" }
     G checkout -q -b kitchen/J6; Set-Content "$repo\red.txt" 'breaks the suite (J6)'; G add -A; G commit -q -m 'red J6'
     G checkout -q main; G merge -q --no-ff kitchen/J6 -m 'Merge kitchen/J6 (kitchen J6, approved by Jordan)'; PrRec 'J6' 6
     $env:KITCHEN_GITHUB_REMOTE = Join-Path $root 'no-such-github.git'; $nb = @(Notifies).Count
@@ -179,7 +179,7 @@ if ($env:VC_FLAKY) { "tests: PASS $($env:VC_FLAKY) RESULT note: flaky (passed on
     Check 'undo not pushed: the merge.undone event carries undoPushed false and the reason' ($un6.Count -eq 1 -and $un6[0].undoPushed -eq $false -and $un6[0].undoPushWhy -eq 'GitHub could not be reached' -and @($un6[0].suites) -contains 'Test-A')
     Check 'undo not pushed: one HIGH alert, fixed words, the ticket number only' (@(Notifies).Count -eq $nb + 1 -and @(Notifies)[-1] -eq 'HIGH|test-topic-12345|J6 was undone: it broke main. The undo could not be pushed: main on this PC is ahead of GitHub')
     $rec6 = Get-Content "$state\undo-unpushed\J6.json" -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json
-    Check 'undo not pushed: recorded for the Board with the Tower, the GitHub repo, the undo commit and the reason' ($rec6.job -eq 'J6' -and $rec6.tower -eq 'repo' -and $rec6.slug -eq 'JVonBorstel/repo' -and $rec6.sha -eq (& git -C $repo rev-parse HEAD) -and $rec6.why -eq 'GitHub could not be reached' -and $null -ne $rec6.at)
+    Check 'undo not pushed: recorded for the Board with the Tower, the GitHub repo, the undo commit and the reason' ($rec6.job -eq 'J6' -and $rec6.tower -eq 'repo' -and $rec6.slug -eq 'VonBorstel-J/repo' -and $rec6.sha -eq (& git -C $repo rev-parse HEAD) -and $rec6.why -eq 'GitHub could not be reached' -and $null -ne $rec6.at)
     Check 'undo not pushed: the blame check still ran first (TD-EH-01 unchanged)' ($r11.Out -match 'verify: Test-A pass on [0-9a-f]{12} \(the commit before this merge\) and fail after it: this merge is to blame' -and $un6[0].preMergeSha -eq (& git -C $repo rev-parse 'HEAD~1^1'))
     # the same with GitHub reachable and at the merge (GitHub merged the PR): the undo goes up too, undoPushed true, no record, the usual alert
     G checkout -q -b kitchen/J7; Set-Content "$repo\red.txt" 'breaks the suite (J7)'; G add -A; G commit -q -m 'red J7'

@@ -1,6 +1,6 @@
 # Port #103: Rename S6b: the Board's building-site icons (app icon, tab icons) + New work order on a phone
 
-Ported on 2026-10-26 by `scripts/port-private.ps1` from JVonBorstel/brain-monitor#103 (https://github.com/JVonBorstel/brain-monitor/pull/103) at `6137f24f7cd00374f0a1b94b34e14c23b713805a`, onto tide `main` at `8af1796`. The private repo is on a GitHub billing hold, so its work lands here; the private PR stays open.
+Ported on 2026-10-26 by `scripts/port-private.ps1` from VonBorstel-J/brain-monitor#103 (https://github.com/VonBorstel-J/brain-monitor/pull/103) at `6137f24f7cd00374f0a1b94b34e14c23b713805a`, onto tide `main` at `8af1796`. The private repo is on a GitHub billing hold, so its work lands here; the private PR stays open.
 
 ## What it does (the private PR's description, cleaned)
 

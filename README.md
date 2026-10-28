@@ -1,4 +1,4 @@
-[![ci](https://github.com/JVonBorstel/tide/actions/workflows/ci.yml/badge.svg)](https://github.com/JVonBorstel/tide/actions/workflows/ci.yml)
+[![ci](https://github.com/VonBorstel-J/tide/actions/workflows/ci.yml/badge.svg)](https://github.com/VonBorstel-J/tide/actions/workflows/ci.yml)
 
 # Tide
 

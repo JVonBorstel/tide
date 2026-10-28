@@ -35,6 +35,6 @@ Zero packages; Node 18 or later; `.mjs` with JSDoc and `// @ts-check`. git runs 
   Then main and the PR must be unmoved since the test, and the push moves main forward to the tested merge commit: a fast-forward,
   never forced. An event store that cannot be read gives no permission.
 - `ruleset-main-phase1.json`: the ruleset for main that blocks force-push and deletion (Jordan's tap:
-  `gh api -X POST repos/JVonBorstel/tide/rulesets --input core/ship/ruleset-main-phase1.json`).
+  `gh api -X POST repos/VonBorstel-J/tide/rulesets --input core/ship/ruleset-main-phase1.json`).
 
 Tests: `tests/Test-Ship.ps1` (`node tests/core/ship/test-ship.mjs [name]`), throwaway git repos in the temp folder only.

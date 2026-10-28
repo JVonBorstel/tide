@@ -217,7 +217,7 @@ try {
     function U { & git -C $ur -c user.name=t -c user.email=t@localhost @args 2>&1 | Out-Null }
     & git -C $ur init -q -b main 2>&1 | Out-Null; Set-Content "$ur\base.txt" 'base'; U add -A; U commit -q -m base
     function MergeHere($jid) { U checkout -q -b "kitchen/$jid"; Set-Content "$ur\$jid.txt" $jid; U add -A; U commit -q -m "work $jid"; U checkout -q main; U merge -q --no-ff "kitchen/$jid" -m "Merge kitchen/$jid (kitchen $jid, approved by Jordan)" }
-    function PrRec($jid, $n) { New-Item -ItemType Directory -Force "$kr\results" | Out-Null; @{ repo = 'JVonBorstel/undo-repo'; number = $n; url = "https://github.com/JVonBorstel/undo-repo/pull/$n" } | ConvertTo-Json | Set-Content "$kr\results\$jid.pr.json" }
+    function PrRec($jid, $n) { New-Item -ItemType Directory -Force "$kr\results" | Out-Null; @{ repo = 'VonBorstel-J/undo-repo'; number = $n; url = "https://github.com/VonBorstel-J/undo-repo/pull/$n" } | ConvertTo-Json | Set-Content "$kr\results\$jid.pr.json" }
     function LastJson([string]$o) { ($o.Trim() -split "`r?`n")[-1] | ConvertFrom-Json }
     function Undo($jid) { $env:KITCHEN_JOB = $null; LastJson (& pwsh -NoProfile -File (Join-Path $PSScriptRoot '..\kitchen\undo-merge.ps1') -Job $jid -Repo $ur -Json | Out-String) }
     function UndoCheck { LastJson (& pwsh -NoProfile -File (Join-Path $PSScriptRoot '..\kitchen\undo-push-check.ps1') -Json | Out-String) }
@@ -232,7 +232,7 @@ try {
     [IO.File]::WriteAllText("$ub\hooks\pre-receive", "#!/bin/sh`nexit 1`n")
     $u = Undo 'J31'; $rec = UndoRec 'J31'
     Check 'undo push refused: still undone here, pushed false, the reason in fixed words, the message says push by hand' ($u.ok -and $u.pushed -eq $false -and $u.pushWhy -eq 'the push to GitHub failed' -and $u.message -match 'NOT on GitHub yet \(push failed' -and (& git -C $ur log -1 --format=%s) -match '^Undo J31 ' -and (& git -C $ub rev-parse main) -ne (& git -C $ur rev-parse HEAD))
-    Check 'undo push refused: recorded for the Board (job, Tower, GitHub repo, undo commit, reason, time)' ($rec.job -eq 'J31' -and $rec.tower -eq 'undo-repo' -and $rec.slug -eq 'JVonBorstel/undo-repo' -and $rec.sha -eq (& git -C $ur rev-parse HEAD) -and $rec.why -eq 'the push to GitHub failed' -and $null -ne $rec.at -and [IO.Path]::GetFullPath($rec.repo) -eq [IO.Path]::GetFullPath($ur))
+    Check 'undo push refused: recorded for the Board (job, Tower, GitHub repo, undo commit, reason, time)' ($rec.job -eq 'J31' -and $rec.tower -eq 'undo-repo' -and $rec.slug -eq 'VonBorstel-J/undo-repo' -and $rec.sha -eq (& git -C $ur rev-parse HEAD) -and $rec.why -eq 'the push to GitHub failed' -and $null -ne $rec.at -and [IO.Path]::GetFullPath($rec.repo) -eq [IO.Path]::GetFullPath($ur))
     Remove-Item "$ub\hooks\pre-receive"
     # GitHub's main is not where this PC's was (it lacks the merge): nothing is pushed, said and recorded
     MergeHere 'J32'; PrRec 'J32' 32

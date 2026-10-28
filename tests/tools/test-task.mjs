@@ -336,7 +336,7 @@ try {
       && /lock release --run r1/.test(byLabel('unlock').prompt) && /lock heartbeat --run r1/.test(byLabel('checks 5').prompt) && /lock heartbeat --run r1/.test(byLabel('merge 5').prompt));
     const w = byLabel('work 5').prompt;
     check('wf work: own worktree and branch, noreply identity, trailer, PR title from the public title only, PR body ending',
-      w.includes('X:\\wt\\task-5') && w.includes('-b task/5 origin/main') && w.includes('user.email=204934145+JVonBorstel@users.noreply.github.com')
+      w.includes('X:\\wt\\task-5') && w.includes('-b task/5 origin/main') && w.includes('user.email=104696717+VonBorstel-J@users.noreply.github.com')
       && w.includes('Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>') && w.includes('--title "WO-TASK-5: Public 5"') && w.includes('🤖 Generated with [Claude Code](https://claude.com/claude-code)'));
     check('wf work: privacy scan before every push counts "hits" on added lines, never "oldHits"; never force', /Before every push/.test(w) && w.includes('scan-diff.ps1') && /"hits" array/.test(w) && /"oldHits" counts lines already on main; they do not block/.test(w) && /never --force/.test(w));
     check('wf gate: privacy scans only the lines base..head adds', /scan-diff\.ps1" -Repo .* -Base <base> -Head origin\/main/.test(byLabel('gate (final)').prompt));
@@ -344,8 +344,8 @@ try {
       && /close, approve or merge/.test(byLabel('review 5').prompt) && /never close or reopen a PR/.test(byLabel('merge 5').prompt));
     check('wf review: independent reviewer, read-only, records the head it reviews first', /INDEPENDENT REVIEWER/.test(byLabel('review 5').prompt) && /did not build it/.test(byLabel('review 5').prompt) && /FIRST record the commit you review/.test(byLabel('review 5').prompt));
     const mp = byLabel('merge 5').prompt;
-    check('wf merge: only through scripts/merge-pr.ps1, pinned to the reviewed head', mp.includes(`scripts\\merge-pr.ps1 -Repo JVonBorstel/tide -Pr 5 -ExpectHead ${H}`) && /Never `gh pr merge`/.test(mp));
-    check('wf Board: "pass-app changed" comes from the merged diff, never the builder; a skipped redeploy leaves a note', mp.includes('gh pr diff 5 -R JVonBorstel/tide --name-only') && mp.includes('pass-app\\update.ps1')
+    check('wf merge: only through scripts/merge-pr.ps1, pinned to the reviewed head', mp.includes(`scripts\\merge-pr.ps1 -Repo VonBorstel-J/tide -Pr 5 -ExpectHead ${H}`) && /Never `gh pr merge`/.test(mp));
+    check('wf Board: "pass-app changed" comes from the merged diff, never the builder; a skipped redeploy leaves a note', mp.includes('gh pr diff 5 -R VonBorstel-J/tide --name-only') && mp.includes('pass-app\\update.ps1')
       && /not from anyone's report/.test(mp) && /note 5 --text "Board not redeployed/.test(mp) && !/touchesPassApp/.test(wfSrc));
     check('wf gate: privacy counts the scanner\'s "hits", never its "live" counts', /"hits" array/.test(byLabel('gate (final)').prompt) && !/sum of "live"/.test(wfSrc));
     check('wf: never sees or sends the private title (only public_title travels)', !r.calls.some((c) => /Private words/.test(c.prompt)));

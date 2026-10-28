@@ -111,7 +111,7 @@ the tested commit; a failed check, a closed PR or a push by someone else fails i
 Merge on the PR** (he authors the PR, so GitHub's approve is not his; the supervisor sees the merge and records his yes, kind `github`).
 `merge` then merges with `gh pr merge --merge --match-head-commit <tested sha>` (or finds it merged) and fast-forwards the real checkout's
 main to GitHub's; a dirty checkout or a local main GitHub lacks is held for Jordan. Auto-merge of a PR order also needs every CI check
-SUCCESS. Spec var `github` = `owner/name`, `none`, or empty (derived: `JVonBorstel/<repo folder>`, skipped when GitHub has no such
+SUCCESS. Spec var `github` = `owner/name`, `none`, or empty (derived: `VonBorstel-J/<repo folder>`, skipped when GitHub has no such
 repo). Private orders never leave the PC: no push, no PR, local merge. Records live in `<kitchen>\results\<job>.pr.json` / `.ci.json` /
 `.merge.json` (and `.kitchen\PR.json` in the worktree). Tests: `tests/Test-PrFlow.ps1` (a fake `gh` over a local bare repo; `KITCHEN_GH`,
 `KITCHEN_GITHUB_REMOTE` and `KITCHEN_CHEF_UPDATE_SCRIPT` point the stations at fakes).
@@ -178,11 +178,11 @@ Try it: `just sous "..."` (decides only), `just cooks` (the cooks' state), `just
 The **model scout** (Spec `scout`) runs weekly as a standing order and reports what's new in AI models vs what we run.
 
 ## Building in public
-Tide's home is https://github.com/JVonBorstel/tide, a **public** repo (since 2026-10-26): every commit, branch name, PR text and CI log
+Tide's home is https://github.com/VonBorstel-J/tide, a **public** repo (since 2026-10-26): every commit, branch name, PR text and CI log
 can be read by anyone. The history before 2026-10-24 stays in a private repo and is never pushed here.
-- **Commit and merge identity: the noreply address.** Commit as `Jordan VonBorstel <204934145+JVonBorstel@users.noreply.github.com>`
-  (`git -c user.name="Jordan VonBorstel" -c user.email=204934145+JVonBorstel@users.noreply.github.com commit ...`, or that `user.email`
-  in the checkout). Claude sessions merge only with `pwsh -File scripts/merge-pr.ps1 -Repo JVonBorstel/tide -Pr N`: the merge commit
+- **Commit and merge identity: the noreply address.** Commit as `Jordan VonBorstel <104696717+VonBorstel-J@users.noreply.github.com>`
+  (`git -c user.name="Jordan VonBorstel" -c user.email=104696717+VonBorstel-J@users.noreply.github.com commit ...`, or that `user.email`
+  in the checkout). Claude sessions merge only with `pwsh -File scripts/merge-pr.ps1 -Repo VonBorstel-J/tide -Pr N`: the merge commit
   is authored with the signed-in account's noreply address (`Get-MergeAuthorEmail` in `kitchen/github-lib.ps1`), never the account's
   primary email. No web-button merge and no bare `gh pr merge` from a session (2026-10-26: a web merge put a private address on main).
 - **Personal values live only in the state folder** (`%LOCALAPPDATA%\brain-kitchen`): this PC's repo list and suite list

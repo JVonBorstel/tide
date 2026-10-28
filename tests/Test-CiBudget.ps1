@@ -25,7 +25,7 @@ try {
     New-Item -ItemType Directory -Force -Path $kr, (Join-Path $gh 'api'), $tower, $pubTower | Out-Null
     Set-Content (Join-Path $root 'fake-gh.ps1') $fake -Encoding utf8
     $env:BRAIN_KITCHEN = $kr; $env:KITCHEN_GH = Join-Path $root 'fake-gh.ps1'; $env:FAKE_CI_DIR = $gh; $env:KITCHEN_CI_NOW = '2026-10-20T12:00:00Z'; $env:KITCHEN_GITHUB_OWNER = $null
-    foreach ($t in @(@($tower, 'JVonBorstel/private-app', 'TD'), @($pubTower, 'JVonBorstel/open-repo', 'ZG'))) {
+    foreach ($t in @(@($tower, 'VonBorstel-J/private-app', 'TD'), @($pubTower, 'VonBorstel-J/open-repo', 'ZG'))) {
         & git -C $t[0] init -q -b main 2>&1 | Out-Null
         @{ github = $t[1]; site = $t[2] } | ConvertTo-Json | Set-Content (Join-Path $t[0] 'kitchen.repo.json')
         & git -C $t[0] -c user.name=t -c user.email=t@localhost add -A 2>&1 | Out-Null; & git -C $t[0] -c user.name=t -c user.email=t@localhost commit -q -m base 2>&1 | Out-Null
@@ -39,7 +39,7 @@ try {
     Check 'month: calendar month in UTC, ends on the 1st' ((Get-CiMonth) -eq '2026-10' -and (Get-CiMonthEnd).ToString('o') -eq '2026-11-01T00:00:00.0000000Z')
 
     # ---- 2. a private Tower over budget: counted, measured, held; raised budget lets go
-    $bm = 'JVonBorstel/private-app'; $runsPath = "repos/$bm/actions/runs?created=%3E%3D2026-10-01&per_page=100&page=1"
+    $bm = 'VonBorstel-J/private-app'; $runsPath = "repos/$bm/actions/runs?created=%3E%3D2026-10-01&per_page=100&page=1"
     Answer "repos/$bm" @{ private = $true }
     Answer $runsPath @{ total_count = 3; workflow_runs = @(@{ id = 11; status = 'in_progress' }, @{ id = 12; status = 'completed' }, @{ id = 13; status = 'completed' }) }
     Answer "repos/$bm/actions/runs/12/jobs?per_page=100" @{ jobs = @((New-CiJob 'ubuntu-latest' 300), (New-CiJob 'ubuntu-latest' 59)) }
@@ -82,7 +82,7 @@ try {
     Check 'partial: a failed job list keeps what was measured (6 of a budget of 5 = over), with the reason' ($td.state -eq 'partial' -and $td.minutesAtLeast -eq 6 -and $td.why -match 'run 13' -and $td.over -and (Get-CiBudgetHold $kr 'TD').hold)
 
     # ---- 6. a public Tower: runs counted, 0 billed (free), never over; a budgeted Site with no Tower says so
-    $op = 'JVonBorstel/open-repo'
+    $op = 'VonBorstel-J/open-repo'
     Answer "repos/$op" @{ private = $false }
     Answer "repos/$op/actions/runs?created=%3E%3D2026-10-01&per_page=100&page=1" @{ total_count = 2; workflow_runs = @(@{ id = 21; status = 'completed' }, @{ id = 22; status = 'completed' }) }
     Registry @{ ZG = @{ ciMinutesPerMonth = 1 }; JH = @{ ciMinutesPerMonth = 'unlimited' } }

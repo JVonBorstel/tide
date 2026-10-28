@@ -1,6 +1,6 @@
 # Runbook
 
-Short answers for when something is wrong. Repo: `JVonBorstel/tide` (public).
+Short answers for when something is wrong. Repo: `VonBorstel-J/tide` (public).
 
 ## Roll back a bad change
 Pick the lightest one that fits. All of them add a new commit; none delete history.

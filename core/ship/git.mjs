@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 /** The noreply address GitHub gives an account: <id>+<login>@users.noreply.github.com. */
 export const NOREPLY = /^\d+\+[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})@users\.noreply\.github\.com$/;
 /** The one identity Tide's merges and Resurvey commits are made as by default: the owner's account noreply address (kitchen/BUILDING.md). */
-export const OWNER_NOREPLY = '204934145+JVonBorstel@users.noreply.github.com';
+export const OWNER_NOREPLY = '104696717+VonBorstel-J@users.noreply.github.com';
 
 /**
  * Why a git argument list would rewrite history on a remote, or '' when it would not. A push is refused when it names --force (any

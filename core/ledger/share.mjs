@@ -53,7 +53,7 @@ const SECRETS = /** @type {Array<[RegExp, string | ((...a: any[]) => string)]>} 
     (/** @type {string} */ m, /** @type {string} */ key, /** @type {string} */ sep, /** @type {string} */ val) => (GIT_ID_KEY.test(key) || GIT_ID_KEY_CAMEL.test(key)) && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(val) ? m : `${key}${sep}<secret>`],
 ]);
 /** The one public repo: a remote of any other repo loses its owner/name. */
-export const PUBLIC_REPOS = ['jvonborstel/tide'];
+export const PUBLIC_REPOS = ['vonborstel-j/tide'];
 const isPublicRepo = (/** @type {string} */ p) => PUBLIC_REPOS.includes(p.replace(/\.git$/i, '').toLowerCase());
 // a git remote in URL form: ssh://[user@]host[:port]/path, git://, git+https://, https://[user@]host/path, in any case. What counts as the
 // repo path depends on the host (see urlRemote); the rest of the URL (a tail like /pull/7, a query) stays. The URL ends at a space, a
@@ -91,12 +91,12 @@ function redactRemotes(t) {
   });
 }
 // a repo named in plain text (not in a URL): after a command or flag that takes one (gh repo clone X, --repo X, -R X, repo: X, repos/X),
-// as an issue or commit reference (X#12, X@abc1234), with the public owner (JVonBorstel/anything but the public repo), or shaped like
+// as an issue or commit reference (X#12, X@abc1234), with the public owner (VonBorstel-J/anything but the public repo), or shaped like
 // one: a Capitalized owner and a repo name with a dash, dot, underscore or digit (Example/private-repo). A plain lower-case owner/repo
 // with no cue (a path like core/ledger) is not guessed: the private words list covers those.
 const BARE_CUE = /((?:\bgh\s+repo\s+(?:clone|view|fork|create|delete|sync|edit|archive|rename|set-default)\s+|--repo(?:sitory)?[=\s]+|(?<![\w-])-R\s+|\brepo(?:sitory)?\s*[:=]\s*|\brepos\/)["']?)([A-Za-z0-9][\w-]{0,38})\/([\w.-]+?)(?![\w-]|\.[\w-])/gi;
 const BARE_REF = /(?<![\w./\:@#-])([A-Za-z0-9][\w-]{0,38})\/([\w.-]+?)(?=#\d|@[0-9a-f]{7,40}(?![\w.@-]))/gi;
-const BARE_OWNER = /(?<![\w./\:@#-])(jvonborstel)\/([\w.-]+?)(?![\w-]|\.[\w-])/gi;
+const BARE_OWNER = /(?<![\w./\:@#-])(vonborstel-j)\/([\w.-]+?)(?![\w-]|\.[\w-])/gi;
 const BARE_SHAPE = /(?<![\w./\:@#-])([A-Z](?=[A-Za-z0-9-]*[a-z])[A-Za-z0-9-]{1,38})\/((?=[\w.-]*[-_.\d])[A-Za-z0-9][\w.-]*?)(?![\w-]|\.[\w-])/g;
 const FILE_EXT = /\.(?:md|json|jsonl|mjs|cjs|js|ts|tsx|ps1|psm1|txt|ya?ml|html?|css|db|cmd|sh|py|log|csv|xml|toml|lock|png|jpg|svg)$/i;
 /** @param {string} t */

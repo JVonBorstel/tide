@@ -41,12 +41,12 @@ function Test-GhNotFound($r) { "$($r.err) $($r.out)" -match 'Could not resolve t
 function Test-GhNoLogin($r) { "$($r.err) $($r.out)" -match 'gh auth login|not logged in|HTTP 401|Bad credentials|authentication failed|Authentication failed' }
 
 # Which GitHub repo an order's repo lives in. The recipe var "github" names it (owner/name), or says none/off for a repo with no GitHub
-# home; empty means derived: <owner>/<folder name of the repo>, owner JVonBorstel (KITCHEN_GITHUB_OWNER overrides). A derived name is
+# home; empty means derived: <owner>/<folder name of the repo>, owner VonBorstel-J (KITCHEN_GITHUB_OWNER overrides). A derived name is
 # only a guess: the pr station asks GitHub, and a repo that is not there means "no GitHub for this order" (merges stay local).
 $script:GithubSlugRx = '^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$'
 # The "github" var in any form Jordan pastes: owner/name, https://github.com/owner/name(.git)(/), git@github.com:owner/name.git,
 # ssh://git@github.com/owner/name. Gives {slug, bad}: slug = owner/name (or the value untouched when empty or none/off), bad = a loud
-# reason naming the value when what is left is still not owner/name (J193 failed on 'https://github.com/JVonBorstel/demo-project').
+# reason naming the value when what is left is still not owner/name (J193 failed on 'https://github.com/VonBorstel-J/demo-project').
 function ConvertTo-GithubSlug([string]$GitHub) {
     $given = [string]$GitHub; $g = $given.Trim()
     if (-not $g -or $g -match '^(?i)(none|off|no|local|-)$') { return [pscustomobject]@{ slug = $g; bad = '' } }
@@ -65,7 +65,7 @@ function Resolve-GithubSlug([string]$Repo, [string]$GitHub) {
     }
     $top = (& git -C $Repo rev-parse --show-toplevel 2>$null); if ($LASTEXITCODE -or -not $top) { $top = $Repo }
     $name = (Split-Path -Leaf ([IO.Path]::GetFullPath($top).TrimEnd('\', '/'))) -replace '[^A-Za-z0-9._-]', '-'
-    $owner = if ($env:KITCHEN_GITHUB_OWNER) { $env:KITCHEN_GITHUB_OWNER } else { 'JVonBorstel' }
+    $owner = if ($env:KITCHEN_GITHUB_OWNER) { $env:KITCHEN_GITHUB_OWNER } else { 'VonBorstel-J' }
     $slug = "$owner/$name"
     if ($slug -notmatch $rx) { return [pscustomobject]@{ slug = ''; none = $true; derived = $true; bad = '' } }
     [pscustomobject]@{ slug = $slug; none = $false; derived = $true; bad = '' }

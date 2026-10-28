@@ -299,8 +299,8 @@ export async function testSecrets() {
   const remotes = [`git@github.com:${priv.join('/')}.git`, `ssh://git@github.com/${priv.join('/')}.git`, `https://github.com/${priv.join('/')}`, `https://github.com/${priv.join('/')}/pull/7`,
     `https://${['user', 'pw'].join(':')}@github.com/${priv.join('/')}.git`, `https://git.example.org/team/${priv[1]}.git`];
   for (const value of remotes) { const out = r(`remote ${value} here`); check(`l4: a private remote is redacted (${value.split(':')[0]}, ${value.length} chars)`, !out.includes(priv[1]) && !out.includes(priv[0]) && out.includes(MARK.repo), out); }
-  const pub = 'https://github.com/JVonBorstel/tide/pull/31';
-  check('l4: the public repo\'s remotes stay (https and git@)', r(pub) === pub && r('git@github.com:JVonBorstel/tide.git') === 'git@github.com:JVonBorstel/tide.git');
+  const pub = 'https://github.com/VonBorstel-J/tide/pull/31';
+  check('l4: the public repo\'s remotes stay (https and git@)', r(pub) === pub && r('git@github.com:VonBorstel-J/tide.git') === 'git@github.com:VonBorstel-J/tide.git');
   check('l4: an ordinary web link stays', r('see https://docs.example.org/guide/start') === 'see https://docs.example.org/guide/start');
   // neutral words in public text
   const src = ['core/ledger/share.mjs', 'core/ledger/ledger-private-words.example.json', 'core/ledger/README.md'].map((f) => fs.readFileSync(path.join(repo, f), 'utf8')).join('\n');
@@ -334,13 +334,13 @@ export async function testRedactionHardening() {
     ['codeload', 'https://codeload.github.com/Example/private-repo/zip/main'],
     ['gh clone', 'gh repo clone Example/private-repo'], ['--repo', 'gh pr view 3 --repo Example/private-repo'], ['--repo=', '--repo=Example/private-repo'], ['-R', 'gh issue list -R Example/private-repo'],
     ['repo:', 'repo: Example/private-repo'], ['issue ref', 'fixes Example/private-repo#12'], ['commit ref', 'Example/private-repo@a1b2c3d'], ['bare shape', 'pushed to Example/private-repo today'], ['bare sentence end', 'pushed to Example/private-repo.'],
-    ['bare in parens', '(Example/private-repo)'], ['public owner, other repo', 'JVonBorstel/other-repo'], ['public owner lower', 'jvonborstel/Other_Repo'], ['public owner, tide lookalike', 'JVonBorstel/tide-private']]) {
+    ['bare in parens', '(Example/private-repo)'], ['public owner, other repo', 'VonBorstel-J/other-repo'], ['public owner lower', 'vonborstel-j/Other_Repo'], ['public owner, tide lookalike', 'VonBorstel-J/tide-private']]) {
     const out = r(t); check(`l4f: ${name} is redacted`, !out.includes('private-repo') && !out.includes('Example') && !/other-repo|other_repo|tide-private/i.test(out) && out.includes(MARK.repo), out);
   }
-  for (const t of ['https://github.com/JVonBorstel/tide', 'HTTPS://GITHUB.COM/JVONBORSTEL/TIDE.git', 'GIT@GITHUB.COM:JVonBorstel/tide.git', 'git@github.com:jvonborstel/tide.git', 'ssh://git@github.com/JVonBorstel/tide.git',
-    'https://api.github.com/repos/JVonBorstel/tide/pulls/38', 'https://raw.githubusercontent.com/JVonBorstel/tide/main/README.md', 'gh pr view 38 --repo JVonBorstel/tide', 'JVonBorstel/tide', 'JVonBorstel/tide#38', 'jvonborstel/Tide.',
-    'https://github.com/JVonBorstel/tide/pull/38', 'see https://github.com/JVonBorstel/tide, then']) check(`l4f: the public repo stays (${t.slice(0, 40)})`, r(t) === t, r(t));
-  check('l4f: a user part is dropped from a public https remote, "git@" is kept', r(`https://someuser${at}github.com/JVonBorstel/tide.git`) === 'https://github.com/JVonBorstel/tide.git' && r(`ssh://git${at}github.com/JVonBorstel/tide.git`) === `ssh://git${at}github.com/JVonBorstel/tide.git`);
+  for (const t of ['https://github.com/VonBorstel-J/tide', 'HTTPS://GITHUB.COM/VONBORSTEL-J/TIDE.git', 'GIT@GITHUB.COM:VonBorstel-J/tide.git', 'git@github.com:vonborstel-j/tide.git', 'ssh://git@github.com/VonBorstel-J/tide.git',
+    'https://api.github.com/repos/VonBorstel-J/tide/pulls/38', 'https://raw.githubusercontent.com/VonBorstel-J/tide/main/README.md', 'gh pr view 38 --repo VonBorstel-J/tide', 'VonBorstel-J/tide', 'VonBorstel-J/tide#38', 'vonborstel-j/Tide.',
+    'https://github.com/VonBorstel-J/tide/pull/38', 'see https://github.com/VonBorstel-J/tide, then']) check(`l4f: the public repo stays (${t.slice(0, 40)})`, r(t) === t, r(t));
+  check('l4f: a user part is dropped from a public https remote, "git@" is kept', r(`https://someuser${at}github.com/VonBorstel-J/tide.git`) === 'https://github.com/VonBorstel-J/tide.git' && r(`ssh://git${at}github.com/VonBorstel-J/tide.git`) === `ssh://git${at}github.com/VonBorstel-J/tide.git`);
   // near misses: paths, files, ordinary words and links are not repos
   for (const t of ['core/ledger/share.mjs', 'see tests/core/ledger/test-ledger.mjs', 'docs/changes/WO-UPG-L1-4.md', 'ART/CITY/BOARD', 'ART/CITY', 'and/or', 'N/A', 'TCP/IP', 'Notes/README.md', 'Docs/guide.md', 'WO-UPG-L1-4/L1-5',
     'https://docs.example.org/guide/start', 'https://example.org/Guide/start-here', 'https://api.github.com/rate_limit', 'see Example in docs/Example-notes', 'a/b/c']) check(`l4f: not a repo, stays (${t})`, r(t) === t, r(t));
@@ -356,7 +356,7 @@ export async function testRedactionHardening() {
   for (const t of ['tail-fade', 'tail-dead', 'tailadded', 'tail-beef', 'tailface', 'tail-cafe is open', 'tailwind', 'tail -f log', 'tailored', 'detail1a2b3c', 'tail-latency', 'tail-base']) check(`l4f: ordinary word is not a tailnet (${t})`, r(t) === t, r(t));
   for (const t of ['tail1a2b3c', 'tail-1a2b3c', 'Tail-1A2B3C', 'tail-9f8e7d', 'tail-deadbeef0', `tail-fade.${tsnet}`, `host.tail1a2b3c.${tsnet}`]) check(`l4f: tailnet shape is redacted (${t})`, !r(t).includes('1a2b3c') && !r(t).includes('9f8e7d') && !r(t).includes('deadbeef') && !r(t).includes(tsnet) && r(t).includes(MARK.host), r(t));
   // a proof string with ids and the public link stays whole
-  const proof = `merged https://github.com/JVonBorstel/tide/pull/38 at ${sha1} (tree: ${sha1}, sha=${sha1}); branch wo/upg-l1-4-secrets`;
+  const proof = `merged https://github.com/VonBorstel-J/tide/pull/38 at ${sha1} (tree: ${sha1}, sha=${sha1}); branch wo/upg-l1-4-secrets`;
   check('l4f: a proof string with ids and the public link is untouched', r(proof) === proof, r(proof));
   // idempotent: redacting twice changes nothing more
   const mixed = `see https://github.com/Example/private-repo, ${'ghp'}_${'A1b2'.repeat(9)} {"token":"${v}"} tail1a2b3c Example/private-repo#3`;
